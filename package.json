@@ -1,6 +1,6 @@
 {
-  "name": "uh4-architecture-intelligence",
-  "displayName": "UH4 Architecture Intelligence",
+  "name": "archmind-vscode-extension",
+  "displayName": "ArchMind VS Code Extension",
   "description": "Real-Time Codebase Intelligence and Architecture Reconstruction",
   "version": "0.0.1",
   "engines": {
@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "uh4.showArchitecture",
-        "title": "UH4: Show Architecture"
+        "command": "archmind.showArchitecture",
+        "title": "ArchMind: Show Architecture"
       }
     ]
   },

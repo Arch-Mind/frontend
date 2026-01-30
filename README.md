@@ -1,10 +1,10 @@
-# UH4 Architecture Intelligence
+# ArchMind VS Code Extension
 
 A VS Code extension for real-time codebase visualization and architecture reconstruction using interactive dependency graphs.
 
 ## 🎯 Overview
 
-UH4 Architecture Intelligence provides developers with an interactive visual representation of their codebase structure. Built with React and ReactFlow, it displays files, directories, and their relationships in an intuitive graph format directly within VS Code.
+ArchMind VS Code Extension provides developers with an interactive visual representation of their codebase structure. Built with React and ReactFlow, it displays files, directories, and their relationships in an intuitive graph format directly within VS Code.
 
 ## ✨ Features
 
@@ -49,7 +49,7 @@ UH4 Architecture Intelligence provides developers with an interactive visual rep
 1. Open this folder in VS Code
 2. Press `F5` to launch the Extension Development Host
 3. In the new VS Code window, open any workspace
-4. Press `Ctrl+Shift+P` and run **"UH4: Show Architecture"**
+4. Press `Ctrl+Shift+P` and run **"ArchMind: Show Architecture"**
 
 ## 📁 Project Structure
 
@@ -112,7 +112,7 @@ The extension contributes the following command:
 
 | Command | Title |
 |---------|-------|
-| `uh4.showArchitecture` | UH4: Show Architecture |
+| `archmind.showArchitecture` | ArchMind: Show Architecture |
 
 ## 🗺️ Roadmap
 

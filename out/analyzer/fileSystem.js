@@ -36,33 +36,136 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeWorkspace = analyzeWorkspace;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+// File extension to language mapping for better visualization
+const FILE_EXTENSIONS = {
+    '.ts': 'typescript',
+    '.tsx': 'typescript',
+    '.js': 'javascript',
+    '.jsx': 'javascript',
+    '.json': 'json',
+    '.md': 'markdown',
+    '.css': 'css',
+    '.scss': 'css',
+    '.html': 'html',
+    '.py': 'python',
+    '.rs': 'rust',
+    '.go': 'go',
+};
+// Directories to ignore during traversal
+const IGNORED_DIRECTORIES = new Set([
+    'node_modules',
+    'out',
+    'dist',
+    'build',
+    '.git',
+    '.vscode',
+    'coverage',
+    '__pycache__',
+    'target',
+    'vendor',
+]);
+/**
+ * Determines if a file or directory should be ignored during analysis
+ */
+function shouldIgnore(name) {
+    return name.startsWith('.') || IGNORED_DIRECTORIES.has(name);
+}
+/**
+ * Extracts file extension and determines programming language
+ */
+function getFileMetadata(filename) {
+    const ext = path.extname(filename).toLowerCase();
+    if (!ext)
+        return {};
+    return {
+        extension: ext.slice(1), // Remove the dot
+        language: FILE_EXTENSIONS[ext],
+    };
+}
+/**
+ * Analyzes a workspace directory and builds a graph representation
+ * @param rootPath - The root directory path to analyze
+ * @returns Promise containing graph data with nodes, edges, and statistics
+ */
 async function analyzeWorkspace(rootPath) {
     const nodes = [];
     const edges = [];
-    async function traverse(currentPath, parentId) {
-        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+    const stats = {
+        totalFiles: 0,
+        totalDirectories: 0,
+        filesByLanguage: {},
+    };
+    async function traverse(currentPath, depth, parentId) {
+        let entries;
+        try {
+            entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+        }
+        catch (error) {
+            // Skip directories we can't read (permission issues, etc.)
+            console.warn(`Unable to read directory: ${currentPath}`);
+            return;
+        }
+        // Sort entries: directories first, then files, both alphabetically
+        entries.sort((a, b) => {
+            if (a.isDirectory() && !b.isDirectory())
+                return -1;
+            if (!a.isDirectory() && b.isDirectory())
+                return 1;
+            return a.name.localeCompare(b.name);
+        });
         for (const entry of entries) {
-            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'out') {
+            if (shouldIgnore(entry.name)) {
                 continue;
             }
             const fullPath = path.join(currentPath, entry.name);
-            const id = fullPath; // Use full path as ID for simplicity
+            const id = fullPath;
             const label = entry.name;
-            const type = entry.isDirectory() ? 'directory' : 'file';
-            nodes.push({ id, label, type, parentId });
+            const isDirectory = entry.isDirectory();
+            const type = isDirectory ? 'directory' : 'file';
+            // Get file metadata for files
+            const metadata = isDirectory ? {} : getFileMetadata(entry.name);
+            // Update statistics
+            if (isDirectory) {
+                stats.totalDirectories++;
+            }
+            else {
+                stats.totalFiles++;
+                if (metadata.language) {
+                    stats.filesByLanguage[metadata.language] =
+                        (stats.filesByLanguage[metadata.language] || 0) + 1;
+                }
+            }
+            nodes.push({
+                id,
+                label,
+                type,
+                parentId,
+                depth,
+                ...metadata,
+            });
             if (parentId) {
                 edges.push({
                     id: `e-${parentId}-${id}`,
                     source: parentId,
-                    target: id
+                    target: id,
+                    type: 'contains',
                 });
             }
-            if (entry.isDirectory()) {
-                await traverse(fullPath, id);
+            if (isDirectory) {
+                await traverse(fullPath, depth + 1, id);
             }
         }
     }
-    await traverse(rootPath);
-    return { nodes, edges };
+    // Add root node
+    const rootName = path.basename(rootPath);
+    nodes.push({
+        id: rootPath,
+        label: rootName,
+        type: 'directory',
+        depth: 0,
+    });
+    stats.totalDirectories++;
+    await traverse(rootPath, 1, rootPath);
+    return { nodes, edges, stats };
 }
 //# sourceMappingURL=fileSystem.js.map

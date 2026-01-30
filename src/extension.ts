@@ -3,9 +3,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('UH4 Architecture Intelligence is now active!');
+    console.log('ArchMind VS Code Extension is now active!');
 
-    let disposable = vscode.commands.registerCommand('uh4.showArchitecture', () => {
+    let disposable = vscode.commands.registerCommand('archmind.showArchitecture', () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
     });
 
@@ -16,7 +16,7 @@ export function deactivate() { }
 
 class ArchitecturePanel {
     public static currentPanel: ArchitecturePanel | undefined;
-    public static readonly viewType = 'uh4Architecture';
+    public static readonly viewType = 'archmindArchitecture';
 
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;

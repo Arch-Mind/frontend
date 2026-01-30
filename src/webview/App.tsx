@@ -1,16 +1,25 @@
 import React from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
 
+const Header: React.FC = () => (
+    <header className="app-header">
+        <div className="header-content">
+            <h1 className="header-title">
+                <span className="header-icon">🏗️</span>
+                ArchMind
+            </h1>
+            <span className="header-subtitle">Architecture Intelligence</span>
+        </div>
+    </header>
+);
+
 const App: React.FC = () => {
     return (
-        <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '10px', borderBottom: '1px solid var(--vscode-widget-border)' }}>
-                <h3>Architecture Reconstruction</h3>
-                <p>Visualizing codebase structure...</p>
-            </div>
-            <div style={{ flex: 1 }}>
+        <div className="app-container">
+            <Header />
+            <main className="app-main">
                 <ArchitectureGraph />
-            </div>
+            </main>
         </div>
     );
 };
