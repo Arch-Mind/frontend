@@ -1,0 +1,19 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    font-weight: var(--vscode-font-weight);
+}
+
+.react-flow__node {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.react-flow__edge-path {
+    stroke: var(--vscode-editor-foreground);
+}
