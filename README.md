@@ -70,7 +70,84 @@ frontend/
 └── webpack.webview.js        # Webpack config for webview bundle
 ```
 
-## 🛠️ Development
+## � How It Works
+
+### Workflow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           VS Code Editor                                 │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 │ User runs "ArchMind: Show Architecture"
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Extension Host (extension.ts)                       │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ 1. Register command: archmind.showArchitecture                  │    │
+│  │ 2. Create WebviewPanel with React app                           │    │
+│  │ 3. Listen for messages from webview                             │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 │ Webview requests architecture data
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    File System Analyzer (fileSystem.ts)                  │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ 1. Traverse workspace directory recursively                     │    │
+│  │ 2. Filter out ignored folders (node_modules, .git, etc.)        │    │
+│  │ 3. Extract file metadata (extension, language)                  │    │
+│  │ 4. Build graph nodes and edges                                  │    │
+│  │ 5. Calculate statistics (files, directories, languages)         │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 │ postMessage({ command: 'architectureData', data })
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Webview (React + ReactFlow)                      │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ 1. Receive graph data via message event                         │    │
+│  │ 2. Apply hierarchical layout algorithm                          │    │
+│  │ 3. Color-code nodes by type/language                            │    │
+│  │ 4. Render interactive graph with ReactFlow                      │    │
+│  │ 5. Display statistics panel                                     │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Flow
+
+1. **User Action**: User opens command palette (`Ctrl+Shift+P`) and runs "ArchMind: Show Architecture"
+
+2. **Extension Activation**: The extension creates a new webview panel and loads the bundled React application
+
+3. **Data Request**: The React app sends a `requestArchitecture` message to the extension host
+
+4. **Workspace Analysis**: 
+   - The analyzer reads the workspace root directory
+   - Recursively traverses all files and folders
+   - Skips ignored directories (node_modules, .git, dist, etc.)
+   - Extracts metadata: file type, programming language, depth level
+   - Builds a graph structure with nodes (files/folders) and edges (parent-child relationships)
+   - Computes statistics (total files, directories, language breakdown)
+
+5. **Data Transfer**: Extension sends the graph data back to the webview via `postMessage`
+
+6. **Visualization**:
+   - React receives the data and applies a hierarchical layout
+   - Nodes are positioned by depth level
+   - Colors are assigned based on language (TypeScript = blue, JavaScript = yellow, etc.)
+   - ReactFlow renders the interactive graph with pan, zoom, and minimap
+
+7. **User Interaction**: User can:
+   - Pan and zoom the graph
+   - Click on nodes to select them
+   - Use the minimap for navigation
+   - View statistics in the overlay panel
+
+## �🛠️ Development
 
 ### Available Scripts
 
