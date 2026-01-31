@@ -65,11 +65,100 @@ class ArchitecturePanel {
                     case 'requestArchitecture':
                         await this._sendArchitecture();
                         return;
+                    case 'openFile':
+                        await this._openFile(message.filePath, message.lineNumber);
+                        return;
+                    case 'revealInExplorer':
+                        await this._revealInExplorer(message.filePath);
+                        return;
+                    case 'goToDefinition':
+                        await this._goToDefinition(message.filePath, message.lineNumber);
+                        return;
+                    case 'findReferences':
+                        await this._findReferences(message.filePath, message.lineNumber);
+                        return;
                 }
             },
             null,
             this._disposables
         );
+    }
+
+    private async _openFile(filePath: string, lineNumber?: number) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            
+            // Check if it's a binary/image file that can't be opened as text
+            const binaryExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', '.svg', 
+                                      '.mp4', '.mp3', '.wav', '.avi', '.mov', '.pdf', '.zip', '.tar', 
+                                      '.gz', '.exe', '.dll', '.so', '.woff', '.woff2', '.ttf', '.eot'];
+            const ext = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+            
+            if (binaryExtensions.includes(ext)) {
+                // Use vscode.open for binary files - opens with default application or preview
+                await vscode.commands.executeCommand('vscode.open', uri);
+                return;
+            }
+            
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false
+            });
+            
+            if (lineNumber && lineNumber > 0) {
+                const position = new vscode.Position(lineNumber - 1, 0);
+                editor.selection = new vscode.Selection(position, position);
+                editor.revealRange(
+                    new vscode.Range(position, position),
+                    vscode.TextEditorRevealType.InCenter
+                );
+            }
+        } catch (error) {
+            // Fallback: try opening with vscode.open command
+            try {
+                const uri = vscode.Uri.file(filePath);
+                await vscode.commands.executeCommand('vscode.open', uri);
+            } catch {
+                vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+            }
+        }
+    }
+
+    private async _revealInExplorer(filePath: string) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            await vscode.commands.executeCommand('revealInExplorer', uri);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to reveal in explorer: ${filePath}`);
+        }
+    }
+
+    private async _goToDefinition(filePath: string, lineNumber?: number) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(document);
+            
+            const position = new vscode.Position((lineNumber || 1) - 1, 0);
+            await vscode.commands.executeCommand('editor.action.revealDefinition', uri, position);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to go to definition: ${filePath}`);
+        }
+    }
+
+    private async _findReferences(filePath: string, lineNumber?: number) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document);
+            
+            const position = new vscode.Position((lineNumber || 1) - 1, 0);
+            editor.selection = new vscode.Selection(position, position);
+            await vscode.commands.executeCommand('references-view.findReferences', uri, position);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to find references: ${filePath}`);
+        }
     }
 
     private async _sendArchitecture() {

@@ -36,6 +36,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeWorkspace = analyzeWorkspace;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+function getFileExtension(filename) {
+    const ext = path.extname(filename).toLowerCase();
+    return ext ? ext.substring(1) : '';
+}
+function determineNodeType(entry, extension) {
+    if (entry.isDirectory()) {
+        return 'directory';
+    }
+    // Treat index files as modules
+    if (entry.name.startsWith('index.')) {
+        return 'module';
+    }
+    return 'file';
+}
 async function analyzeWorkspace(rootPath) {
     const nodes = [];
     const edges = [];
@@ -46,10 +60,32 @@ async function analyzeWorkspace(rootPath) {
                 continue;
             }
             const fullPath = path.join(currentPath, entry.name);
-            const id = fullPath; // Use full path as ID for simplicity
+            const relativePath = path.relative(rootPath, fullPath);
+            const id = fullPath;
             const label = entry.name;
-            const type = entry.isDirectory() ? 'directory' : 'file';
-            nodes.push({ id, label, type, parentId });
+            const fileExtension = getFileExtension(entry.name);
+            const type = determineNodeType(entry, fileExtension);
+            let size;
+            if (!entry.isDirectory()) {
+                try {
+                    const stats = await fs.promises.stat(fullPath);
+                    size = stats.size;
+                }
+                catch {
+                    size = undefined;
+                }
+            }
+            nodes.push({
+                id,
+                label,
+                type,
+                parentId,
+                filePath: fullPath,
+                relativePath,
+                lineNumber: 1,
+                fileExtension,
+                size
+            });
             if (parentId) {
                 edges.push({
                     id: `e-${parentId}-${id}`,
