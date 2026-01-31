@@ -94,6 +94,8 @@ async function analyzeWorkspace(rootPath) {
     const stats = {
         totalFiles: 0,
         totalDirectories: 0,
+        totalFunctions: 0,
+        totalClasses: 0,
         filesByLanguage: {},
     };
     async function traverse(currentPath, depth, parentId) {
@@ -135,8 +137,9 @@ async function analyzeWorkspace(rootPath) {
                     stats.filesByLanguage[metadata.language] =
                         (stats.filesByLanguage[metadata.language] || 0) + 1;
                 }
-                // Analyze dependencies for supported files
+                // Analyze dependencies and symbols for supported files
                 if (['typescript', 'javascript'].includes(metadata.language || '')) {
+                    // Parse import dependencies
                     const dependencies = (0, dependencyParser_1.parseFileDependencies)(fullPath);
                     for (const depPath of dependencies) {
                         edges.push({
@@ -144,6 +147,39 @@ async function analyzeWorkspace(rootPath) {
                             source: id,
                             target: depPath,
                             type: 'imports',
+                        });
+                    }
+                    // Parse symbols (functions, classes, etc.)
+                    const symbols = (0, dependencyParser_1.parseFileSymbols)(fullPath);
+                    for (const symbol of symbols) {
+                        const symbolId = `${fullPath}#${symbol.name}`;
+                        const symbolType = symbol.kind === 'class' ? 'class' :
+                            symbol.kind === 'function' || symbol.kind === 'method' ? 'function' :
+                                'module';
+                        // Update stats
+                        if (symbolType === 'class') {
+                            stats.totalClasses++;
+                        }
+                        else if (symbolType === 'function') {
+                            stats.totalFunctions++;
+                        }
+                        nodes.push({
+                            id: symbolId,
+                            label: symbol.name,
+                            type: symbolType,
+                            parentId: id,
+                            language: metadata.language,
+                            depth: depth + 1,
+                            filePath: fullPath,
+                            lineNumber: symbol.lineNumber,
+                            endLineNumber: symbol.endLineNumber,
+                        });
+                        // Add edge from file to symbol
+                        edges.push({
+                            id: `e-${id}-${symbolId}`,
+                            source: id,
+                            target: symbolId,
+                            type: 'contains',
                         });
                     }
                 }
@@ -154,6 +190,7 @@ async function analyzeWorkspace(rootPath) {
                 type,
                 parentId,
                 depth,
+                filePath: fullPath,
                 ...metadata,
             });
             if (parentId) {
@@ -176,6 +213,7 @@ async function analyzeWorkspace(rootPath) {
         label: rootName,
         type: 'directory',
         depth: 0,
+        filePath: rootPath,
     });
     stats.totalDirectories++;
     await traverse(rootPath, 1, rootPath);

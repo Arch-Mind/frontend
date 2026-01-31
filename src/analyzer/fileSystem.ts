@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { parseFileDependencies } from './dependencyParser';
+import { parseFileDependencies, parseFileSymbols, SymbolInfo } from './dependencyParser';
 
 // File extension to language mapping for better visualization
 const FILE_EXTENSIONS: Record<string, string> = {
@@ -32,7 +32,7 @@ const IGNORED_DIRECTORIES = new Set([
     'vendor',
 ]);
 
-export type NodeType = 'file' | 'directory';
+export type NodeType = 'file' | 'directory' | 'function' | 'class' | 'module';
 
 export interface GraphNode {
     id: string;
@@ -45,6 +45,12 @@ export interface GraphNode {
     language?: string;
     /** Depth level in the directory tree (root = 0) */
     depth: number;
+    /** Full file path for navigation */
+    filePath?: string;
+    /** Line number where the symbol is defined */
+    lineNumber?: number;
+    /** End line number for the symbol */
+    endLineNumber?: number;
 }
 
 export interface GraphEdge {
@@ -62,6 +68,8 @@ export interface GraphData {
     stats: {
         totalFiles: number;
         totalDirectories: number;
+        totalFunctions: number;
+        totalClasses: number;
         filesByLanguage: Record<string, number>;
     };
 }
@@ -97,6 +105,8 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
     const stats = {
         totalFiles: 0,
         totalDirectories: 0,
+        totalFunctions: 0,
+        totalClasses: 0,
         filesByLanguage: {} as Record<string, number>,
     };
 
@@ -142,8 +152,9 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                         (stats.filesByLanguage[metadata.language] || 0) + 1;
                 }
 
-                // Analyze dependencies for supported files
+                // Analyze dependencies and symbols for supported files
                 if (['typescript', 'javascript'].includes(metadata.language || '')) {
+                    // Parse import dependencies
                     const dependencies = parseFileDependencies(fullPath);
                     for (const depPath of dependencies) {
                         edges.push({
@@ -151,6 +162,42 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                             source: id,
                             target: depPath,
                             type: 'imports',
+                        });
+                    }
+
+                    // Parse symbols (functions, classes, etc.)
+                    const symbols = parseFileSymbols(fullPath);
+                    for (const symbol of symbols) {
+                        const symbolId = `${fullPath}#${symbol.name}`;
+                        const symbolType: NodeType = symbol.kind === 'class' ? 'class' : 
+                                                     symbol.kind === 'function' || symbol.kind === 'method' ? 'function' : 
+                                                     'module';
+                        
+                        // Update stats
+                        if (symbolType === 'class') {
+                            stats.totalClasses++;
+                        } else if (symbolType === 'function') {
+                            stats.totalFunctions++;
+                        }
+
+                        nodes.push({
+                            id: symbolId,
+                            label: symbol.name,
+                            type: symbolType,
+                            parentId: id,
+                            language: metadata.language,
+                            depth: depth + 1,
+                            filePath: fullPath,
+                            lineNumber: symbol.lineNumber,
+                            endLineNumber: symbol.endLineNumber,
+                        });
+
+                        // Add edge from file to symbol
+                        edges.push({
+                            id: `e-${id}-${symbolId}`,
+                            source: id,
+                            target: symbolId,
+                            type: 'contains',
                         });
                     }
                 }
@@ -162,6 +209,7 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                 type,
                 parentId,
                 depth,
+                filePath: fullPath,
                 ...metadata,
             });
 
@@ -187,6 +235,7 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
         label: rootName,
         type: 'directory',
         depth: 0,
+        filePath: rootPath,
     });
     stats.totalDirectories++;
 

@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveImportPath = resolveImportPath;
 exports.parseFileDependencies = parseFileDependencies;
+exports.parseFileSymbols = parseFileSymbols;
 const ts = __importStar(require("typescript"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -136,5 +137,115 @@ function parseFileDependencies(filePath) {
     visit(sourceFile);
     // Remove duplicates
     return Array.from(new Set(dependencies));
+}
+/**
+ * Parses a TypeScript/JavaScript file to extract symbols (functions, classes, etc.)
+ *
+ * @param filePath - Absolute path to the file
+ * @returns List of symbols found in the file
+ */
+function parseFileSymbols(filePath) {
+    const symbols = [];
+    let content;
+    try {
+        content = fs.readFileSync(filePath, 'utf-8');
+    }
+    catch (err) {
+        console.warn(`Failed to read file for symbol parsing: ${filePath}`);
+        return [];
+    }
+    // Create a SourceFile
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true // setParentNodes
+    );
+    /**
+     * Gets the line number (1-based) for a position in the source file
+     */
+    function getLineNumber(pos) {
+        return sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
+    }
+    /**
+     * Checks if a node has export modifiers
+     */
+    function isExported(node) {
+        if (!ts.canHaveModifiers(node))
+            return false;
+        const modifiers = ts.getModifiers(node);
+        return modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+    }
+    function visit(node) {
+        // Function declarations: function foo() {}
+        if (ts.isFunctionDeclaration(node) && node.name) {
+            symbols.push({
+                name: node.name.getText(sourceFile),
+                kind: 'function',
+                lineNumber: getLineNumber(node.getStart(sourceFile)),
+                endLineNumber: getLineNumber(node.getEnd()),
+                isExported: isExported(node),
+            });
+        }
+        // Class declarations: class Foo {}
+        else if (ts.isClassDeclaration(node) && node.name) {
+            symbols.push({
+                name: node.name.getText(sourceFile),
+                kind: 'class',
+                lineNumber: getLineNumber(node.getStart(sourceFile)),
+                endLineNumber: getLineNumber(node.getEnd()),
+                isExported: isExported(node),
+            });
+            // Also extract methods from the class
+            node.members.forEach(member => {
+                if (ts.isMethodDeclaration(member) && member.name) {
+                    symbols.push({
+                        name: `${node.name.getText(sourceFile)}.${member.name.getText(sourceFile)}`,
+                        kind: 'method',
+                        lineNumber: getLineNumber(member.getStart(sourceFile)),
+                        endLineNumber: getLineNumber(member.getEnd()),
+                        isExported: false,
+                    });
+                }
+            });
+        }
+        // Interface declarations: interface Foo {}
+        else if (ts.isInterfaceDeclaration(node) && node.name) {
+            symbols.push({
+                name: node.name.getText(sourceFile),
+                kind: 'interface',
+                lineNumber: getLineNumber(node.getStart(sourceFile)),
+                endLineNumber: getLineNumber(node.getEnd()),
+                isExported: isExported(node),
+            });
+        }
+        // Type alias declarations: type Foo = ...
+        else if (ts.isTypeAliasDeclaration(node) && node.name) {
+            symbols.push({
+                name: node.name.getText(sourceFile),
+                kind: 'type',
+                lineNumber: getLineNumber(node.getStart(sourceFile)),
+                endLineNumber: getLineNumber(node.getEnd()),
+                isExported: isExported(node),
+            });
+        }
+        // Variable declarations with arrow functions: const foo = () => {}
+        else if (ts.isVariableStatement(node)) {
+            const declarations = node.declarationList.declarations;
+            for (const decl of declarations) {
+                if (decl.name && ts.isIdentifier(decl.name) && decl.initializer) {
+                    // Check if initializer is an arrow function or function expression
+                    if (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer)) {
+                        symbols.push({
+                            name: decl.name.getText(sourceFile),
+                            kind: 'function',
+                            lineNumber: getLineNumber(node.getStart(sourceFile)),
+                            endLineNumber: getLineNumber(node.getEnd()),
+                            isExported: isExported(node),
+                        });
+                    }
+                }
+            }
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    return symbols;
 }
 //# sourceMappingURL=dependencyParser.js.map
