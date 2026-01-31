@@ -40,7 +40,8 @@ class ArchitecturePanel {
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out/webview')]
+                localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out/webview')],
+                retainContextWhenHidden: true
             }
         );
 
@@ -65,11 +66,147 @@ class ArchitecturePanel {
                     case 'requestArchitecture':
                         await this._sendArchitecture();
                         return;
+                    case 'openFile':
+                        await this._openFile(message.filePath, message.lineNumber);
+                        return;
+                    case 'goToDefinition':
+                        await this._goToDefinition(message.filePath, message.lineNumber);
+                        return;
+                    case 'findReferences':
+                        await this._findReferences(message.filePath, message.lineNumber);
+                        return;
+                    case 'revealInExplorer':
+                        await this._revealInExplorer(message.filePath);
+                        return;
+                    case 'copyPath':
+                        await this._copyPath(message.filePath);
+                        return;
                 }
             },
             null,
             this._disposables
         );
+    }
+
+    /**
+     * Opens a file in the editor and optionally navigates to a specific line
+     */
+    private async _openFile(filePath: string, lineNumber?: number) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            
+            // Check if it's a binary/image file that can't be opened as text
+            const binaryExtensions = [
+                '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', '.svg',
+                '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+                '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                '.zip', '.rar', '.7z', '.tar', '.gz',
+                '.exe', '.dll', '.so', '.dylib',
+                '.ttf', '.otf', '.woff', '.woff2',
+                '.bin', '.dat'
+            ];
+            
+            const ext = path.extname(filePath).toLowerCase();
+            
+            if (binaryExtensions.includes(ext)) {
+                // Open binary files with the default system application or VS Code's binary viewer
+                await vscode.commands.executeCommand('vscode.open', uri);
+                return;
+            }
+            
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+            });
+
+            if (lineNumber && lineNumber > 0) {
+                const position = new vscode.Position(lineNumber - 1, 0);
+                editor.selection = new vscode.Selection(position, position);
+                editor.revealRange(
+                    new vscode.Range(position, position),
+                    vscode.TextEditorRevealType.InCenter
+                );
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+            console.error(error);
+        }
+    }
+
+    /**
+     * Goes to the definition at the specified location
+     */
+    private async _goToDefinition(filePath: string, lineNumber?: number) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+            });
+
+            const position = new vscode.Position((lineNumber || 1) - 1, 0);
+            
+            // Execute go to definition command
+            await vscode.commands.executeCommand(
+                'editor.action.revealDefinition',
+                uri,
+                position
+            );
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to go to definition: ${filePath}`);
+            console.error(error);
+        }
+    }
+
+    /**
+     * Finds all references at the specified location
+     */
+    private async _findReferences(filePath: string, lineNumber?: number) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+            });
+
+            const position = new vscode.Position((lineNumber || 1) - 1, 0);
+            editor.selection = new vscode.Selection(position, position);
+            
+            // Execute find references command
+            await vscode.commands.executeCommand('references-view.findReferences', uri, position);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to find references: ${filePath}`);
+            console.error(error);
+        }
+    }
+
+    /**
+     * Reveals the file in the Explorer sidebar
+     */
+    private async _revealInExplorer(filePath: string) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            await vscode.commands.executeCommand('revealInExplorer', uri);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to reveal in explorer: ${filePath}`);
+            console.error(error);
+        }
+    }
+
+    /**
+     * Copies the file path to clipboard
+     */
+    private async _copyPath(filePath: string) {
+        try {
+            await vscode.env.clipboard.writeText(filePath);
+            vscode.window.showInformationMessage(`Copied path: ${filePath}`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to copy path: ${filePath}`);
+            console.error(error);
+        }
     }
 
     private async _sendArchitecture() {
