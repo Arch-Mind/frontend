@@ -17,6 +17,16 @@ import ReactFlow, {
 
 import 'reactflow/dist/style.css';
 
+// Layout algorithm imports
+import {
+    LayoutType,
+    LAYOUT_OPTIONS,
+    dagreLayout,
+    elkLayout,
+    LayoutNode,
+    LayoutEdge,
+} from './layoutAlgorithms';
+
 // Debounce hook for performant search on large graphs
 function useDebounce<T>(value: T, delay: number): T {
     const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -117,13 +127,13 @@ function matchesFilters(node: RawNode, filters: SearchFilters): boolean {
         // Normalize paths: convert backslashes to forward slashes for consistent matching
         const normalizedNodePath = node.id.replace(/\\/g, '/').toLowerCase();
         const normalizedPattern = pathPattern.replace(/\\/g, '/').toLowerCase();
-        
+
         // Convert glob pattern to regex
         const regexPattern = normalizedPattern
             .replace(/[.+^${}()|[\]]/g, '\\$&')  // Escape special regex chars except * and ?
             .replace(/\*/g, '.*')
             .replace(/\?/g, '.');
-        
+
         // Match anywhere in the path (not just from start)
         const regex = new RegExp(regexPattern, 'i');
         if (!regex.test(normalizedNodePath)) {
@@ -144,17 +154,18 @@ function matchesFilters(node: RawNode, filters: SearchFilters): boolean {
     return true;
 }
 
-// Hierarchical layout algorithm
-function calculateHierarchicalLayout(
-    nodes: RawNode[], 
-    edges: RawEdge[],
-    filters: SearchFilters,
-    selectedNodeId: string | null
-): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
-    // Determine which nodes match the filters
+// Node dimensions for layout
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 40;
+
+// Calculate matching node IDs based on filters
+function calculateMatchingNodeIds(
+    nodes: RawNode[],
+    filters: SearchFilters
+): Set<string> {
     const matchingNodeIds = new Set<string>();
     const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
-    
+
     if (hasActiveFilter) {
         nodes.forEach(node => {
             if (matchesFilters(node, filters)) {
@@ -162,6 +173,54 @@ function calculateHierarchicalLayout(
             }
         });
     }
+
+    return matchingNodeIds;
+}
+
+// Create styled ReactFlow node from RawNode and position
+function createStyledNode(
+    node: RawNode,
+    position: { x: number; y: number },
+    isMatching: boolean,
+    isSelected: boolean
+): Node {
+    const color = getNodeColor(node);
+
+    return {
+        id: node.id,
+        data: {
+            label: node.label,
+            type: node.type,
+            language: node.language,
+            extension: node.extension,
+            filePath: node.filePath || node.id,
+            lineNumber: node.lineNumber,
+            endLineNumber: node.endLineNumber,
+        },
+        position,
+        style: {
+            background: node.type === 'directory'
+                ? `${color}20`
+                : 'var(--vscode-editor-background)',
+            borderColor: isSelected ? 'var(--vscode-focusBorder)' : color,
+            borderWidth: isSelected ? 3 : (node.type === 'directory' ? 2 : 1),
+            borderRadius: node.type === 'directory' ? 8 : 4,
+            opacity: isMatching ? 1 : 0.3,
+            boxShadow: isSelected ? '0 0 10px var(--vscode-focusBorder)' : undefined,
+        },
+        className: isMatching ? 'matching-node' : 'dimmed-node',
+    };
+}
+
+// Hierarchical layout algorithm (original built-in)
+function calculateHierarchicalLayout(
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null
+): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
 
     // Group nodes by depth
     const nodesByDepth: Map<number, RawNode[]> = new Map();
@@ -180,51 +239,126 @@ function calculateHierarchicalLayout(
         const startX = -totalWidth / 2;
 
         depthNodes.forEach((node, index) => {
-            const color = getNodeColor(node);
             const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
             const isSelected = selectedNodeId === node.id;
-            
-            layoutedNodes.push({
-                id: node.id,
-                data: {
-                    label: node.label,
-                    type: node.type,
-                    language: node.language,
-                    extension: node.extension,
-                    filePath: node.filePath || node.id,
-                    lineNumber: node.lineNumber,
-                    endLineNumber: node.endLineNumber,
-                },
-                position: {
-                    x: startX + index * horizontalSpacing,
-                    y: depth * verticalSpacing,
-                },
-                style: {
-                    background: node.type === 'directory' 
-                        ? `${color}20` 
-                        : 'var(--vscode-editor-background)',
-                    borderColor: isSelected ? 'var(--vscode-focusBorder)' : color,
-                    borderWidth: isSelected ? 3 : (node.type === 'directory' ? 2 : 1),
-                    borderRadius: node.type === 'directory' ? 8 : 4,
-                    opacity: isMatching ? 1 : 0.3,
-                    boxShadow: isSelected ? '0 0 10px var(--vscode-focusBorder)' : undefined,
-                },
-                className: isMatching ? 'matching-node' : 'dimmed-node',
-            });
+
+            layoutedNodes.push(createStyledNode(
+                node,
+                { x: startX + index * horizontalSpacing, y: depth * verticalSpacing },
+                isMatching,
+                isSelected
+            ));
         });
     });
 
     return { layoutedNodes, matchingNodeIds };
 }
 
+// Dagre layout algorithm
+function calculateDagreLayout(
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null,
+    direction: 'TB' | 'LR'
+): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+
+    const layoutNodes: LayoutNode[] = nodes.map(n => ({
+        id: n.id,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        depth: n.depth,
+    }));
+
+    const layoutEdges: LayoutEdge[] = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+    }));
+
+    const result = dagreLayout(layoutNodes, layoutEdges, direction);
+
+    const layoutedNodes: Node[] = nodes.map(node => {
+        const position = result.nodes.get(node.id) || { x: 0, y: 0 };
+        const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
+        const isSelected = selectedNodeId === node.id;
+
+        return createStyledNode(node, position, isMatching, isSelected);
+    });
+
+    return { layoutedNodes, matchingNodeIds };
+}
+
+// ELK layout algorithm (async)
+async function calculateElkLayout(
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null,
+    algorithm: 'layered' | 'force'
+): Promise<{ layoutedNodes: Node[]; matchingNodeIds: Set<string> }> {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+
+    const layoutNodes: LayoutNode[] = nodes.map(n => ({
+        id: n.id,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        depth: n.depth,
+    }));
+
+    const layoutEdges: LayoutEdge[] = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+    }));
+
+    const result = await elkLayout(layoutNodes, layoutEdges, algorithm);
+
+    const layoutedNodes: Node[] = nodes.map(node => {
+        const position = result.nodes.get(node.id) || { x: 0, y: 0 };
+        const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
+        const isSelected = selectedNodeId === node.id;
+
+        return createStyledNode(node, position, isMatching, isSelected);
+    });
+
+    return { layoutedNodes, matchingNodeIds };
+}
+
+// Main layout calculation function
+async function calculateLayout(
+    layoutType: LayoutType,
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null
+): Promise<{ layoutedNodes: Node[]; matchingNodeIds: Set<string> }> {
+    switch (layoutType) {
+        case 'dagre-tb':
+            return calculateDagreLayout(nodes, edges, filters, selectedNodeId, 'TB');
+        case 'dagre-lr':
+            return calculateDagreLayout(nodes, edges, filters, selectedNodeId, 'LR');
+        case 'elk-layered':
+            return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'layered');
+        case 'elk-force':
+            return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'force');
+        case 'hierarchical':
+        default:
+            return calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId);
+    }
+}
+
 // Format edges with proper styling
 function formatEdges(rawEdges: RawEdge[], selectedNodeId: string | null, matchingNodeIds: Set<string>): Edge[] {
     return rawEdges.map(edge => {
-        const isConnectedToSelected = selectedNodeId !== null && 
+        const isConnectedToSelected = selectedNodeId !== null &&
             (edge.source === selectedNodeId || edge.target === selectedNodeId);
-        const isMatching = matchingNodeIds.size === 0 || 
+        const isMatching = matchingNodeIds.size === 0 ||
             (matchingNodeIds.has(edge.source) && matchingNodeIds.has(edge.target));
-        
+
         return {
             id: edge.id,
             source: edge.source,
@@ -232,8 +366,8 @@ function formatEdges(rawEdges: RawEdge[], selectedNodeId: string | null, matchin
             type: 'smoothstep',
             animated: isConnectedToSelected ? true : false,
             style: {
-                stroke: isConnectedToSelected 
-                    ? 'var(--vscode-focusBorder)' 
+                stroke: isConnectedToSelected
+                    ? 'var(--vscode-focusBorder)'
                     : 'var(--vscode-editor-foreground)',
                 strokeWidth: isConnectedToSelected ? 2 : 1,
                 opacity: isMatching ? (isConnectedToSelected ? 0.9 : 0.5) : 0.15,
@@ -322,7 +456,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
                 <span className="search-title">🔍 Search & Filter</span>
                 <button className="search-close" onClick={onClose} title="Close (Esc)">×</button>
             </div>
-            
+
             <div className="search-field">
                 <label>Search by name:</label>
                 <input
@@ -373,7 +507,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
             </div>
 
             <div className="search-actions">
-                <button 
+                <button
                     className="search-btn"
                     onClick={onFocusSelection}
                     disabled={matchCount === 0}
@@ -381,7 +515,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
                 >
                     📍 Focus on Results
                 </button>
-                <button 
+                <button
                     className="search-btn secondary"
                     onClick={() => onFiltersChange({ searchTerm: '', nodeType: 'all', pathPattern: '' })}
                     disabled={!hasActiveFilter}
@@ -408,18 +542,18 @@ const NodeTooltip: React.FC<TooltipProps> = ({ node, position }) => {
 
     const data = node.data;
     return (
-        <div 
+        <div
             className="node-tooltip"
-            style={{ 
-                left: position.x + 10, 
+            style={{
+                left: position.x + 10,
                 top: position.y + 10,
             }}
         >
             <div className="tooltip-header">
                 <span className="tooltip-icon">
-                    {data.type === 'directory' ? '📁' : 
-                     data.type === 'function' ? '⚡' :
-                     data.type === 'class' ? '🏷️' : '📄'}
+                    {data.type === 'directory' ? '📁' :
+                        data.type === 'function' ? '⚡' :
+                            data.type === 'class' ? '🏷️' : '📄'}
                 </span>
                 <span className="tooltip-label">{data.label}</span>
             </div>
@@ -480,7 +614,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ node, position, onAction, onC
     const isFile = node.data.type === 'file' || node.data.type === 'function' || node.data.type === 'class';
 
     return (
-        <div 
+        <div
             ref={menuRef}
             className="context-menu"
             style={{ left: position.x, top: position.y }}
@@ -511,6 +645,60 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ node, position, onAction, onC
     );
 };
 
+// Layout Panel Component
+interface LayoutPanelProps {
+    currentLayout: LayoutType;
+    onLayoutChange: (layout: LayoutType) => void;
+    isLayouting: boolean;
+    isVisible: boolean;
+    onClose: () => void;
+}
+
+const LayoutPanel: React.FC<LayoutPanelProps> = ({
+    currentLayout,
+    onLayoutChange,
+    isLayouting,
+    isVisible,
+    onClose,
+}) => {
+    if (!isVisible) return null;
+
+    return (
+        <div className="layout-panel">
+            <div className="layout-header">
+                <span className="layout-title">📐 Layout Algorithm</span>
+                <button className="layout-close" onClick={onClose} title="Close">×</button>
+            </div>
+
+            <div className="layout-options">
+                {LAYOUT_OPTIONS.map((option) => (
+                    <button
+                        key={option.value}
+                        className={`layout-option ${currentLayout === option.value ? 'active' : ''}`}
+                        onClick={() => onLayoutChange(option.value)}
+                        disabled={isLayouting}
+                        title={option.description}
+                    >
+                        <span className="layout-option-label">{option.label}</span>
+                        {currentLayout === option.value && <span className="layout-check">✓</span>}
+                    </button>
+                ))}
+            </div>
+
+            {isLayouting && (
+                <div className="layout-loading">
+                    <div className="loading-spinner-small" />
+                    <span>Calculating layout...</span>
+                </div>
+            )}
+
+            <div className="layout-hint">
+                <kbd>Ctrl</kbd>+<kbd>L</kbd> to toggle layout panel
+            </div>
+        </div>
+    );
+};
+
 // Inner component that uses ReactFlow hooks
 const ArchitectureGraphInner: React.FC = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -518,7 +706,7 @@ const ArchitectureGraphInner: React.FC = () => {
     const [stats, setStats] = useState<GraphStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
-    
+
     // Search and filter state
     const [searchVisible, setSearchVisible] = useState(false);
     const [filters, setFilters] = useState<SearchFilters>({
@@ -526,25 +714,30 @@ const ArchitectureGraphInner: React.FC = () => {
         nodeType: 'all',
         pathPattern: '',
     });
-    
+
     // Debounce filters for performance on large graphs (200ms delay)
     const debouncedFilters = useDebounce(filters, 200);
-    
+
     // Tooltip state
     const [hoveredNode, setHoveredNode] = useState<Node | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-    
+
     // Context menu state
     const [contextMenuNode, setContextMenuNode] = useState<Node | null>(null);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
-    
+
     // Store raw data for re-filtering
     const [rawData, setRawData] = useState<ArchitectureData | null>(null);
     const [matchingNodeIds, setMatchingNodeIds] = useState<Set<string>>(new Set());
 
+    // Layout state
+    const [layoutType, setLayoutType] = useState<LayoutType>('hierarchical');
+    const [layoutPanelVisible, setLayoutPanelVisible] = useState(false);
+    const [isLayouting, setIsLayouting] = useState(false);
+
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
-    
+
     // VS Code API reference
     const vscodeRef = useRef<ReturnType<typeof acquireVsCodeApi> | null>(null);
 
@@ -557,7 +750,7 @@ const ArchitectureGraphInner: React.FC = () => {
     const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
         setSelectedNode(node.id);
         setContextMenuNode(null);
-        
+
         // Open file in VS Code
         if (vscodeRef.current && node.data.type !== 'directory') {
             vscodeRef.current.postMessage({
@@ -653,10 +846,16 @@ const ArchitectureGraphInner: React.FC = () => {
                 e.preventDefault();
                 setSearchVisible(prev => !prev);
             }
-            // Escape to close search or context menu
+            // Ctrl+L / Cmd+L to toggle layout panel
+            if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+                e.preventDefault();
+                setLayoutPanelVisible(prev => !prev);
+            }
+            // Escape to close search, context menu, or layout panel
             if (e.key === 'Escape') {
                 setSearchVisible(false);
                 setContextMenuNode(null);
+                setLayoutPanelVisible(false);
             }
         };
 
@@ -664,36 +863,19 @@ const ArchitectureGraphInner: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Update graph when debounced filters change (performant for large graphs)
+    // Update graph when debounced filters, layout type, or selection change
     useEffect(() => {
         if (!rawData) return;
 
         const { nodes: rawNodes, edges: rawEdges } = rawData;
-        const { layoutedNodes, matchingNodeIds: newMatchingIds } = calculateHierarchicalLayout(
-            rawNodes, 
-            rawEdges, 
-            debouncedFilters,
-            selectedNode
-        );
-        const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
 
-        setNodes(layoutedNodes);
-        setEdges(formattedEdges);
-        setMatchingNodeIds(newMatchingIds);
-    }, [debouncedFilters, selectedNode, rawData, setNodes, setEdges]);
-
-    useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            const message = event.data;
-            if (message.command === 'architectureData') {
-                const data: ArchitectureData = message.data;
-                setRawData(data);
-                
-                const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
-
-                // Apply hierarchical layout (use current filters on initial load)
-                const { layoutedNodes, matchingNodeIds: newMatchingIds } = calculateHierarchicalLayout(
-                    rawNodes, 
+        // Use async layout calculation
+        const runLayout = async () => {
+            setIsLayouting(true);
+            try {
+                const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(
+                    layoutType,
+                    rawNodes,
                     rawEdges,
                     debouncedFilters,
                     selectedNode
@@ -702,9 +884,50 @@ const ArchitectureGraphInner: React.FC = () => {
 
                 setNodes(layoutedNodes);
                 setEdges(formattedEdges);
-                setStats(graphStats);
                 setMatchingNodeIds(newMatchingIds);
-                setIsLoading(false);
+            } catch (error) {
+                console.error('Layout calculation failed:', error);
+            } finally {
+                setIsLayouting(false);
+            }
+        };
+
+        runLayout();
+    }, [debouncedFilters, selectedNode, rawData, layoutType, setNodes, setEdges]);
+
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            const message = event.data;
+            if (message.command === 'architectureData') {
+                const data: ArchitectureData = message.data;
+                setRawData(data);
+
+                const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
+
+                // Apply initial layout asynchronously
+                const initLayout = async () => {
+                    try {
+                        const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(
+                            layoutType,
+                            rawNodes,
+                            rawEdges,
+                            debouncedFilters,
+                            selectedNode
+                        );
+                        const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
+
+                        setNodes(layoutedNodes);
+                        setEdges(formattedEdges);
+                        setStats(graphStats);
+                        setMatchingNodeIds(newMatchingIds);
+                        setIsLoading(false);
+                    } catch (error) {
+                        console.error('Initial layout failed:', error);
+                        setIsLoading(false);
+                    }
+                };
+
+                initLayout();
             }
         };
 
@@ -741,7 +964,7 @@ const ArchitectureGraphInner: React.FC = () => {
     return (
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
             <StatsDisplay stats={stats} />
-            
+
             {/* Search Panel */}
             <SearchPanel
                 filters={filters}
@@ -755,12 +978,32 @@ const ArchitectureGraphInner: React.FC = () => {
 
             {/* Search Toggle Button */}
             {!searchVisible && (
-                <button 
+                <button
                     className="search-toggle-btn"
                     onClick={() => setSearchVisible(true)}
                     title="Search & Filter (Ctrl+F)"
                 >
                     🔍
+                </button>
+            )}
+
+            {/* Layout Panel */}
+            <LayoutPanel
+                currentLayout={layoutType}
+                onLayoutChange={setLayoutType}
+                isLayouting={isLayouting}
+                isVisible={layoutPanelVisible}
+                onClose={() => setLayoutPanelVisible(false)}
+            />
+
+            {/* Layout Toggle Button */}
+            {!layoutPanelVisible && (
+                <button
+                    className="layout-toggle-btn"
+                    onClick={() => setLayoutPanelVisible(true)}
+                    title="Layout Algorithm (Ctrl+L)"
+                >
+                    📐
                 </button>
             )}
 
@@ -783,17 +1026,17 @@ const ArchitectureGraphInner: React.FC = () => {
                 }}
             >
                 <Controls showInteractive={false} />
-                <MiniMap 
+                <MiniMap
                     nodeColor={minimapNodeColor}
                     maskColor="rgba(0, 0, 0, 0.8)"
                     style={{
                         backgroundColor: 'var(--vscode-editor-background)',
                     }}
                 />
-                <Background 
+                <Background
                     variant={BackgroundVariant.Dots}
-                    gap={16} 
-                    size={1} 
+                    gap={16}
+                    size={1}
                     color="var(--vscode-editor-foreground)"
                     style={{ opacity: 0.1 }}
                 />

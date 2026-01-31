@@ -500,3 +500,162 @@ body {
 .react-flow__node.selected {
     box-shadow: 0 0 0 3px var(--vscode-focusBorder) !important;
 }
+
+/* Layout Panel Styles */
+.layout-panel {
+    position: absolute;
+    top: 10px;
+    right: 60px;
+    z-index: 20;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 12px;
+    min-width: 240px;
+    max-width: 280px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.layout-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.layout-title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.layout-close {
+    background: none;
+    border: none;
+    color: var(--vscode-editor-foreground);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0.7;
+}
+
+.layout-close:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    opacity: 1;
+}
+
+.layout-options {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.layout-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background-color: transparent;
+    color: var(--vscode-editor-foreground);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.layout-option:hover:not(:disabled) {
+    background-color: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-widget-border);
+}
+
+.layout-option.active {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.layout-option:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.layout-option-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.layout-check {
+    font-size: 14px;
+    color: var(--vscode-charts-green);
+}
+
+.layout-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    margin-top: 8px;
+    border-top: 1px solid var(--vscode-widget-border);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.loading-spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--vscode-widget-border);
+    border-top-color: var(--vscode-focusBorder);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.layout-hint {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--vscode-widget-border);
+    font-size: 10px;
+    opacity: 0.6;
+    text-align: center;
+}
+
+.layout-hint kbd {
+    background-color: var(--vscode-keybindingLabel-background);
+    border: 1px solid var(--vscode-keybindingLabel-border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 10px;
+    font-family: inherit;
+}
+
+/* Layout Toggle Button */
+.layout-toggle-btn {
+    position: absolute;
+    top: 10px;
+    right: 55px;
+    z-index: 15;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 6px;
+    background-color: var(--vscode-sideBar-background);
+    color: var(--vscode-editor-foreground);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.15s;
+}
+
+.layout-toggle-btn:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    transform: scale(1.05);
+}

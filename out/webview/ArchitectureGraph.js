@@ -36,6 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const react_1 = __importStar(require("react"));
 const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
+// Layout algorithm imports
+const layoutAlgorithms_1 = require("./layoutAlgorithms");
 // Debounce hook for performant search on large graphs
 function useDebounce(value, delay) {
     const [debouncedValue, setDebouncedValue] = (0, react_1.useState)(value);
@@ -113,9 +115,11 @@ function matchesFilters(node, filters) {
     }
     return true;
 }
-// Hierarchical layout algorithm
-function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
-    // Determine which nodes match the filters
+// Node dimensions for layout
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 40;
+// Calculate matching node IDs based on filters
+function calculateMatchingNodeIds(nodes, filters) {
     const matchingNodeIds = new Set();
     const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
     if (hasActiveFilter) {
@@ -125,6 +129,40 @@ function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
             }
         });
     }
+    return matchingNodeIds;
+}
+// Create styled ReactFlow node from RawNode and position
+function createStyledNode(node, position, isMatching, isSelected) {
+    const color = getNodeColor(node);
+    return {
+        id: node.id,
+        data: {
+            label: node.label,
+            type: node.type,
+            language: node.language,
+            extension: node.extension,
+            filePath: node.filePath || node.id,
+            lineNumber: node.lineNumber,
+            endLineNumber: node.endLineNumber,
+        },
+        position,
+        style: {
+            background: node.type === 'directory'
+                ? `${color}20`
+                : 'var(--vscode-editor-background)',
+            borderColor: isSelected ? 'var(--vscode-focusBorder)' : color,
+            borderWidth: isSelected ? 3 : (node.type === 'directory' ? 2 : 1),
+            borderRadius: node.type === 'directory' ? 8 : 4,
+            opacity: isMatching ? 1 : 0.3,
+            boxShadow: isSelected ? '0 0 10px var(--vscode-focusBorder)' : undefined,
+        },
+        className: isMatching ? 'matching-node' : 'dimmed-node',
+    };
+}
+// Hierarchical layout algorithm (original built-in)
+function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
     // Group nodes by depth
     const nodesByDepth = new Map();
     nodes.forEach(node => {
@@ -139,39 +177,76 @@ function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
         const totalWidth = depthNodes.length * horizontalSpacing;
         const startX = -totalWidth / 2;
         depthNodes.forEach((node, index) => {
-            const color = getNodeColor(node);
             const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
             const isSelected = selectedNodeId === node.id;
-            layoutedNodes.push({
-                id: node.id,
-                data: {
-                    label: node.label,
-                    type: node.type,
-                    language: node.language,
-                    extension: node.extension,
-                    filePath: node.filePath || node.id,
-                    lineNumber: node.lineNumber,
-                    endLineNumber: node.endLineNumber,
-                },
-                position: {
-                    x: startX + index * horizontalSpacing,
-                    y: depth * verticalSpacing,
-                },
-                style: {
-                    background: node.type === 'directory'
-                        ? `${color}20`
-                        : 'var(--vscode-editor-background)',
-                    borderColor: isSelected ? 'var(--vscode-focusBorder)' : color,
-                    borderWidth: isSelected ? 3 : (node.type === 'directory' ? 2 : 1),
-                    borderRadius: node.type === 'directory' ? 8 : 4,
-                    opacity: isMatching ? 1 : 0.3,
-                    boxShadow: isSelected ? '0 0 10px var(--vscode-focusBorder)' : undefined,
-                },
-                className: isMatching ? 'matching-node' : 'dimmed-node',
-            });
+            layoutedNodes.push(createStyledNode(node, { x: startX + index * horizontalSpacing, y: depth * verticalSpacing }, isMatching, isSelected));
         });
     });
     return { layoutedNodes, matchingNodeIds };
+}
+// Dagre layout algorithm
+function calculateDagreLayout(nodes, edges, filters, selectedNodeId, direction) {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const layoutNodes = nodes.map(n => ({
+        id: n.id,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        depth: n.depth,
+    }));
+    const layoutEdges = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+    }));
+    const result = (0, layoutAlgorithms_1.dagreLayout)(layoutNodes, layoutEdges, direction);
+    const layoutedNodes = nodes.map(node => {
+        const position = result.nodes.get(node.id) || { x: 0, y: 0 };
+        const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
+        const isSelected = selectedNodeId === node.id;
+        return createStyledNode(node, position, isMatching, isSelected);
+    });
+    return { layoutedNodes, matchingNodeIds };
+}
+// ELK layout algorithm (async)
+async function calculateElkLayout(nodes, edges, filters, selectedNodeId, algorithm) {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const layoutNodes = nodes.map(n => ({
+        id: n.id,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        depth: n.depth,
+    }));
+    const layoutEdges = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+    }));
+    const result = await (0, layoutAlgorithms_1.elkLayout)(layoutNodes, layoutEdges, algorithm);
+    const layoutedNodes = nodes.map(node => {
+        const position = result.nodes.get(node.id) || { x: 0, y: 0 };
+        const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
+        const isSelected = selectedNodeId === node.id;
+        return createStyledNode(node, position, isMatching, isSelected);
+    });
+    return { layoutedNodes, matchingNodeIds };
+}
+// Main layout calculation function
+async function calculateLayout(layoutType, nodes, edges, filters, selectedNodeId) {
+    switch (layoutType) {
+        case 'dagre-tb':
+            return calculateDagreLayout(nodes, edges, filters, selectedNodeId, 'TB');
+        case 'dagre-lr':
+            return calculateDagreLayout(nodes, edges, filters, selectedNodeId, 'LR');
+        case 'elk-layered':
+            return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'layered');
+        case 'elk-force':
+            return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'force');
+        case 'hierarchical':
+        default:
+            return calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId);
+    }
 }
 // Format edges with proper styling
 function formatEdges(rawEdges, selectedNodeId, matchingNodeIds) {
@@ -318,6 +393,25 @@ const ContextMenu = ({ node, position, onAction, onClose }) => {
         react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('revealInExplorer') }, "\uD83D\uDCC2 Reveal in Explorer"),
         react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('copyPath') }, "\uD83D\uDCCB Copy Path")));
 };
+const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, onClose, }) => {
+    if (!isVisible)
+        return null;
+    return (react_1.default.createElement("div", { className: "layout-panel" },
+        react_1.default.createElement("div", { className: "layout-header" },
+            react_1.default.createElement("span", { className: "layout-title" }, "\uD83D\uDCD0 Layout Algorithm"),
+            react_1.default.createElement("button", { className: "layout-close", onClick: onClose, title: "Close" }, "\u00D7")),
+        react_1.default.createElement("div", { className: "layout-options" }, layoutAlgorithms_1.LAYOUT_OPTIONS.map((option) => (react_1.default.createElement("button", { key: option.value, className: `layout-option ${currentLayout === option.value ? 'active' : ''}`, onClick: () => onLayoutChange(option.value), disabled: isLayouting, title: option.description },
+            react_1.default.createElement("span", { className: "layout-option-label" }, option.label),
+            currentLayout === option.value && react_1.default.createElement("span", { className: "layout-check" }, "\u2713"))))),
+        isLayouting && (react_1.default.createElement("div", { className: "layout-loading" },
+            react_1.default.createElement("div", { className: "loading-spinner-small" }),
+            react_1.default.createElement("span", null, "Calculating layout..."))),
+        react_1.default.createElement("div", { className: "layout-hint" },
+            react_1.default.createElement("kbd", null, "Ctrl"),
+            "+",
+            react_1.default.createElement("kbd", null, "L"),
+            " to toggle layout panel")));
+};
 // Inner component that uses ReactFlow hooks
 const ArchitectureGraphInner = () => {
     const [nodes, setNodes, onNodesChange] = (0, reactflow_1.useNodesState)([]);
@@ -343,6 +437,10 @@ const ArchitectureGraphInner = () => {
     // Store raw data for re-filtering
     const [rawData, setRawData] = (0, react_1.useState)(null);
     const [matchingNodeIds, setMatchingNodeIds] = (0, react_1.useState)(new Set());
+    // Layout state
+    const [layoutType, setLayoutType] = (0, react_1.useState)('hierarchical');
+    const [layoutPanelVisible, setLayoutPanelVisible] = (0, react_1.useState)(false);
+    const [isLayouting, setIsLayouting] = (0, react_1.useState)(false);
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     // VS Code API reference
@@ -439,26 +537,45 @@ const ArchitectureGraphInner = () => {
                 e.preventDefault();
                 setSearchVisible(prev => !prev);
             }
-            // Escape to close search or context menu
+            // Ctrl+L / Cmd+L to toggle layout panel
+            if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+                e.preventDefault();
+                setLayoutPanelVisible(prev => !prev);
+            }
+            // Escape to close search, context menu, or layout panel
             if (e.key === 'Escape') {
                 setSearchVisible(false);
                 setContextMenuNode(null);
+                setLayoutPanelVisible(false);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
-    // Update graph when debounced filters change (performant for large graphs)
+    // Update graph when debounced filters, layout type, or selection change
     (0, react_1.useEffect)(() => {
         if (!rawData)
             return;
         const { nodes: rawNodes, edges: rawEdges } = rawData;
-        const { layoutedNodes, matchingNodeIds: newMatchingIds } = calculateHierarchicalLayout(rawNodes, rawEdges, debouncedFilters, selectedNode);
-        const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
-        setNodes(layoutedNodes);
-        setEdges(formattedEdges);
-        setMatchingNodeIds(newMatchingIds);
-    }, [debouncedFilters, selectedNode, rawData, setNodes, setEdges]);
+        // Use async layout calculation
+        const runLayout = async () => {
+            setIsLayouting(true);
+            try {
+                const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(layoutType, rawNodes, rawEdges, debouncedFilters, selectedNode);
+                const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
+                setNodes(layoutedNodes);
+                setEdges(formattedEdges);
+                setMatchingNodeIds(newMatchingIds);
+            }
+            catch (error) {
+                console.error('Layout calculation failed:', error);
+            }
+            finally {
+                setIsLayouting(false);
+            }
+        };
+        runLayout();
+    }, [debouncedFilters, selectedNode, rawData, layoutType, setNodes, setEdges]);
     (0, react_1.useEffect)(() => {
         const handleMessage = (event) => {
             const message = event.data;
@@ -466,14 +583,23 @@ const ArchitectureGraphInner = () => {
                 const data = message.data;
                 setRawData(data);
                 const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
-                // Apply hierarchical layout (use current filters on initial load)
-                const { layoutedNodes, matchingNodeIds: newMatchingIds } = calculateHierarchicalLayout(rawNodes, rawEdges, debouncedFilters, selectedNode);
-                const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
-                setNodes(layoutedNodes);
-                setEdges(formattedEdges);
-                setStats(graphStats);
-                setMatchingNodeIds(newMatchingIds);
-                setIsLoading(false);
+                // Apply initial layout asynchronously
+                const initLayout = async () => {
+                    try {
+                        const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(layoutType, rawNodes, rawEdges, debouncedFilters, selectedNode);
+                        const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
+                        setNodes(layoutedNodes);
+                        setEdges(formattedEdges);
+                        setStats(graphStats);
+                        setMatchingNodeIds(newMatchingIds);
+                        setIsLoading(false);
+                    }
+                    catch (error) {
+                        console.error('Initial layout failed:', error);
+                        setIsLoading(false);
+                    }
+                };
+                initLayout();
             }
         };
         window.addEventListener('message', handleMessage);
@@ -506,6 +632,8 @@ const ArchitectureGraphInner = () => {
         react_1.default.createElement(StatsDisplay, { stats: stats }),
         react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size || (filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false) }),
         !searchVisible && (react_1.default.createElement("button", { className: "search-toggle-btn", onClick: () => setSearchVisible(true), title: "Search & Filter (Ctrl+F)" }, "\uD83D\uDD0D")),
+        react_1.default.createElement(LayoutPanel, { currentLayout: layoutType, onLayoutChange: setLayoutType, isLayouting: isLayouting, isVisible: layoutPanelVisible, onClose: () => setLayoutPanelVisible(false) }),
+        !layoutPanelVisible && (react_1.default.createElement("button", { className: "layout-toggle-btn", onClick: () => setLayoutPanelVisible(true), title: "Layout Algorithm (Ctrl+L)" }, "\uD83D\uDCD0")),
         react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
             } },
