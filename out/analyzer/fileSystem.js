@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeWorkspace = analyzeWorkspace;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const dependencyParser_1 = require("./dependencyParser");
 // File extension to language mapping for better visualization
 const FILE_EXTENSIONS = {
     '.ts': 'typescript',
@@ -133,6 +134,18 @@ async function analyzeWorkspace(rootPath) {
                 if (metadata.language) {
                     stats.filesByLanguage[metadata.language] =
                         (stats.filesByLanguage[metadata.language] || 0) + 1;
+                }
+                // Analyze dependencies for supported files
+                if (['typescript', 'javascript'].includes(metadata.language || '')) {
+                    const dependencies = (0, dependencyParser_1.parseFileDependencies)(fullPath);
+                    for (const depPath of dependencies) {
+                        edges.push({
+                            id: `e-${id}-${depPath}`,
+                            source: id,
+                            target: depPath,
+                            type: 'imports',
+                        });
+                    }
                 }
             }
             nodes.push({

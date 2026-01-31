@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import { parseFileDependencies } from './dependencyParser';
 
 // File extension to language mapping for better visualization
 const FILE_EXTENSIONS: Record<string, string> = {
@@ -78,7 +79,7 @@ function shouldIgnore(name: string): boolean {
 function getFileMetadata(filename: string): { extension?: string; language?: string } {
     const ext = path.extname(filename).toLowerCase();
     if (!ext) return {};
-    
+
     return {
         extension: ext.slice(1), // Remove the dot
         language: FILE_EXTENSIONS[ext],
@@ -101,7 +102,7 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
 
     async function traverse(currentPath: string, depth: number, parentId?: string): Promise<void> {
         let entries: fs.Dirent[];
-        
+
         try {
             entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
         } catch (error) {
@@ -137,8 +138,21 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
             } else {
                 stats.totalFiles++;
                 if (metadata.language) {
-                    stats.filesByLanguage[metadata.language] = 
+                    stats.filesByLanguage[metadata.language] =
                         (stats.filesByLanguage[metadata.language] || 0) + 1;
+                }
+
+                // Analyze dependencies for supported files
+                if (['typescript', 'javascript'].includes(metadata.language || '')) {
+                    const dependencies = parseFileDependencies(fullPath);
+                    for (const depPath of dependencies) {
+                        edges.push({
+                            id: `e-${id}-${depPath}`,
+                            source: id,
+                            target: depPath,
+                            type: 'imports',
+                        });
+                    }
                 }
             }
 
@@ -177,6 +191,6 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
     stats.totalDirectories++;
 
     await traverse(rootPath, 1, rootPath);
-    
+
     return { nodes, edges, stats };
 }
