@@ -68,6 +68,8 @@ interface RawEdge {
 interface GraphStats {
     totalFiles: number;
     totalDirectories: number;
+    totalFunctions?: number;
+    totalClasses?: number;
     filesByLanguage: Record<string, number>;
 }
 
@@ -75,6 +77,8 @@ interface ArchitectureData {
     nodes: RawNode[];
     edges: RawEdge[];
     stats: GraphStats;
+    source?: 'local' | 'backend';
+    repoId?: string;
 }
 
 // Color scheme for different node types
@@ -385,13 +389,19 @@ declare function acquireVsCodeApi(): {
 
 interface StatsDisplayProps {
     stats: GraphStats | null;
+    source?: 'local' | 'backend';
 }
 
-const StatsDisplay: React.FC<StatsDisplayProps> = ({ stats }) => {
+const StatsDisplay: React.FC<StatsDisplayProps> = ({ stats, source = 'local' }) => {
     if (!stats) return null;
 
     return (
         <div className="stats-panel">
+            <div className="source-badge" style={{
+                backgroundColor: source === 'backend' ? '#27ae60' : '#3498db',
+            }}>
+                {source === 'backend' ? '🌐 Backend (Neo4j)' : '📁 Local'}
+            </div>
             <div className="stat-item">
                 <span className="stat-label">Files:</span>
                 <span className="stat-value">{stats.totalFiles}</span>
@@ -400,6 +410,18 @@ const StatsDisplay: React.FC<StatsDisplayProps> = ({ stats }) => {
                 <span className="stat-label">Directories:</span>
                 <span className="stat-value">{stats.totalDirectories}</span>
             </div>
+            {stats.totalFunctions !== undefined && stats.totalFunctions > 0 && (
+                <div className="stat-item">
+                    <span className="stat-label">Functions:</span>
+                    <span className="stat-value">{stats.totalFunctions}</span>
+                </div>
+            )}
+            {stats.totalClasses !== undefined && stats.totalClasses > 0 && (
+                <div className="stat-item">
+                    <span className="stat-label">Classes:</span>
+                    <span className="stat-value">{stats.totalClasses}</span>
+                </div>
+            )}
             {Object.entries(stats.filesByLanguage).length > 0 && (
                 <div className="stat-languages">
                     {Object.entries(stats.filesByLanguage)
@@ -705,6 +727,9 @@ const ArchitectureGraphInner: React.FC = () => {
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [stats, setStats] = useState<GraphStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadingMessage, setLoadingMessage] = useState<string>('Analyzing workspace structure...');
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [dataSource, setDataSource] = useState<'local' | 'backend'>('local');
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
     // Search and filter state
@@ -898,9 +923,34 @@ const ArchitectureGraphInner: React.FC = () => {
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
+            
+            // Handle loading state
+            if (message.command === 'loading') {
+                setIsLoading(true);
+                setLoadingMessage(message.message || 'Loading...');
+                setErrorMessage(null);
+                return;
+            }
+            
+            // Handle error state
+            if (message.command === 'error') {
+                setIsLoading(false);
+                setErrorMessage(message.message || 'An error occurred');
+                return;
+            }
+            
+            // Handle no data state
+            if (message.command === 'noData') {
+                setIsLoading(false);
+                setErrorMessage(message.message || 'No data available');
+                return;
+            }
+            
             if (message.command === 'architectureData') {
+                setErrorMessage(null);
                 const data: ArchitectureData = message.data;
                 setRawData(data);
+                setDataSource(data.source || 'local');
 
                 const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
 
@@ -929,6 +979,12 @@ const ArchitectureGraphInner: React.FC = () => {
 
                 initLayout();
             }
+            
+            // Handle impact analysis response
+            if (message.command === 'impactAnalysis') {
+                console.log('Impact analysis data:', message.data);
+                // TODO: Highlight impacted nodes in the graph
+            }
         };
 
         window.addEventListener('message', handleMessage);
@@ -952,18 +1008,54 @@ const ArchitectureGraphInner: React.FC = () => {
         return NODE_COLORS.default;
     }, []);
 
+    // Retry loading / trigger backend analysis
+    const handleRetry = useCallback(() => {
+        if (vscodeRef.current) {
+            setErrorMessage(null);
+            setIsLoading(true);
+            setLoadingMessage('Retrying...');
+            vscodeRef.current.postMessage({ command: 'requestArchitecture' });
+        }
+    }, []);
+
+    const handleAnalyzeWithBackend = useCallback(() => {
+        if (vscodeRef.current) {
+            setErrorMessage(null);
+            vscodeRef.current.postMessage({ command: 'analyzeRepository' });
+        }
+    }, []);
+
+    // Show error state
+    if (errorMessage) {
+        return (
+            <div className="error-container">
+                <div className="error-icon">⚠️</div>
+                <h3>Error</h3>
+                <p className="error-message">{errorMessage}</p>
+                <div className="error-actions">
+                    <button className="retry-button" onClick={handleRetry}>
+                        Retry Local Analysis
+                    </button>
+                    <button className="backend-button" onClick={handleAnalyzeWithBackend}>
+                        Analyze with Backend
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     if (isLoading) {
         return (
             <div className="loading-container">
                 <div className="loading-spinner" />
-                <p>Analyzing workspace structure...</p>
+                <p>{loadingMessage}</p>
             </div>
         );
     }
 
     return (
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-            <StatsDisplay stats={stats} />
+            <StatsDisplay stats={stats} source={dataSource} />
 
             {/* Search Panel */}
             <SearchPanel

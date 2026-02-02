@@ -16,8 +16,70 @@
       {
         "command": "archmind.showArchitecture",
         "title": "ArchMind: Show Architecture"
+      },
+      {
+        "command": "archmind.analyzeRepository",
+        "title": "ArchMind: Analyze Repository (Backend)"
+      },
+      {
+        "command": "archmind.refreshGraph",
+        "title": "ArchMind: Refresh Graph"
+      },
+      {
+        "command": "archmind.checkBackendStatus",
+        "title": "ArchMind: Check Backend Status"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "ArchMind",
+      "properties": {
+        "archmind.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "URL of the ArchMind API Gateway (Go backend)"
+        },
+        "archmind.graphEngineUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "URL of the ArchMind Graph Engine (Python backend)"
+        },
+        "archmind.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Authentication token for GitHub OAuth (leave empty if not required)"
+        },
+        "archmind.requestTimeout": {
+          "type": "number",
+          "default": 30000,
+          "description": "HTTP request timeout in milliseconds"
+        },
+        "archmind.useBackendAnalysis": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use backend API for analysis instead of local file system traversal"
+        },
+        "archmind.repositoryUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Git repository URL for backend analysis (auto-detected from workspace if empty)"
+        },
+        "archmind.defaultBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "Default Git branch to analyze"
+        },
+        "archmind.pollInterval": {
+          "type": "number",
+          "default": 2000,
+          "description": "Job status polling interval in milliseconds"
+        },
+        "archmind.maxPollAttempts": {
+          "type": "number",
+          "default": 60,
+          "description": "Maximum number of job status polling attempts"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

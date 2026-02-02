@@ -271,16 +271,25 @@ function formatEdges(rawEdges, selectedNodeId, matchingNodeIds) {
         };
     });
 }
-const StatsDisplay = ({ stats }) => {
+const StatsDisplay = ({ stats, source = 'local' }) => {
     if (!stats)
         return null;
     return (react_1.default.createElement("div", { className: "stats-panel" },
+        react_1.default.createElement("div", { className: "source-badge", style: {
+                backgroundColor: source === 'backend' ? '#27ae60' : '#3498db',
+            } }, source === 'backend' ? '🌐 Backend (Neo4j)' : '📁 Local'),
         react_1.default.createElement("div", { className: "stat-item" },
             react_1.default.createElement("span", { className: "stat-label" }, "Files:"),
             react_1.default.createElement("span", { className: "stat-value" }, stats.totalFiles)),
         react_1.default.createElement("div", { className: "stat-item" },
             react_1.default.createElement("span", { className: "stat-label" }, "Directories:"),
             react_1.default.createElement("span", { className: "stat-value" }, stats.totalDirectories)),
+        stats.totalFunctions !== undefined && stats.totalFunctions > 0 && (react_1.default.createElement("div", { className: "stat-item" },
+            react_1.default.createElement("span", { className: "stat-label" }, "Functions:"),
+            react_1.default.createElement("span", { className: "stat-value" }, stats.totalFunctions))),
+        stats.totalClasses !== undefined && stats.totalClasses > 0 && (react_1.default.createElement("div", { className: "stat-item" },
+            react_1.default.createElement("span", { className: "stat-label" }, "Classes:"),
+            react_1.default.createElement("span", { className: "stat-value" }, stats.totalClasses))),
         Object.entries(stats.filesByLanguage).length > 0 && (react_1.default.createElement("div", { className: "stat-languages" }, Object.entries(stats.filesByLanguage)
             .sort(([, a], [, b]) => b - a)
             .slice(0, 5)
@@ -418,6 +427,9 @@ const ArchitectureGraphInner = () => {
     const [edges, setEdges, onEdgesChange] = (0, reactflow_1.useEdgesState)([]);
     const [stats, setStats] = (0, react_1.useState)(null);
     const [isLoading, setIsLoading] = (0, react_1.useState)(true);
+    const [loadingMessage, setLoadingMessage] = (0, react_1.useState)('Analyzing workspace structure...');
+    const [errorMessage, setErrorMessage] = (0, react_1.useState)(null);
+    const [dataSource, setDataSource] = (0, react_1.useState)('local');
     const [selectedNode, setSelectedNode] = (0, react_1.useState)(null);
     // Search and filter state
     const [searchVisible, setSearchVisible] = (0, react_1.useState)(false);
@@ -579,9 +591,30 @@ const ArchitectureGraphInner = () => {
     (0, react_1.useEffect)(() => {
         const handleMessage = (event) => {
             const message = event.data;
+            // Handle loading state
+            if (message.command === 'loading') {
+                setIsLoading(true);
+                setLoadingMessage(message.message || 'Loading...');
+                setErrorMessage(null);
+                return;
+            }
+            // Handle error state
+            if (message.command === 'error') {
+                setIsLoading(false);
+                setErrorMessage(message.message || 'An error occurred');
+                return;
+            }
+            // Handle no data state
+            if (message.command === 'noData') {
+                setIsLoading(false);
+                setErrorMessage(message.message || 'No data available');
+                return;
+            }
             if (message.command === 'architectureData') {
+                setErrorMessage(null);
                 const data = message.data;
                 setRawData(data);
+                setDataSource(data.source || 'local');
                 const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
                 // Apply initial layout asynchronously
                 const initLayout = async () => {
@@ -600,6 +633,11 @@ const ArchitectureGraphInner = () => {
                     }
                 };
                 initLayout();
+            }
+            // Handle impact analysis response
+            if (message.command === 'impactAnalysis') {
+                console.log('Impact analysis data:', message.data);
+                // TODO: Highlight impacted nodes in the graph
             }
         };
         window.addEventListener('message', handleMessage);
@@ -623,13 +661,38 @@ const ArchitectureGraphInner = () => {
             return NODE_COLORS[node.data.language] || NODE_COLORS.default;
         return NODE_COLORS.default;
     }, []);
+    // Retry loading / trigger backend analysis
+    const handleRetry = (0, react_1.useCallback)(() => {
+        if (vscodeRef.current) {
+            setErrorMessage(null);
+            setIsLoading(true);
+            setLoadingMessage('Retrying...');
+            vscodeRef.current.postMessage({ command: 'requestArchitecture' });
+        }
+    }, []);
+    const handleAnalyzeWithBackend = (0, react_1.useCallback)(() => {
+        if (vscodeRef.current) {
+            setErrorMessage(null);
+            vscodeRef.current.postMessage({ command: 'analyzeRepository' });
+        }
+    }, []);
+    // Show error state
+    if (errorMessage) {
+        return (react_1.default.createElement("div", { className: "error-container" },
+            react_1.default.createElement("div", { className: "error-icon" }, "\u26A0\uFE0F"),
+            react_1.default.createElement("h3", null, "Error"),
+            react_1.default.createElement("p", { className: "error-message" }, errorMessage),
+            react_1.default.createElement("div", { className: "error-actions" },
+                react_1.default.createElement("button", { className: "retry-button", onClick: handleRetry }, "Retry Local Analysis"),
+                react_1.default.createElement("button", { className: "backend-button", onClick: handleAnalyzeWithBackend }, "Analyze with Backend"))));
+    }
     if (isLoading) {
         return (react_1.default.createElement("div", { className: "loading-container" },
             react_1.default.createElement("div", { className: "loading-spinner" }),
-            react_1.default.createElement("p", null, "Analyzing workspace structure...")));
+            react_1.default.createElement("p", null, loadingMessage)));
     }
     return (react_1.default.createElement("div", { style: { width: '100%', height: '100%', position: 'relative' } },
-        react_1.default.createElement(StatsDisplay, { stats: stats }),
+        react_1.default.createElement(StatsDisplay, { stats: stats, source: dataSource }),
         react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size || (filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false) }),
         !searchVisible && (react_1.default.createElement("button", { className: "search-toggle-btn", onClick: () => setSearchVisible(true), title: "Search & Filter (Ctrl+F)" }, "\uD83D\uDD0D")),
         react_1.default.createElement(LayoutPanel, { currentLayout: layoutType, onLayoutChange: setLayoutType, isLayouting: isLayouting, isVisible: layoutPanelVisible, onClose: () => setLayoutPanelVisible(false) }),

@@ -13,6 +13,8 @@ ArchMind VS Code Extension provides developers with an interactive visual repres
 - **VS Code Theme Support** - Automatically adapts to your editor theme
 - **Minimap Navigation** - Quick overview for navigating large codebases
 - **Real-time Analysis** - Analyzes workspace structure on demand
+- **Backend Integration** - Connect to ArchMind backend for Neo4j-powered dependency analysis
+- **Impact Analysis** - See which nodes are affected by changes (via backend)
 
 ## 🚀 Getting Started
 
@@ -20,6 +22,7 @@ ArchMind VS Code Extension provides developers with an interactive visual repres
 
 - VS Code 1.85.0 or higher
 - Node.js 18+ and npm
+- (Optional) ArchMind Backend services for enhanced analysis
 
 ### Installation
 
@@ -51,14 +54,61 @@ ArchMind VS Code Extension provides developers with an interactive visual repres
 3. In the new VS Code window, open any workspace
 4. Press `Ctrl+Shift+P` and run **"ArchMind: Show Architecture"**
 
+## 🔌 Backend Integration
+
+The extension can connect to the ArchMind backend services for enhanced analysis using Neo4j graph database.
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `ArchMind: Show Architecture` | Show architecture graph (local or backend based on settings) |
+| `ArchMind: Analyze Repository (Backend)` | Trigger repository analysis using the backend API |
+| `ArchMind: Refresh Graph` | Refresh the current graph visualization |
+| `ArchMind: Check Backend Status` | Verify connectivity to backend services |
+
+### Configuration Settings
+
+Configure in VS Code Settings (`Ctrl+,`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `archmind.backendUrl` | `http://localhost:8080` | URL of the ArchMind API Gateway |
+| `archmind.graphEngineUrl` | `http://localhost:8000` | URL of the Graph Engine service |
+| `archmind.authToken` | `` | GitHub OAuth token (if required) |
+| `archmind.requestTimeout` | `30000` | HTTP request timeout in ms |
+| `archmind.useBackendAnalysis` | `false` | Use backend API by default |
+| `archmind.repositoryUrl` | `` | Git repository URL (auto-detected if empty) |
+| `archmind.defaultBranch` | `main` | Default branch for analysis |
+| `archmind.pollInterval` | `2000` | Job status polling interval (ms) |
+| `archmind.maxPollAttempts` | `60` | Maximum polling attempts |
+
+### Backend Services
+
+The extension communicates with two backend services:
+
+1. **API Gateway** (Go, port 8080)
+   - Triggers repository analysis
+   - Manages analysis jobs
+   - Stores repository metadata in PostgreSQL
+
+2. **Graph Engine** (Python/FastAPI, port 8000)
+   - Queries Neo4j dependency graph
+   - Provides metrics and impact analysis
+   - Calculates PageRank for code importance
+
 ## 📁 Project Structure
 
 ```
 frontend/
 ├── src/
 │   ├── extension.ts          # VS Code extension entry point
+│   ├── api/                   # Backend API client
+│   │   ├── client.ts         # HTTP client for API communication
+│   │   ├── types.ts          # TypeScript type definitions
+│   │   └── index.ts          # Module exports
 │   ├── analyzer/
-│   │   └── fileSystem.ts     # Workspace file system analyzer
+│   │   └── fileSystem.ts     # Local workspace file system analyzer
 │   └── webview/
 │       ├── index.tsx         # React app entry point
 │       ├── App.tsx           # Main App component
@@ -70,9 +120,9 @@ frontend/
 └── webpack.webview.js        # Webpack config for webview bundle
 ```
 
-## � How It Works
+## 📊 How It Works
 
-### Workflow Diagram
+### Local Analysis Workflow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -117,7 +167,64 @@ frontend/
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Step-by-Step Flow
+### Backend Analysis Workflow (Neo4j Integration)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           VS Code Editor                                 │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 │ User runs "ArchMind: Analyze Repository (Backend)"
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│               Extension Host (extension.ts + api/client.ts)              │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ 1. Detect or prompt for repository URL                          │    │
+│  │ 2. POST /api/v1/analyze to API Gateway                          │    │
+│  │ 3. Poll GET /api/v1/jobs/:id until COMPLETED                    │    │
+│  │ 4. Fetch graph from Graph Engine: GET /api/graph/:repo_id       │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+            ┌────────────────────┴────────────────────┐
+            │                                         │
+            ▼                                         ▼
+┌───────────────────────────┐         ┌───────────────────────────────────┐
+│  API Gateway (Go:8080)    │         │    Graph Engine (Python:8000)     │
+│  ┌─────────────────────┐  │         │  ┌───────────────────────────┐   │
+│  │ - Queue analysis job│  │         │  │ - Query Neo4j graph       │   │
+│  │ - Store in Postgres │  │         │  │ - Calculate metrics       │   │
+│  │ - Push to Redis     │  │         │  │ - Impact analysis         │   │
+│  └─────────────────────┘  │         │  │ - PageRank computation    │   │
+└───────────────────────────┘         │  └───────────────────────────┘   │
+            │                         └────────────────┬──────────────────┘
+            ▼                                          │
+┌───────────────────────────┐                          │
+│  Ingestion Worker (Rust)  │                          │
+│  ┌─────────────────────┐  │                          │
+│  │ - Clone repository  │  │                          │
+│  │ - Parse with TreeSit│  │                          │
+│  │ - Extract AST deps  │  │                          │
+│  │ - Store in Neo4j    │  │──────────────────────────┤
+│  └─────────────────────┘  │                          │
+└───────────────────────────┘                          │
+                                                       │
+                                 ┌─────────────────────┘
+                                 │
+                                 │ Graph data returned to extension
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Webview (React + ReactFlow)                      │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │ 1. Receive Neo4j graph data with richer dependency information  │    │
+│  │ 2. Display functions, classes, and real import relationships    │    │
+│  │ 3. Show backend source indicator                                │    │
+│  │ 4. Access impact analysis on node selection                     │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Flow (Local Analysis)
 
 1. **User Action**: User opens command palette (`Ctrl+Shift+P`) and runs "ArchMind: Show Architecture"
 
@@ -167,11 +274,17 @@ The extension consists of two main parts:
    - Registers VS Code commands
    - Creates and manages webview panels
    - Analyzes workspace and sends data to webview
+   - Communicates with backend API services
 
 2. **Webview** (`src/webview/`)
    - React application bundled with Webpack
    - Uses ReactFlow for graph visualization
    - Communicates with extension via `postMessage` API
+
+3. **API Client** (`src/api/`)
+   - HTTP client for backend communication
+   - Type definitions for API responses
+   - Error handling and retries
 
 ### Extension-Webview Communication
 
@@ -181,27 +294,33 @@ panel.webview.postMessage({ command: 'architectureData', data: graphData });
 
 // Webview → Extension
 vscode.postMessage({ command: 'requestArchitecture' });
+vscode.postMessage({ command: 'analyzeRepository' });
 ```
 
 ## 🔧 Configuration
 
-The extension contributes the following command:
+The extension contributes the following commands:
 
 | Command | Title |
 |---------|-------|
 | `archmind.showArchitecture` | ArchMind: Show Architecture |
+| `archmind.analyzeRepository` | ArchMind: Analyze Repository (Backend) |
+| `archmind.refreshGraph` | ArchMind: Refresh Graph |
+| `archmind.checkBackendStatus` | ArchMind: Check Backend Status |
 
 ## 🗺️ Roadmap
 
-- [ ] Backend API integration with ArchMind Graph Engine
-- [ ] Real code dependency parsing (imports, function calls)
-- [ ] Intelligent graph layout algorithms (hierarchical, force-directed)
-- [ ] Click-to-navigate to source files
-- [ ] Search and filter functionality
-- [ ] Custom node types for functions, classes, modules
+- [x] Backend API integration with ArchMind Graph Engine
+- [x] Real code dependency parsing (imports, function calls) via backend
+- [x] Intelligent graph layout algorithms (hierarchical, force-directed)
+- [x] Click-to-navigate to source files
+- [x] Search and filter functionality
+- [x] Custom node types for functions, classes, modules
 - [ ] Real-time file watching and auto-update
-- [ ] Code metrics and analysis panel
+- [x] Code metrics and analysis panel (via backend)
 - [ ] Export graph as image/HTML
+- [ ] Impact analysis visualization
+- [ ] PageRank-based node importance highlighting
 
 ## 🤝 Contributing
 
