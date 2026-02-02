@@ -23,4 +23,10 @@ module.exports = {
         ],
     },
     devtool: 'nosources-source-map',
+    // Disable performance warnings for VS Code webview bundle
+    performance: {
+        hints: false,
+        maxEntrypointSize: 512000,
+        maxAssetSize: 512000,
+    },
 };
