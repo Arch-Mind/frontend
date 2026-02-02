@@ -1,72 +1,205 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { parseFileDependencies, parseFileSymbols, SymbolInfo } from './dependencyParser';
+
+// File extension to language mapping for better visualization
+const FILE_EXTENSIONS: Record<string, string> = {
+    '.ts': 'typescript',
+    '.tsx': 'typescript',
+    '.js': 'javascript',
+    '.jsx': 'javascript',
+    '.json': 'json',
+    '.md': 'markdown',
+    '.css': 'css',
+    '.scss': 'css',
+    '.html': 'html',
+    '.py': 'python',
+    '.rs': 'rust',
+    '.go': 'go',
+};
+
+// Directories to ignore during traversal
+const IGNORED_DIRECTORIES = new Set([
+    'node_modules',
+    'out',
+    'dist',
+    'build',
+    '.git',
+    '.vscode',
+    'coverage',
+    '__pycache__',
+    'target',
+    'vendor',
+]);
+
+export type NodeType = 'file' | 'directory' | 'function' | 'class' | 'module';
 
 export interface GraphNode {
     id: string;
     label: string;
-    type: 'file' | 'directory' | 'function' | 'class' | 'module';
+    type: NodeType;
     parentId?: string;
-    filePath: string;
-    relativePath: string;
+    /** File extension without the dot (e.g., 'ts', 'js') */
+    extension?: string;
+    /** Programming language detected from extension */
+    language?: string;
+    /** Depth level in the directory tree (root = 0) */
+    depth: number;
+    /** Full file path for navigation */
+    filePath?: string;
+    /** Line number where the symbol is defined */
     lineNumber?: number;
-    fileExtension?: string;
-    size?: number;
+    /** End line number for the symbol */
+    endLineNumber?: number;
 }
 
 export interface GraphEdge {
     id: string;
     source: string;
     target: string;
+    /** Relationship type for future expansion */
+    type: 'contains' | 'imports' | 'calls';
 }
 
 export interface GraphData {
     nodes: GraphNode[];
     edges: GraphEdge[];
+    /** Statistics about the analyzed workspace */
+    stats: {
+        totalFiles: number;
+        totalDirectories: number;
+        totalFunctions: number;
+        totalClasses: number;
+        filesByLanguage: Record<string, number>;
+    };
 }
 
-function getFileExtension(filename: string): string {
+/**
+ * Determines if a file or directory should be ignored during analysis
+ */
+function shouldIgnore(name: string): boolean {
+    return name.startsWith('.') || IGNORED_DIRECTORIES.has(name);
+}
+
+/**
+ * Extracts file extension and determines programming language
+ */
+function getFileMetadata(filename: string): { extension?: string; language?: string } {
     const ext = path.extname(filename).toLowerCase();
-    return ext ? ext.substring(1) : '';
+    if (!ext) return {};
+
+    return {
+        extension: ext.slice(1), // Remove the dot
+        language: FILE_EXTENSIONS[ext],
+    };
 }
 
-function determineNodeType(entry: fs.Dirent, extension: string): GraphNode['type'] {
-    if (entry.isDirectory()) {
-        return 'directory';
-    }
-    // Treat index files as modules
-    if (entry.name.startsWith('index.')) {
-        return 'module';
-    }
-    return 'file';
-}
-
+/**
+ * Analyzes a workspace directory and builds a graph representation
+ * @param rootPath - The root directory path to analyze
+ * @returns Promise containing graph data with nodes, edges, and statistics
+ */
 export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
+    const stats = {
+        totalFiles: 0,
+        totalDirectories: 0,
+        totalFunctions: 0,
+        totalClasses: 0,
+        filesByLanguage: {} as Record<string, number>,
+    };
 
-    async function traverse(currentPath: string, parentId?: string) {
-        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+    async function traverse(currentPath: string, depth: number, parentId?: string): Promise<void> {
+        let entries: fs.Dirent[];
+
+        try {
+            entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+        } catch (error) {
+            // Skip directories we can't read (permission issues, etc.)
+            console.warn(`Unable to read directory: ${currentPath}`);
+            return;
+        }
+
+        // Sort entries: directories first, then files, both alphabetically
+        entries.sort((a, b) => {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.name.localeCompare(b.name);
+        });
 
         for (const entry of entries) {
-            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'out') {
+            if (shouldIgnore(entry.name)) {
                 continue;
             }
 
             const fullPath = path.join(currentPath, entry.name);
-            const relativePath = path.relative(rootPath, fullPath);
             const id = fullPath;
             const label = entry.name;
-            const fileExtension = getFileExtension(entry.name);
-            const type = determineNodeType(entry, fileExtension);
+            const isDirectory = entry.isDirectory();
+            const type: NodeType = isDirectory ? 'directory' : 'file';
 
-            let size: number | undefined;
-            if (!entry.isDirectory()) {
-                try {
-                    const stats = await fs.promises.stat(fullPath);
-                    size = stats.size;
-                } catch {
-                    size = undefined;
+            // Get file metadata for files
+            const metadata = isDirectory ? {} : getFileMetadata(entry.name);
+
+            // Update statistics
+            if (isDirectory) {
+                stats.totalDirectories++;
+            } else {
+                stats.totalFiles++;
+                if (metadata.language) {
+                    stats.filesByLanguage[metadata.language] =
+                        (stats.filesByLanguage[metadata.language] || 0) + 1;
+                }
+
+                // Analyze dependencies and symbols for supported files
+                if (['typescript', 'javascript'].includes(metadata.language || '')) {
+                    // Parse import dependencies
+                    const dependencies = parseFileDependencies(fullPath);
+                    for (const depPath of dependencies) {
+                        edges.push({
+                            id: `e-${id}-${depPath}`,
+                            source: id,
+                            target: depPath,
+                            type: 'imports',
+                        });
+                    }
+
+                    // Parse symbols (functions, classes, etc.)
+                    const symbols = parseFileSymbols(fullPath);
+                    for (const symbol of symbols) {
+                        const symbolId = `${fullPath}#${symbol.name}`;
+                        const symbolType: NodeType = symbol.kind === 'class' ? 'class' : 
+                                                     symbol.kind === 'function' || symbol.kind === 'method' ? 'function' : 
+                                                     'module';
+                        
+                        // Update stats
+                        if (symbolType === 'class') {
+                            stats.totalClasses++;
+                        } else if (symbolType === 'function') {
+                            stats.totalFunctions++;
+                        }
+
+                        nodes.push({
+                            id: symbolId,
+                            label: symbol.name,
+                            type: symbolType,
+                            parentId: id,
+                            language: metadata.language,
+                            depth: depth + 1,
+                            filePath: fullPath,
+                            lineNumber: symbol.lineNumber,
+                            endLineNumber: symbol.endLineNumber,
+                        });
+
+                        // Add edge from file to symbol
+                        edges.push({
+                            id: `e-${id}-${symbolId}`,
+                            source: id,
+                            target: symbolId,
+                            type: 'contains',
+                        });
+                    }
                 }
             }
 
@@ -75,27 +208,38 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                 label,
                 type,
                 parentId,
+                depth,
                 filePath: fullPath,
-                relativePath,
-                lineNumber: 1,
-                fileExtension,
-                size
+                ...metadata,
             });
 
             if (parentId) {
                 edges.push({
                     id: `e-${parentId}-${id}`,
                     source: parentId,
-                    target: id
+                    target: id,
+                    type: 'contains',
                 });
             }
 
-            if (entry.isDirectory()) {
-                await traverse(fullPath, id);
+            if (isDirectory) {
+                await traverse(fullPath, depth + 1, id);
             }
         }
     }
 
-    await traverse(rootPath);
-    return { nodes, edges };
+    // Add root node
+    const rootName = path.basename(rootPath);
+    nodes.push({
+        id: rootPath,
+        label: rootName,
+        type: 'directory',
+        depth: 0,
+        filePath: rootPath,
+    });
+    stats.totalDirectories++;
+
+    await traverse(rootPath, 1, rootPath);
+
+    return { nodes, edges, stats };
 }

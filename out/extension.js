@@ -36,9 +36,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const path = __importStar(require("path"));
 function activate(context) {
-    console.log('UH4 Architecture Intelligence is now active!');
-    let disposable = vscode.commands.registerCommand('uh4.showArchitecture', () => {
+    console.log('ArchMind VS Code Extension is now active!');
+    let disposable = vscode.commands.registerCommand('archmind.showArchitecture', () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
     });
     context.subscriptions.push(disposable);
@@ -57,7 +58,8 @@ class ArchitecturePanel {
         // Otherwise, create a new panel.
         const panel = vscode.window.createWebviewPanel(ArchitecturePanel.viewType, 'Architecture Intelligence', column || vscode.ViewColumn.One, {
             enableScripts: true,
-            localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out/webview')]
+            localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out/webview')],
+            retainContextWhenHidden: true
         });
         ArchitecturePanel.currentPanel = new ArchitecturePanel(panel, extensionUri);
     }
@@ -78,35 +80,47 @@ class ArchitecturePanel {
                 case 'openFile':
                     await this._openFile(message.filePath, message.lineNumber);
                     return;
-                case 'revealInExplorer':
-                    await this._revealInExplorer(message.filePath);
-                    return;
                 case 'goToDefinition':
                     await this._goToDefinition(message.filePath, message.lineNumber);
                     return;
                 case 'findReferences':
                     await this._findReferences(message.filePath, message.lineNumber);
                     return;
+                case 'revealInExplorer':
+                    await this._revealInExplorer(message.filePath);
+                    return;
+                case 'copyPath':
+                    await this._copyPath(message.filePath);
+                    return;
             }
         }, null, this._disposables);
     }
+    /**
+     * Opens a file in the editor and optionally navigates to a specific line
+     */
     async _openFile(filePath, lineNumber) {
         try {
             const uri = vscode.Uri.file(filePath);
             // Check if it's a binary/image file that can't be opened as text
-            const binaryExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', '.svg',
-                '.mp4', '.mp3', '.wav', '.avi', '.mov', '.pdf', '.zip', '.tar',
-                '.gz', '.exe', '.dll', '.so', '.woff', '.woff2', '.ttf', '.eot'];
-            const ext = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+            const binaryExtensions = [
+                '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', '.svg',
+                '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+                '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+                '.zip', '.rar', '.7z', '.tar', '.gz',
+                '.exe', '.dll', '.so', '.dylib',
+                '.ttf', '.otf', '.woff', '.woff2',
+                '.bin', '.dat'
+            ];
+            const ext = path.extname(filePath).toLowerCase();
             if (binaryExtensions.includes(ext)) {
-                // Use vscode.open for binary files - opens with default application or preview
+                // Open binary files with the default system application or VS Code's binary viewer
                 await vscode.commands.executeCommand('vscode.open', uri);
                 return;
             }
             const document = await vscode.workspace.openTextDocument(uri);
             const editor = await vscode.window.showTextDocument(document, {
                 viewColumn: vscode.ViewColumn.One,
-                preserveFocus: false
+                preserveFocus: false,
             });
             if (lineNumber && lineNumber > 0) {
                 const position = new vscode.Position(lineNumber - 1, 0);
@@ -115,16 +129,54 @@ class ArchitecturePanel {
             }
         }
         catch (error) {
-            // Fallback: try opening with vscode.open command
-            try {
-                const uri = vscode.Uri.file(filePath);
-                await vscode.commands.executeCommand('vscode.open', uri);
-            }
-            catch {
-                vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
-            }
+            vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+            console.error(error);
         }
     }
+    /**
+     * Goes to the definition at the specified location
+     */
+    async _goToDefinition(filePath, lineNumber) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+            });
+            const position = new vscode.Position((lineNumber || 1) - 1, 0);
+            // Execute go to definition command
+            await vscode.commands.executeCommand('editor.action.revealDefinition', uri, position);
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Failed to go to definition: ${filePath}`);
+            console.error(error);
+        }
+    }
+    /**
+     * Finds all references at the specified location
+     */
+    async _findReferences(filePath, lineNumber) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            const editor = await vscode.window.showTextDocument(document, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+            });
+            const position = new vscode.Position((lineNumber || 1) - 1, 0);
+            editor.selection = new vscode.Selection(position, position);
+            // Execute find references command
+            await vscode.commands.executeCommand('references-view.findReferences', uri, position);
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Failed to find references: ${filePath}`);
+            console.error(error);
+        }
+    }
+    /**
+     * Reveals the file in the Explorer sidebar
+     */
     async _revealInExplorer(filePath) {
         try {
             const uri = vscode.Uri.file(filePath);
@@ -132,31 +184,20 @@ class ArchitecturePanel {
         }
         catch (error) {
             vscode.window.showErrorMessage(`Failed to reveal in explorer: ${filePath}`);
+            console.error(error);
         }
     }
-    async _goToDefinition(filePath, lineNumber) {
+    /**
+     * Copies the file path to clipboard
+     */
+    async _copyPath(filePath) {
         try {
-            const uri = vscode.Uri.file(filePath);
-            const document = await vscode.workspace.openTextDocument(uri);
-            await vscode.window.showTextDocument(document);
-            const position = new vscode.Position((lineNumber || 1) - 1, 0);
-            await vscode.commands.executeCommand('editor.action.revealDefinition', uri, position);
+            await vscode.env.clipboard.writeText(filePath);
+            vscode.window.showInformationMessage(`Copied path: ${filePath}`);
         }
         catch (error) {
-            vscode.window.showErrorMessage(`Failed to go to definition: ${filePath}`);
-        }
-    }
-    async _findReferences(filePath, lineNumber) {
-        try {
-            const uri = vscode.Uri.file(filePath);
-            const document = await vscode.workspace.openTextDocument(uri);
-            const editor = await vscode.window.showTextDocument(document);
-            const position = new vscode.Position((lineNumber || 1) - 1, 0);
-            editor.selection = new vscode.Selection(position, position);
-            await vscode.commands.executeCommand('references-view.findReferences', uri, position);
-        }
-        catch (error) {
-            vscode.window.showErrorMessage(`Failed to find references: ${filePath}`);
+            vscode.window.showErrorMessage(`Failed to copy path: ${filePath}`);
+            console.error(error);
         }
     }
     async _sendArchitecture() {
@@ -218,5 +259,5 @@ class ArchitecturePanel {
 			</html>`;
     }
 }
-ArchitecturePanel.viewType = 'uh4Architecture';
+ArchitecturePanel.viewType = 'archmindArchitecture';
 //# sourceMappingURL=extension.js.map

@@ -36,43 +36,152 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeWorkspace = analyzeWorkspace;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
-function getFileExtension(filename) {
+const dependencyParser_1 = require("./dependencyParser");
+// File extension to language mapping for better visualization
+const FILE_EXTENSIONS = {
+    '.ts': 'typescript',
+    '.tsx': 'typescript',
+    '.js': 'javascript',
+    '.jsx': 'javascript',
+    '.json': 'json',
+    '.md': 'markdown',
+    '.css': 'css',
+    '.scss': 'css',
+    '.html': 'html',
+    '.py': 'python',
+    '.rs': 'rust',
+    '.go': 'go',
+};
+// Directories to ignore during traversal
+const IGNORED_DIRECTORIES = new Set([
+    'node_modules',
+    'out',
+    'dist',
+    'build',
+    '.git',
+    '.vscode',
+    'coverage',
+    '__pycache__',
+    'target',
+    'vendor',
+]);
+/**
+ * Determines if a file or directory should be ignored during analysis
+ */
+function shouldIgnore(name) {
+    return name.startsWith('.') || IGNORED_DIRECTORIES.has(name);
+}
+/**
+ * Extracts file extension and determines programming language
+ */
+function getFileMetadata(filename) {
     const ext = path.extname(filename).toLowerCase();
-    return ext ? ext.substring(1) : '';
+    if (!ext)
+        return {};
+    return {
+        extension: ext.slice(1), // Remove the dot
+        language: FILE_EXTENSIONS[ext],
+    };
 }
-function determineNodeType(entry, extension) {
-    if (entry.isDirectory()) {
-        return 'directory';
-    }
-    // Treat index files as modules
-    if (entry.name.startsWith('index.')) {
-        return 'module';
-    }
-    return 'file';
-}
+/**
+ * Analyzes a workspace directory and builds a graph representation
+ * @param rootPath - The root directory path to analyze
+ * @returns Promise containing graph data with nodes, edges, and statistics
+ */
 async function analyzeWorkspace(rootPath) {
     const nodes = [];
     const edges = [];
-    async function traverse(currentPath, parentId) {
-        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+    const stats = {
+        totalFiles: 0,
+        totalDirectories: 0,
+        totalFunctions: 0,
+        totalClasses: 0,
+        filesByLanguage: {},
+    };
+    async function traverse(currentPath, depth, parentId) {
+        let entries;
+        try {
+            entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+        }
+        catch (error) {
+            // Skip directories we can't read (permission issues, etc.)
+            console.warn(`Unable to read directory: ${currentPath}`);
+            return;
+        }
+        // Sort entries: directories first, then files, both alphabetically
+        entries.sort((a, b) => {
+            if (a.isDirectory() && !b.isDirectory())
+                return -1;
+            if (!a.isDirectory() && b.isDirectory())
+                return 1;
+            return a.name.localeCompare(b.name);
+        });
         for (const entry of entries) {
-            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'out') {
+            if (shouldIgnore(entry.name)) {
                 continue;
             }
             const fullPath = path.join(currentPath, entry.name);
-            const relativePath = path.relative(rootPath, fullPath);
             const id = fullPath;
             const label = entry.name;
-            const fileExtension = getFileExtension(entry.name);
-            const type = determineNodeType(entry, fileExtension);
-            let size;
-            if (!entry.isDirectory()) {
-                try {
-                    const stats = await fs.promises.stat(fullPath);
-                    size = stats.size;
+            const isDirectory = entry.isDirectory();
+            const type = isDirectory ? 'directory' : 'file';
+            // Get file metadata for files
+            const metadata = isDirectory ? {} : getFileMetadata(entry.name);
+            // Update statistics
+            if (isDirectory) {
+                stats.totalDirectories++;
+            }
+            else {
+                stats.totalFiles++;
+                if (metadata.language) {
+                    stats.filesByLanguage[metadata.language] =
+                        (stats.filesByLanguage[metadata.language] || 0) + 1;
                 }
-                catch {
-                    size = undefined;
+                // Analyze dependencies and symbols for supported files
+                if (['typescript', 'javascript'].includes(metadata.language || '')) {
+                    // Parse import dependencies
+                    const dependencies = (0, dependencyParser_1.parseFileDependencies)(fullPath);
+                    for (const depPath of dependencies) {
+                        edges.push({
+                            id: `e-${id}-${depPath}`,
+                            source: id,
+                            target: depPath,
+                            type: 'imports',
+                        });
+                    }
+                    // Parse symbols (functions, classes, etc.)
+                    const symbols = (0, dependencyParser_1.parseFileSymbols)(fullPath);
+                    for (const symbol of symbols) {
+                        const symbolId = `${fullPath}#${symbol.name}`;
+                        const symbolType = symbol.kind === 'class' ? 'class' :
+                            symbol.kind === 'function' || symbol.kind === 'method' ? 'function' :
+                                'module';
+                        // Update stats
+                        if (symbolType === 'class') {
+                            stats.totalClasses++;
+                        }
+                        else if (symbolType === 'function') {
+                            stats.totalFunctions++;
+                        }
+                        nodes.push({
+                            id: symbolId,
+                            label: symbol.name,
+                            type: symbolType,
+                            parentId: id,
+                            language: metadata.language,
+                            depth: depth + 1,
+                            filePath: fullPath,
+                            lineNumber: symbol.lineNumber,
+                            endLineNumber: symbol.endLineNumber,
+                        });
+                        // Add edge from file to symbol
+                        edges.push({
+                            id: `e-${id}-${symbolId}`,
+                            source: id,
+                            target: symbolId,
+                            type: 'contains',
+                        });
+                    }
                 }
             }
             nodes.push({
@@ -80,25 +189,34 @@ async function analyzeWorkspace(rootPath) {
                 label,
                 type,
                 parentId,
+                depth,
                 filePath: fullPath,
-                relativePath,
-                lineNumber: 1,
-                fileExtension,
-                size
+                ...metadata,
             });
             if (parentId) {
                 edges.push({
                     id: `e-${parentId}-${id}`,
                     source: parentId,
-                    target: id
+                    target: id,
+                    type: 'contains',
                 });
             }
-            if (entry.isDirectory()) {
-                await traverse(fullPath, id);
+            if (isDirectory) {
+                await traverse(fullPath, depth + 1, id);
             }
         }
     }
-    await traverse(rootPath);
-    return { nodes, edges };
+    // Add root node
+    const rootName = path.basename(rootPath);
+    nodes.push({
+        id: rootPath,
+        label: rootName,
+        type: 'directory',
+        depth: 0,
+        filePath: rootPath,
+    });
+    stats.totalDirectories++;
+    await traverse(rootPath, 1, rootPath);
+    return { nodes, edges, stats };
 }
 //# sourceMappingURL=fileSystem.js.map
