@@ -1705,3 +1705,315 @@ body {
 .theme-transitioning {
     animation: themeTransition 0.3s ease;
 }
+
+/* Relationship Visualizer Styles (Issue #21) */
+.relationship-visualizer {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 30;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    min-width: 350px;
+    max-width: 450px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.relationship-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.relationship-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.relationship-icon {
+    font-size: 18px;
+}
+
+.relationship-close-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-icon-foreground);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    opacity: 0.7;
+    transition: all 0.15s;
+}
+
+.relationship-close-btn:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    opacity: 1;
+}
+
+.relationship-summary {
+    padding: 12px 16px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.selected-node-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.node-type-icon {
+    font-size: 24px;
+}
+
+.node-details {
+    flex: 1;
+}
+
+.node-name {
+    font-size: 13px;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.node-type-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    text-transform: capitalize;
+}
+
+.relationship-count {
+    font-size: 12px;
+    color: var(--vscode-textLink-foreground);
+    font-weight: 500;
+}
+
+.relationship-sections {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 0;
+}
+
+.relationship-section {
+    border-bottom: 1px solid var(--vscode-widget-border);
+    padding: 12px 0;
+}
+
+.relationship-section:last-child {
+    border-bottom: none;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.section-icon {
+    font-size: 16px;
+}
+
+.section-title {
+    flex: 1;
+}
+
+.section-badge {
+    padding: 2px 8px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.strength-indicator {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.strength-indicator.strength-weak {
+    background-color: #3498db;
+    color: white;
+}
+
+.strength-indicator.strength-medium {
+    background-color: #f39c12;
+    color: white;
+}
+
+.strength-indicator.strength-strong {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.relationship-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 16px;
+}
+
+.relationship-node {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+}
+
+.relationship-node:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+    transform: translateX(4px);
+}
+
+.rel-node-connector {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 100%;
+    transform: translateY(-50%);
+    border-radius: 2px;
+}
+
+.relationship-parent .rel-node-connector {
+    background-color: #9b59b6;
+}
+
+.relationship-child .rel-node-connector {
+    background-color: #3498db;
+}
+
+.relationship-sibling .rel-node-connector {
+    background-color: #2ecc71;
+}
+
+.relationship-ancestor .rel-node-connector {
+    background-color: #e67e22;
+}
+
+.relationship-descendant .rel-node-connector {
+    background-color: #1abc9c;
+}
+
+.rel-node-icon {
+    font-size: 18px;
+}
+
+.rel-node-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.rel-node-name {
+    font-size: 12px;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+.rel-node-type {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    text-transform: capitalize;
+}
+
+.rel-node-depth {
+    font-size: 10px;
+    padding: 2px 6px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 8px;
+}
+
+.more-items {
+    padding: 8px 12px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.no-relationships {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    gap: 12px;
+}
+
+.no-rel-icon {
+    font-size: 36px;
+    opacity: 0.5;
+}
+
+.no-rel-text {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Relationship visualization on graph */
+.react-flow__node.has-parent {
+    border-top: 3px solid #9b59b6 !important;
+}
+
+.react-flow__node.has-children {
+    border-bottom: 3px solid #3498db !important;
+}
+
+.react-flow__node.has-siblings {
+    border-left: 3px solid #2ecc71 !important;
+}
+
+/* Relationship edge highlighting */
+.react-flow__edge.relationship-edge {
+    stroke-width: 2px;
+}
+
+.react-flow__edge.parent-child-edge {
+    stroke: #9b59b6;
+}
+
+.react-flow__edge.sibling-edge {
+    stroke: #2ecc71;
+    stroke-dasharray: 5, 5;
+}
+
+@keyframes relationshipPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.02);
+    }
+}
+
+.relationship-node.highlighted {
+    animation: relationshipPulse 1s ease-in-out infinite;
+}
