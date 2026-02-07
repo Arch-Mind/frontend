@@ -83,6 +83,71 @@ body {
     to { transform: rotate(360deg); }
 }
 
+/* Error state */
+.error-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+    color: var(--vscode-editor-foreground);
+    padding: 20px;
+    text-align: center;
+}
+
+.error-icon {
+    font-size: 48px;
+}
+
+.error-container h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--vscode-errorForeground, #f44747);
+}
+
+.error-message {
+    margin: 0;
+    font-size: 14px;
+    opacity: 0.8;
+    max-width: 400px;
+    line-height: 1.5;
+}
+
+.error-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.retry-button,
+.backend-button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    transition: background-color 0.2s;
+}
+
+.retry-button {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.retry-button:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.backend-button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.backend-button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
 /* Stats panel */
 .stats-panel {
     position: absolute;
@@ -96,6 +161,16 @@ body {
     font-size: 12px;
     min-width: 150px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.source-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: white;
+    margin-bottom: 10px;
 }
 
 .stat-item {

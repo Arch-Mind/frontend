@@ -37,15 +37,155 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
+const api_1 = require("./api");
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
-    let disposable = vscode.commands.registerCommand('archmind.showArchitecture', () => {
+    // Register main architecture view command
+    let showArchitectureCmd = vscode.commands.registerCommand('archmind.showArchitecture', () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
     });
-    context.subscriptions.push(disposable);
+    // Register backend analysis command
+    let analyzeRepositoryCmd = vscode.commands.registerCommand('archmind.analyzeRepository', async () => {
+        await ArchitecturePanel.analyzeWithBackend(context.extensionUri);
+    });
+    // Register refresh command
+    let refreshGraphCmd = vscode.commands.registerCommand('archmind.refreshGraph', async () => {
+        if (ArchitecturePanel.currentPanel) {
+            await ArchitecturePanel.currentPanel.refresh();
+        }
+        else {
+            vscode.window.showInformationMessage('No architecture panel is open. Run "ArchMind: Show Architecture" first.');
+        }
+    });
+    // Register backend status check command
+    let checkBackendStatusCmd = vscode.commands.registerCommand('archmind.checkBackendStatus', async () => {
+        await checkBackendHealth();
+    });
+    // Listen for configuration changes
+    let configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('archmind')) {
+            (0, api_1.getApiClient)().refreshConfig();
+            vscode.window.showInformationMessage('ArchMind configuration updated.');
+        }
+    });
+    context.subscriptions.push(showArchitectureCmd, analyzeRepositoryCmd, refreshGraphCmd, checkBackendStatusCmd, configChangeListener);
 }
-function deactivate() { }
+function deactivate() {
+    (0, api_1.resetApiClient)();
+}
+/**
+ * Check backend health status
+ */
+async function checkBackendHealth() {
+    const apiClient = (0, api_1.getApiClient)();
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Checking ArchMind Backend Status...',
+        cancellable: false
+    }, async (progress) => {
+        const results = [];
+        // Check API Gateway
+        try {
+            progress.report({ message: 'Checking API Gateway...' });
+            const gatewayHealth = await apiClient.checkGatewayHealth();
+            results.push(`✅ API Gateway: ${gatewayHealth.status}`);
+            results.push(`   - Redis: ${gatewayHealth.services.redis}`);
+            results.push(`   - PostgreSQL: ${gatewayHealth.services.postgres}`);
+        }
+        catch (error) {
+            const err = error;
+            results.push(`❌ API Gateway: ${err.getUserMessage()}`);
+        }
+        // Check Graph Engine
+        try {
+            progress.report({ message: 'Checking Graph Engine...' });
+            const graphHealth = await apiClient.checkGraphEngineHealth();
+            results.push(`✅ Graph Engine: ${graphHealth.status}`);
+            results.push(`   - Neo4j: ${graphHealth.services.neo4j}`);
+        }
+        catch (error) {
+            const err = error;
+            results.push(`❌ Graph Engine: ${err.getUserMessage()}`);
+        }
+        // Show results
+        const message = results.join('\n');
+        vscode.window.showInformationMessage('ArchMind Backend Status', { modal: true, detail: message });
+    });
+}
+/**
+ * Detect Git repository URL from workspace
+ */
+async function detectRepositoryUrl() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+        return undefined;
+    }
+    const rootPath = workspaceFolders[0].uri.fsPath;
+    const gitConfigPath = path.join(rootPath, '.git', 'config');
+    try {
+        const gitConfig = fs.readFileSync(gitConfigPath, 'utf-8');
+        // Parse remote origin URL from git config
+        const remoteMatch = gitConfig.match(/\[remote "origin"\][^[]*url\s*=\s*(.+)/);
+        if (remoteMatch) {
+            let url = remoteMatch[1].trim();
+            // Convert SSH URL to HTTPS if needed
+            if (url.startsWith('git@github.com:')) {
+                url = url.replace('git@github.com:', 'https://github.com/');
+            }
+            // Ensure .git suffix
+            if (!url.endsWith('.git')) {
+                url += '.git';
+            }
+            return url;
+        }
+    }
+    catch {
+        // Git config not found or unreadable
+    }
+    return undefined;
+}
+/**
+ * Get repository URL from config or detect from workspace
+ */
+async function getRepositoryUrl() {
+    const config = vscode.workspace.getConfiguration('archmind');
+    let repoUrl = config.get('repositoryUrl', '');
+    if (!repoUrl) {
+        repoUrl = await detectRepositoryUrl() || '';
+    }
+    if (!repoUrl) {
+        // Prompt user for repository URL
+        const input = await vscode.window.showInputBox({
+            prompt: 'Enter the Git repository URL for analysis',
+            placeHolder: 'https://github.com/owner/repository.git',
+            validateInput: (value) => {
+                if (!value) {
+                    return 'Repository URL is required';
+                }
+                if (!value.includes('github.com')) {
+                    return 'Currently only GitHub repositories are supported';
+                }
+                return undefined;
+            }
+        });
+        repoUrl = input || '';
+    }
+    return repoUrl || undefined;
+}
 class ArchitecturePanel {
+    /**
+     * Analyze repository using backend API
+     */
+    static async analyzeWithBackend(extensionUri) {
+        // Create or show panel first
+        ArchitecturePanel.createOrShow(extensionUri);
+        const panel = ArchitecturePanel.currentPanel;
+        if (!panel) {
+            return;
+        }
+        await panel._analyzeWithBackend();
+    }
     static createOrShow(extensionUri) {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
@@ -77,6 +217,15 @@ class ArchitecturePanel {
                 case 'requestArchitecture':
                     await this._sendArchitecture();
                     return;
+                case 'requestBackendArchitecture':
+                    await this._sendBackendArchitecture();
+                    return;
+                case 'analyzeRepository':
+                    await this._analyzeWithBackend();
+                    return;
+                case 'refreshGraph':
+                    await this.refresh();
+                    return;
                 case 'openFile':
                     await this._openFile(message.filePath, message.lineNumber);
                     return;
@@ -91,6 +240,9 @@ class ArchitecturePanel {
                     return;
                 case 'copyPath':
                     await this._copyPath(message.filePath);
+                    return;
+                case 'getImpactAnalysis':
+                    await this._getImpactAnalysis(message.nodeId);
                     return;
             }
         }, null, this._disposables);
@@ -200,7 +352,24 @@ class ArchitecturePanel {
             console.error(error);
         }
     }
+    /**
+     * Send architecture data to webview
+     * Uses backend or local analysis based on configuration
+     */
     async _sendArchitecture() {
+        const config = vscode.workspace.getConfiguration('archmind');
+        const useBackend = config.get('useBackendAnalysis', false);
+        if (useBackend) {
+            await this._sendBackendArchitecture();
+        }
+        else {
+            await this._sendLocalArchitecture();
+        }
+    }
+    /**
+     * Send local file system architecture data to webview
+     */
+    async _sendLocalArchitecture() {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders) {
             vscode.window.showErrorMessage('No workspace folder open');
@@ -208,15 +377,148 @@ class ArchitecturePanel {
         }
         const rootPath = workspaceFolders[0].uri.fsPath;
         try {
-            // Dynamic import or require if needed, but we can import at top level if configured
+            this._panel.webview.postMessage({
+                command: 'loading',
+                message: 'Analyzing workspace...'
+            });
             const { analyzeWorkspace } = require('./analyzer/fileSystem');
             const data = await analyzeWorkspace(rootPath);
-            this._panel.webview.postMessage({ command: 'architectureData', data });
+            // Add source indicator
+            const enrichedData = { ...data, source: 'local' };
+            this._panel.webview.postMessage({ command: 'architectureData', data: enrichedData });
         }
         catch (error) {
             console.error(error);
-            vscode.window.showErrorMessage('Failed to analyze workspace');
+            this._sendError('Failed to analyze workspace locally');
         }
+    }
+    /**
+     * Send backend-fetched architecture data to webview
+     */
+    async _sendBackendArchitecture() {
+        try {
+            // If we have a previous repo ID, fetch that
+            if (this._lastRepoId) {
+                this._panel.webview.postMessage({
+                    command: 'loading',
+                    message: 'Fetching graph data from backend...'
+                });
+                const apiClient = (0, api_1.getApiClient)();
+                const data = await apiClient.fetchExistingGraph(this._lastRepoId);
+                this._panel.webview.postMessage({ command: 'architectureData', data });
+            }
+            else {
+                // Prompt to analyze first
+                this._panel.webview.postMessage({
+                    command: 'noData',
+                    message: 'No repository has been analyzed yet. Use "ArchMind: Analyze Repository (Backend)" to start.'
+                });
+            }
+        }
+        catch (error) {
+            console.error(error);
+            if (error instanceof api_1.ApiRequestError) {
+                this._sendError(error.getUserMessage());
+            }
+            else {
+                this._sendError('Failed to fetch architecture data from backend');
+            }
+        }
+    }
+    /**
+     * Trigger backend analysis for a repository
+     */
+    async _analyzeWithBackend() {
+        const repoUrl = await getRepositoryUrl();
+        if (!repoUrl) {
+            vscode.window.showWarningMessage('Repository URL is required for backend analysis');
+            return;
+        }
+        const config = vscode.workspace.getConfiguration('archmind');
+        const branch = config.get('defaultBranch', 'main');
+        const apiClient = (0, api_1.getApiClient)();
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'ArchMind Analysis',
+                cancellable: true
+            }, async (progress, token) => {
+                // Allow cancellation
+                token.onCancellationRequested(() => {
+                    apiClient.cancelRequests();
+                });
+                progress.report({ message: 'Triggering analysis...', increment: 10 });
+                this._panel.webview.postMessage({
+                    command: 'loading',
+                    message: 'Starting repository analysis...'
+                });
+                // Use analyzeAndFetchGraph for complete workflow
+                const data = await apiClient.analyzeAndFetchGraph(repoUrl, branch, (status, job) => {
+                    progress.report({ message: status });
+                    this._panel.webview.postMessage({
+                        command: 'loading',
+                        message: status
+                    });
+                });
+                // Store repo ID for future refreshes
+                this._lastRepoId = data.repoId;
+                progress.report({ message: 'Rendering graph...', increment: 90 });
+                this._panel.webview.postMessage({ command: 'architectureData', data });
+                vscode.window.showInformationMessage(`Analysis complete: ${data.stats.totalFiles} files, ${data.stats.totalFunctions} functions found`);
+            });
+        }
+        catch (error) {
+            console.error(error);
+            if (error instanceof api_1.ApiRequestError) {
+                this._sendError(error.getUserMessage());
+                vscode.window.showErrorMessage(`Analysis failed: ${error.getUserMessage()}`);
+            }
+            else {
+                this._sendError('An unexpected error occurred during analysis');
+                vscode.window.showErrorMessage('Analysis failed: An unexpected error occurred');
+            }
+        }
+    }
+    /**
+     * Refresh the current graph
+     */
+    async refresh() {
+        const config = vscode.workspace.getConfiguration('archmind');
+        const useBackend = config.get('useBackendAnalysis', false);
+        if (useBackend && this._lastRepoId) {
+            await this._sendBackendArchitecture();
+        }
+        else {
+            await this._sendLocalArchitecture();
+        }
+    }
+    /**
+     * Get impact analysis for a specific node
+     */
+    async _getImpactAnalysis(nodeId) {
+        try {
+            const apiClient = (0, api_1.getApiClient)();
+            const impact = await apiClient.getImpactAnalysis(nodeId);
+            this._panel.webview.postMessage({
+                command: 'impactAnalysis',
+                data: impact
+            });
+        }
+        catch (error) {
+            console.error(error);
+            if (error instanceof api_1.ApiRequestError) {
+                vscode.window.showErrorMessage(`Impact analysis failed: ${error.getUserMessage()}`);
+            }
+        }
+    }
+    /**
+     * Send error message to webview
+     */
+    _sendError(message) {
+        this._panel.webview.postMessage({
+            command: 'error',
+            message
+        });
     }
     dispose() {
         ArchitecturePanel.currentPanel = undefined;
