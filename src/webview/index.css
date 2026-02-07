@@ -734,3 +734,124 @@ body {
     background-color: var(--vscode-list-hoverBackground);
     transform: scale(1.05);
 }
+
+/* Cluster Node Styles (Issue #11) */
+.cluster-node {
+    background: var(--vscode-sideBar-background);
+    border: 2px dashed var(--vscode-widget-border);
+    border-radius: 8px;
+    padding: 12px;
+    min-width: 200px;
+    max-width: 300px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.cluster-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.cluster-icon {
+    font-size: 18px;
+}
+
+.cluster-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--vscode-editor-foreground);
+}
+
+.cluster-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+    font-size: 11px;
+}
+
+.metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.metric-label {
+    opacity: 0.7;
+}
+
+.metric-value {
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+}
+
+.cluster-expand-button {
+    width: 100%;
+    padding: 6px 12px;
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 4px;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cluster-expand-button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.cluster-expand-button:active {
+    transform: translateY(0);
+}
+
+/* Cluster controls in stats panel */
+.cluster-controls {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--vscode-widget-border);
+}
+
+.cluster-controls-title {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    opacity: 0.8;
+}
+
+.cluster-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.cluster-btn {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 4px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font-size: 10px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.cluster-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.cluster-info {
+    margin-top: 8px;
+    padding: 6px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-left: 3px solid var(--vscode-textLink-foreground);
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 1.4;
+}
