@@ -54,6 +54,9 @@ import { ZoomControls } from './ZoomControls';
 // Relationship Visualizer imports (#21)
 import { RelationshipVisualizer } from './RelationshipVisualizer';
 
+// Export Menu imports
+import { ExportMenu } from './ExportMenu';
+
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode,
@@ -973,6 +976,10 @@ const ArchitectureGraphInner: React.FC = () => {
     // Relationship Visualizer state (#21)
     const [relationshipVisible, setRelationshipVisible] = useState(false);
 
+    // Export Menu state
+    const [exportMenuVisible, setExportMenuVisible] = useState(false);
+    const reactFlowWrapperRef = useRef<HTMLDivElement>(null);
+
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
 
@@ -1152,11 +1159,17 @@ const ArchitectureGraphInner: React.FC = () => {
                 e.preventDefault();
                 setLayoutPanelVisible(prev => !prev);
             }
-            // Escape to close search, context menu, or layout panel
+            // Ctrl+E / Cmd+E to toggle export menu
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+                e.preventDefault();
+                setExportMenuVisible(prev => !prev);
+            }
+            // Escape to close search, context menu, layout panel, or export menu
             if (e.key === 'Escape') {
                 setSearchVisible(false);
                 setContextMenuNode(null);
                 setLayoutPanelVisible(false);
+                setExportMenuVisible(false);
             }
         };
 
@@ -1430,7 +1443,7 @@ const ArchitectureGraphInner: React.FC = () => {
     }
 
     return (
-        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div ref={reactFlowWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
             <StatsDisplay stats={stats} source={dataSource} />
 
             {/* Search Panel */}
@@ -1473,6 +1486,17 @@ const ArchitectureGraphInner: React.FC = () => {
                     title="Layout Algorithm (Ctrl+L)"
                 >
                     📐
+                </button>
+            )}
+
+            {/* Export Toggle Button */}
+            {!exportMenuVisible && (
+                <button
+                    className="export-toggle-btn"
+                    onClick={() => setExportMenuVisible(true)}
+                    title="Export Graph (Ctrl+E)"
+                >
+                    📥
                 </button>
             )}
 
@@ -1582,6 +1606,16 @@ const ArchitectureGraphInner: React.FC = () => {
             {keyboardHelpVisible && (
                 <KeyboardHelp onClose={() => setKeyboardHelpVisible(false)} />
             )}
+
+            {/* Export Menu */}
+            <ExportMenu
+                nodes={nodes}
+                edges={edges}
+                rawData={rawData}
+                reactFlowWrapper={reactFlowWrapperRef.current}
+                isVisible={exportMenuVisible}
+                onClose={() => setExportMenuVisible(false)}
+            />
 
             <LocalOutline
                 fileName={localFileName}

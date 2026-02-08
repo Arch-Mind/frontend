@@ -15,6 +15,7 @@ ArchMind VS Code Extension provides developers with an interactive visual repres
 - **Real-time Analysis** - Analyzes workspace structure on demand
 - **Backend Integration** - Connect to ArchMind backend for Neo4j-powered dependency analysis
 - **Impact Analysis** - See which nodes are affected by changes (via backend)
+- **📥 Multi-Format Export** - Export graphs as PNG, SVG, JSON, Mermaid, or DOT (Graphviz)
 
 ## 🚀 Getting Started
 
@@ -318,9 +319,11 @@ The extension contributes the following commands:
 - [x] Custom node types for functions, classes, modules
 - [ ] Real-time file watching and auto-update
 - [x] Code metrics and analysis panel (via backend)
-- [ ] Export graph as image/HTML
-- [ ] Impact analysis visualization
+- [x] **Export graph as PNG/SVG/JSON/Mermaid/DOT** ✨ **NEW**
+- [x] Impact analysis visualization
 - [ ] PageRank-based node importance highlighting
+- [ ] Import JSON graphs for comparison
+- [ ] Batch export multiple formats
 
 ## 🤝 Contributing
 

@@ -54,6 +54,8 @@ const useZoomPan_1 = require("./useZoomPan");
 const ZoomControls_1 = require("./ZoomControls");
 // Relationship Visualizer imports (#21)
 const RelationshipVisualizer_1 = require("./RelationshipVisualizer");
+// Export Menu imports
+const ExportMenu_1 = require("./ExportMenu");
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode_1.ClusterNode,
@@ -605,6 +607,9 @@ const ArchitectureGraphInner = () => {
     const [keyboardHelpVisible, setKeyboardHelpVisible] = (0, react_1.useState)(false);
     // Relationship Visualizer state (#21)
     const [relationshipVisible, setRelationshipVisible] = (0, react_1.useState)(false);
+    // Export Menu state
+    const [exportMenuVisible, setExportMenuVisible] = (0, react_1.useState)(false);
+    const reactFlowWrapperRef = (0, react_1.useRef)(null);
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     // Zoom & Pan controls (#20)
@@ -759,11 +764,17 @@ const ArchitectureGraphInner = () => {
                 e.preventDefault();
                 setLayoutPanelVisible(prev => !prev);
             }
-            // Escape to close search, context menu, or layout panel
+            // Ctrl+E / Cmd+E to toggle export menu
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+                e.preventDefault();
+                setExportMenuVisible(prev => !prev);
+            }
+            // Escape to close search, context menu, layout panel, or export menu
             if (e.key === 'Escape') {
                 setSearchVisible(false);
                 setContextMenuNode(null);
                 setLayoutPanelVisible(false);
+                setExportMenuVisible(false);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
@@ -988,12 +999,13 @@ const ArchitectureGraphInner = () => {
             react_1.default.createElement("div", { className: "loading-spinner" }),
             react_1.default.createElement("p", null, loadingMessage)));
     }
-    return (react_1.default.createElement("div", { style: { width: '100%', height: '100%', position: 'relative' } },
+    return (react_1.default.createElement("div", { ref: reactFlowWrapperRef, style: { width: '100%', height: '100%', position: 'relative' } },
         react_1.default.createElement(StatsDisplay, { stats: stats, source: dataSource }),
         react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size > 0 ? matchingNodeIds.size : (filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false), availableLanguages: availableLanguages }),
         !searchVisible && (react_1.default.createElement("button", { className: "search-toggle-btn", onClick: () => setSearchVisible(true), title: "Search & Filter (Ctrl+F)" }, "\uD83D\uDD0D")),
         react_1.default.createElement(LayoutPanel, { currentLayout: layoutType, onLayoutChange: setLayoutType, isLayouting: isLayouting, isVisible: layoutPanelVisible, onClose: () => setLayoutPanelVisible(false) }),
         !layoutPanelVisible && (react_1.default.createElement("button", { className: "layout-toggle-btn", onClick: () => setLayoutPanelVisible(true), title: "Layout Algorithm (Ctrl+L)" }, "\uD83D\uDCD0")),
+        !exportMenuVisible && (react_1.default.createElement("button", { className: "export-toggle-btn", onClick: () => setExportMenuVisible(true), title: "Export Graph (Ctrl+E)" }, "\uD83D\uDCE5")),
         react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, nodeTypes: nodeTypes, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
             }, style: { background: 'var(--am-bg)' } },
@@ -1024,6 +1036,7 @@ const ArchitectureGraphInner = () => {
                 }
             }, onClose: () => setRelationshipVisible(false) })),
         keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) })),
+        react_1.default.createElement(ExportMenu_1.ExportMenu, { nodes: nodes, edges: edges, rawData: rawData, reactFlowWrapper: reactFlowWrapperRef.current, isVisible: exportMenuVisible, onClose: () => setExportMenuVisible(false) }),
         react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider
