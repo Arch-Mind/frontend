@@ -37,6 +37,7 @@ exports.analyzeWorkspace = analyzeWorkspace;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const dependencyParser_1 = require("./dependencyParser");
+const fingerprintService_1 = require("../services/fingerprintService");
 // File extension to language mapping for better visualization
 const FILE_EXTENSIONS = {
     '.ts': 'typescript',
@@ -81,33 +82,28 @@ function getFileMetadata(filename) {
     if (!ext)
         return {};
     return {
-        extension: ext.slice(1), // Remove the dot
-        language: FILE_EXTENSIONS[ext],
+        extension: ext.substring(1),
+        language: FILE_EXTENSIONS[ext]
     };
 }
 /**
- * Gets cached analysis data or parses the file if changed
+ * Analyzing a single file to extract imports, symbols, and calls
  */
 function getFileAnalysis(filePath) {
-    let mtime = 0;
-    try {
-        mtime = fs.statSync(filePath).mtimeMs;
-    }
-    catch {
-        // File might have been deleted
-        return { mtime: 0, imports: [], symbols: [], calls: [] };
-    }
+    const stats = fs.statSync(filePath);
+    const mtime = stats.mtimeMs;
+    // Check cache
     const cached = fileCache.get(filePath);
     if (cached && cached.mtime === mtime) {
-        return cached;
+        return { imports: cached.imports, symbols: cached.symbols, calls: cached.calls };
     }
     // Parse fresh
     const imports = (0, dependencyParser_1.parseFileDependencies)(filePath);
     const symbols = (0, dependencyParser_1.parseFileSymbols)(filePath);
     const calls = (0, dependencyParser_1.parseFunctionCalls)(filePath, imports);
-    const entry = { mtime, imports, symbols, calls };
-    fileCache.set(filePath, entry);
-    return entry;
+    // Update cache
+    fileCache.set(filePath, { mtime, imports, symbols, calls });
+    return { imports, symbols, calls };
 }
 /**
  * Analyzes a workspace directory and builds a graph representation
@@ -124,6 +120,8 @@ async function analyzeWorkspace(rootPath) {
         totalClasses: 0,
         filesByLanguage: {},
     };
+    const fingerprintService = fingerprintService_1.FingerprintService.getInstance();
+    const newSnapshots = {};
     async function traverse(currentPath, depth, parentId) {
         let entries;
         try {
@@ -153,6 +151,7 @@ async function analyzeWorkspace(rootPath) {
             const type = isDirectory ? 'directory' : 'file';
             // Get file metadata for files
             const metadata = isDirectory ? {} : getFileMetadata(entry.name);
+            let fileStatus = 'unchanged';
             // Update statistics
             if (isDirectory) {
                 stats.totalDirectories++;
@@ -162,6 +161,23 @@ async function analyzeWorkspace(rootPath) {
                 if (metadata.language) {
                     stats.filesByLanguage[metadata.language] =
                         (stats.filesByLanguage[metadata.language] || 0) + 1;
+                }
+                // Compute hash and check status
+                try {
+                    const content = await fs.promises.readFile(fullPath, 'utf-8');
+                    const hash = fingerprintService.computeHash(content);
+                    const storedHash = fingerprintService.getStoredHash(fullPath);
+                    if (!storedHash) {
+                        fileStatus = 'added';
+                    }
+                    else if (hash !== storedHash) {
+                        fileStatus = 'modified';
+                    }
+                    // Track for saving later
+                    newSnapshots[fullPath] = hash;
+                }
+                catch (e) {
+                    console.error(`Failed to process hash for ${fullPath}`, e);
                 }
                 // Analyze dependencies and symbols for supported files
                 if (['typescript', 'javascript'].includes(metadata.language || '')) {
@@ -200,6 +216,7 @@ async function analyzeWorkspace(rootPath) {
                             filePath: fullPath,
                             lineNumber: symbol.lineNumber,
                             endLineNumber: symbol.endLineNumber,
+                            status: fileStatus // Inherit status from file for now, or refine later logic
                         });
                         // Add edge from file to symbol
                         edges.push({
@@ -248,6 +265,7 @@ async function analyzeWorkspace(rootPath) {
                 parentId,
                 depth,
                 filePath: fullPath,
+                status: fileStatus,
                 ...metadata,
             });
             if (parentId) {
@@ -274,6 +292,16 @@ async function analyzeWorkspace(rootPath) {
     });
     stats.totalDirectories++;
     await traverse(rootPath, 1, rootPath);
+    // Check for deleted files
+    // (Optional: Compare keys of newSnapshots with stored keys)
+    // For now, we just save the new state effectively creating a "sync" point
+    // Save snapshots - technically this should be done after successful analysis
+    // But since analyzeWorkspace is just a function, we might want to let the caller handle persistence
+    // However, we are calling fingerprintService directly here. 
+    // Let's rely on the caller (AnalysisService) to finalize the "sync" if needed, 
+    // OR we just save here as part of "Analysis Complete". 
+    // Given the requirement "Store/Retrieve fingerprints from workspaceState", saving here ensures consistency.
+    await fingerprintService.saveSnapshots(newSnapshots);
     return { nodes, edges, stats };
 }
 //# sourceMappingURL=fileSystem.js.map

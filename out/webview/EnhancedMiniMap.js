@@ -41,7 +41,7 @@ exports.EnhancedMiniMap = void 0;
 exports.useMiniMapNavigation = useMiniMapNavigation;
 const react_1 = __importStar(require("react"));
 const reactflow_1 = require("reactflow");
-// Default colors for node types
+// Default colors for node types (fallback)
 const DEFAULT_NODE_COLORS = {
     file: '#3498db', // Blue
     directory: '#9b59b6', // Purple
@@ -50,7 +50,7 @@ const DEFAULT_NODE_COLORS = {
     module: '#1abc9c', // Teal
     default: '#95a5a6', // Gray
 };
-const EnhancedMiniMap = ({ selectedNodeId, hoveredNodeId, nodeColors, position = 'bottom-right', }) => {
+const EnhancedMiniMap = ({ selectedNodeId, hoveredNodeId, nodeColors, position = 'bottom-right', onNodeClick, }) => {
     // Merge custom node colors with defaults
     const colorMap = (0, react_1.useMemo)(() => {
         return { ...DEFAULT_NODE_COLORS, ...nodeColors };
@@ -66,11 +66,24 @@ const EnhancedMiniMap = ({ selectedNodeId, hoveredNodeId, nodeColors, position =
             if (node.id === hoveredNodeId) {
                 return '#e74c3c'; // Red
             }
-            // Color by type
-            const nodeType = node.type || 'default';
+            // Color by type or language
             const nodeData = node.data;
-            const dataType = nodeData?.type || nodeType;
-            return colorMap[dataType] || colorMap.default;
+            // Explicit type check
+            if (nodeData?.type === 'directory')
+                return colorMap.directory || DEFAULT_NODE_COLORS.directory;
+            if (nodeData?.type === 'function')
+                return colorMap.function || DEFAULT_NODE_COLORS.function;
+            if (nodeData?.type === 'class')
+                return colorMap.class || DEFAULT_NODE_COLORS.class;
+            if (nodeData?.type === 'module')
+                return colorMap.module || DEFAULT_NODE_COLORS.module;
+            // Check language
+            if (nodeData?.language && colorMap[nodeData.language]) {
+                return colorMap[nodeData.language];
+            }
+            // Fallback to type or default
+            const fallbackType = nodeData?.type || node.type || 'default';
+            return colorMap[fallbackType] || colorMap.default;
         };
     }, [selectedNodeId, hoveredNodeId, colorMap]);
     // Node class name for additional styling
@@ -104,7 +117,7 @@ const EnhancedMiniMap = ({ selectedNodeId, hoveredNodeId, nodeColors, position =
             border: '1px solid var(--am-border)',
             borderRadius: '6px',
             ...minimapPosition,
-        }, pannable: true, zoomable: true }));
+        }, pannable: true, zoomable: true, onNodeClick: onNodeClick }));
 };
 exports.EnhancedMiniMap = EnhancedMiniMap;
 /**

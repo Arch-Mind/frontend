@@ -12,9 +12,10 @@ export interface EnhancedMiniMapProps {
     hoveredNodeId?: string | null;
     nodeColors?: Record<string, string>;
     position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+    onNodeClick?: (event: React.MouseEvent, node: Node) => void;
 }
 
-// Default colors for node types
+// Default colors for node types (fallback)
 const DEFAULT_NODE_COLORS: Record<string, string> = {
     file: '#3498db',        // Blue
     directory: '#9b59b6',   // Purple
@@ -29,6 +30,7 @@ export const EnhancedMiniMap: React.FC<EnhancedMiniMapProps> = ({
     hoveredNodeId,
     nodeColors,
     position = 'bottom-right',
+    onNodeClick,
 }) => {
     // Merge custom node colors with defaults
     const colorMap = useMemo(() => {
@@ -48,12 +50,23 @@ export const EnhancedMiniMap: React.FC<EnhancedMiniMapProps> = ({
                 return '#e74c3c'; // Red
             }
 
-            // Color by type
-            const nodeType = node.type || 'default';
+            // Color by type or language
             const nodeData = node.data as any;
-            const dataType = nodeData?.type || nodeType;
 
-            return colorMap[dataType] || colorMap.default;
+            // Explicit type check
+            if (nodeData?.type === 'directory') return colorMap.directory || DEFAULT_NODE_COLORS.directory;
+            if (nodeData?.type === 'function') return colorMap.function || DEFAULT_NODE_COLORS.function;
+            if (nodeData?.type === 'class') return colorMap.class || DEFAULT_NODE_COLORS.class;
+            if (nodeData?.type === 'module') return colorMap.module || DEFAULT_NODE_COLORS.module;
+
+            // Check language
+            if (nodeData?.language && colorMap[nodeData.language]) {
+                return colorMap[nodeData.language];
+            }
+
+            // Fallback to type or default
+            const fallbackType = nodeData?.type || node.type || 'default';
+            return colorMap[fallbackType] || colorMap.default;
         };
     }, [selectedNodeId, hoveredNodeId, colorMap]);
 
@@ -104,6 +117,7 @@ export const EnhancedMiniMap: React.FC<EnhancedMiniMapProps> = ({
             }}
             pannable
             zoomable
+            onNodeClick={onNodeClick}
         />
     );
 };

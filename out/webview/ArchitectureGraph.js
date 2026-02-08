@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.NODE_COLORS = void 0;
 const react_1 = __importStar(require("react"));
 const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
@@ -53,6 +54,8 @@ const useZoomPan_1 = require("./useZoomPan");
 const ZoomControls_1 = require("./ZoomControls");
 // Relationship Visualizer imports (#21)
 const RelationshipVisualizer_1 = require("./RelationshipVisualizer");
+// Export Modal imports
+const ExportModal_1 = require("../components/ExportModal");
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode_1.ClusterNode,
@@ -71,7 +74,7 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 // Color scheme for different node types
-const NODE_COLORS = {
+exports.NODE_COLORS = {
     directory: '#4a9eff',
     typescript: '#3178c6',
     javascript: '#f7df1e',
@@ -86,26 +89,55 @@ const NODE_COLORS = {
     module: '#27ae60',
     default: '#6b7280',
 };
+// Status colors
+const STATUS_COLORS = {
+    modified: '#e67e22', // Orange for modified
+    added: '#2ecc71', // Green for added
+    deleted: '#e74c3c', // Red for deleted
+};
 // Get color based on node type/language
 function getNodeColor(node) {
+    if (node.status && node.status !== 'unchanged' && STATUS_COLORS[node.status]) {
+        return STATUS_COLORS[node.status];
+    }
     if (node.type === 'directory')
-        return NODE_COLORS.directory;
+        return exports.NODE_COLORS.directory;
     if (node.type === 'function')
-        return NODE_COLORS.function;
+        return exports.NODE_COLORS.function;
     if (node.type === 'class')
-        return NODE_COLORS.class;
+        return exports.NODE_COLORS.class;
     if (node.type === 'module')
-        return NODE_COLORS.module;
+        return exports.NODE_COLORS.module;
     if (node.language)
-        return NODE_COLORS[node.language] || NODE_COLORS.default;
-    return NODE_COLORS.default;
+        return exports.NODE_COLORS[node.language] || exports.NODE_COLORS.default;
+    return exports.NODE_COLORS.default;
 }
 // Check if a node matches the search filters
 function matchesFilters(node, filters) {
-    const { searchTerm, nodeType, pathPattern } = filters;
-    // Filter by node type
-    if (nodeType !== 'all' && node.type !== nodeType) {
+    const { searchTerm, nodeTypes, languages, pathPattern } = filters;
+    // Filter by node type (if any selected)
+    if (nodeTypes.length > 0 && !nodeTypes.includes(node.type)) {
         return false;
+    }
+    // Filter by language (if any selected)
+    // Only applies to nodes that have a language property (files, functions, classes)
+    if (languages.length > 0) {
+        if (!node.language || !languages.includes(node.language)) {
+            // If it's a directory, we might want to show it if it contains matching files?
+            // For now, strict filtering: if language filter is active, only show nodes of that language.
+            // Directories usually don't have a specific language, so they might be hidden unless we handle them.
+            // Let's say directories match if their children match? No, that's complex path filtering.
+            // Simple rule: If language filter is on, hide anything that isn't that language.
+            // BUT: Directories don't have language. Maybe we should always show directories? 
+            // Or only if node.language is present.
+            if (node.type !== 'directory') {
+                return false;
+            }
+            // For directories, we default to hidden if we are strictly filtering by language?
+            // Actually, usually users want to see the structure. 
+            // Let's decide: strict filtering hides directories.
+            return false;
+        }
     }
     // Filter by path pattern (glob-like matching)
     if (pathPattern) {
@@ -138,31 +170,53 @@ function matchesFilters(node, filters) {
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 40;
 // Calculate matching node IDs based on filters
-function calculateMatchingNodeIds(nodes, filters) {
+function calculateMatchingNodeIds(nodes, edges, filters) {
     const matchingNodeIds = new Set();
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
-    if (hasActiveFilter) {
-        nodes.forEach(node => {
-            if (matchesFilters(node, filters)) {
-                matchingNodeIds.add(node.id);
+    const { searchTerm, nodeTypes, languages, pathPattern, showNeighbors } = filters;
+    const hasActiveFilter = searchTerm || nodeTypes.length > 0 || languages.length > 0 || pathPattern;
+    if (!hasActiveFilter) {
+        return matchingNodeIds; // Empty set means everything matches (or is handled by caller)
+    }
+    // Pass 1: Direct matches
+    nodes.forEach(node => {
+        if (matchesFilters(node, filters)) {
+            matchingNodeIds.add(node.id);
+        }
+    });
+    // Pass 2: Neighbors (if enabled)
+    if (showNeighbors && matchingNodeIds.size > 0) {
+        // Find all edges connected to matching nodes
+        // We iterate edges to find neighbors
+        // This acts as "bfs" of depth 1
+        const neighborIds = new Set();
+        edges.forEach(edge => {
+            if (matchingNodeIds.has(edge.source)) {
+                neighborIds.add(edge.target);
+            }
+            if (matchingNodeIds.has(edge.target)) {
+                neighborIds.add(edge.source);
             }
         });
+        // Add neighbors to matching set
+        neighborIds.forEach(id => matchingNodeIds.add(id));
     }
     return matchingNodeIds;
 }
 // Create styled ReactFlow node from RawNode and position
 function createStyledNode(node, position, isMatching, isSelected) {
     const color = getNodeColor(node);
+    const isChanged = node.status && node.status !== 'unchanged';
     return {
         id: node.id,
         data: {
-            label: node.label,
+            label: node.label + (isChanged ? ` (${node.status})` : ''),
             type: node.type,
             language: node.language,
             extension: node.extension,
             filePath: node.filePath || node.id,
             lineNumber: node.lineNumber,
             endLineNumber: node.endLineNumber,
+            status: node.status, // Pass status to data
         },
         position,
         style: {
@@ -175,14 +229,15 @@ function createStyledNode(node, position, isMatching, isSelected) {
             borderRadius: node.type === 'directory' ? 8 : 4,
             opacity: isMatching ? 1 : 0.3,
             boxShadow: isSelected ? '0 0 10px var(--am-accent)' : undefined,
+            borderStyle: isChanged ? 'dashed' : 'solid', // Dashed border for changed files
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
     };
 }
 // Hierarchical layout algorithm (original built-in)
 function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
-    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
     // Group nodes by depth
     const nodesByDepth = new Map();
     nodes.forEach(node => {
@@ -206,8 +261,8 @@ function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
 }
 // Dagre layout algorithm
 function calculateDagreLayout(nodes, edges, filters, selectedNodeId, direction) {
-    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
     const layoutNodes = nodes.map(n => ({
         id: n.id,
         width: NODE_WIDTH,
@@ -230,8 +285,8 @@ function calculateDagreLayout(nodes, edges, filters, selectedNodeId, direction) 
 }
 // ELK layout algorithm (async)
 async function calculateElkLayout(nodes, edges, filters, selectedNodeId, algorithm) {
-    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
     const layoutNodes = nodes.map(n => ({
         id: n.id,
         width: NODE_WIDTH,
@@ -314,13 +369,13 @@ const StatsDisplay = ({ stats, source = 'local' }) => {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 5)
             .map(([lang, count]) => (react_1.default.createElement("span", { key: lang, className: "language-badge", style: {
-                backgroundColor: NODE_COLORS[lang] || NODE_COLORS.default,
+                backgroundColor: exports.NODE_COLORS[lang] || exports.NODE_COLORS.default,
             } },
             lang,
             ": ",
             count)))))));
 };
-const SearchPanel = ({ filters, onFiltersChange, matchCount, totalCount, onFocusSelection, isVisible, onClose, }) => {
+const SearchPanel = ({ filters, onFiltersChange, matchCount, totalCount, onFocusSelection, isVisible, onClose, availableLanguages }) => {
     const searchInputRef = (0, react_1.useRef)(null);
     (0, react_1.useEffect)(() => {
         if (isVisible && searchInputRef.current) {
@@ -329,7 +384,25 @@ const SearchPanel = ({ filters, onFiltersChange, matchCount, totalCount, onFocus
     }, [isVisible]);
     if (!isVisible)
         return null;
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
+    const toggleNodeType = (type) => {
+        const current = filters.nodeTypes;
+        if (current.includes(type)) {
+            onFiltersChange({ ...filters, nodeTypes: current.filter(t => t !== type) });
+        }
+        else {
+            onFiltersChange({ ...filters, nodeTypes: [...current, type] });
+        }
+    };
+    const toggleLanguage = (lang) => {
+        const current = filters.languages;
+        if (current.includes(lang)) {
+            onFiltersChange({ ...filters, languages: current.filter(l => l !== lang) });
+        }
+        else {
+            onFiltersChange({ ...filters, languages: [...current, lang] });
+        }
+    };
     return (react_1.default.createElement("div", { className: "search-panel" },
         react_1.default.createElement("div", { className: "search-header" },
             react_1.default.createElement("span", { className: "search-title" }, "\uD83D\uDD0D Search & Filter"),
@@ -338,17 +411,22 @@ const SearchPanel = ({ filters, onFiltersChange, matchCount, totalCount, onFocus
             react_1.default.createElement("label", null, "Search by name:"),
             react_1.default.createElement("input", { ref: searchInputRef, type: "text", placeholder: "Enter file/function name...", value: filters.searchTerm, onChange: (e) => onFiltersChange({ ...filters, searchTerm: e.target.value }), className: "search-input" })),
         react_1.default.createElement("div", { className: "search-field" },
-            react_1.default.createElement("label", null, "Filter by type:"),
-            react_1.default.createElement("select", { value: filters.nodeType, onChange: (e) => onFiltersChange({ ...filters, nodeType: e.target.value }), className: "search-select" },
-                react_1.default.createElement("option", { value: "all" }, "All Types"),
-                react_1.default.createElement("option", { value: "file" }, "\uD83D\uDCC4 Files"),
-                react_1.default.createElement("option", { value: "directory" }, "\uD83D\uDCC1 Directories"),
-                react_1.default.createElement("option", { value: "function" }, "\u26A1 Functions"),
-                react_1.default.createElement("option", { value: "class" }, "\uD83C\uDFF7\uFE0F Classes"),
-                react_1.default.createElement("option", { value: "module" }, "\uD83D\uDCE6 Modules"))),
-        react_1.default.createElement("div", { className: "search-field" },
             react_1.default.createElement("label", null, "Path pattern:"),
             react_1.default.createElement("input", { type: "text", placeholder: "e.g., src/*.ts, **/utils/*", value: filters.pathPattern, onChange: (e) => onFiltersChange({ ...filters, pathPattern: e.target.value }), className: "search-input" })),
+        react_1.default.createElement("div", { className: "search-section" },
+            react_1.default.createElement("label", null, "Filter by Type:"),
+            react_1.default.createElement("div", { className: "checkbox-group" }, ['file', 'directory', 'function', 'class', 'module'].map(type => (react_1.default.createElement("label", { key: type, className: "checkbox-label" },
+                react_1.default.createElement("input", { type: "checkbox", checked: filters.nodeTypes.includes(type), onChange: () => toggleNodeType(type) }),
+                type.charAt(0).toUpperCase() + type.slice(1)))))),
+        availableLanguages.length > 0 && (react_1.default.createElement("div", { className: "search-section" },
+            react_1.default.createElement("label", null, "Filter by Language:"),
+            react_1.default.createElement("div", { className: "checkbox-group" }, availableLanguages.map(lang => (react_1.default.createElement("label", { key: lang, className: "checkbox-label" },
+                react_1.default.createElement("input", { type: "checkbox", checked: filters.languages.includes(lang), onChange: () => toggleLanguage(lang) }),
+                lang)))))),
+        react_1.default.createElement("div", { className: "search-field toggle-field" },
+            react_1.default.createElement("label", { className: "checkbox-label" },
+                react_1.default.createElement("input", { type: "checkbox", checked: filters.showNeighbors, onChange: (e) => onFiltersChange({ ...filters, showNeighbors: e.target.checked }) }),
+                "Show Reachable Neighbors")),
         react_1.default.createElement("div", { className: "search-results" }, hasActiveFilter ? (react_1.default.createElement("span", { className: "result-count" },
             "Found ",
             react_1.default.createElement("strong", null, matchCount),
@@ -360,12 +438,40 @@ const SearchPanel = ({ filters, onFiltersChange, matchCount, totalCount, onFocus
             " nodes"))),
         react_1.default.createElement("div", { className: "search-actions" },
             react_1.default.createElement("button", { className: "search-btn", onClick: onFocusSelection, disabled: matchCount === 0, title: "Zoom to show all matching nodes" }, "\uD83D\uDCCD Focus on Results"),
-            react_1.default.createElement("button", { className: "search-btn secondary", onClick: () => onFiltersChange({ searchTerm: '', nodeType: 'all', pathPattern: '' }), disabled: !hasActiveFilter }, "Clear Filters")),
+            react_1.default.createElement("button", { className: "search-btn secondary", onClick: () => onFiltersChange({
+                    searchTerm: '',
+                    nodeTypes: [],
+                    languages: [],
+                    pathPattern: '',
+                    showNeighbors: false
+                }), disabled: !hasActiveFilter }, "Clear Filters")),
         react_1.default.createElement("div", { className: "search-hint" },
             react_1.default.createElement("kbd", null, "Ctrl"),
             "+",
             react_1.default.createElement("kbd", null, "F"),
-            " to toggle search")));
+            " to toggle search"),
+        react_1.default.createElement("style", null, `
+                .search-section { margin-bottom: 12px; }
+                .checkbox-group { 
+                    display: flex; 
+                    flex-wrap: wrap; 
+                    gap: 8px; 
+                    margin-top: 4px;
+                }
+                .checkbox-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    background: var(--am-bg-lighter);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    border: 1px solid var(--am-border);
+                }
+                .checkbox-label:hover { background: var(--am-bg-hover); }
+                .toggle-field { margin-top: 8px; }
+            `)));
 };
 const NodeTooltip = ({ node, position }) => {
     if (!node)
@@ -446,6 +552,10 @@ const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, on
 };
 // Inner component that uses ReactFlow hooks
 const ArchitectureGraphInner = () => {
+    // VS Code API reference - memoized to call only once
+    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+    const vscodeRef = (0, react_1.useRef)(vscode); // Keep ref for backward compatibility in callbacks
+    const state = vscode.getState() || {};
     const [nodes, setNodes, onNodesChange] = (0, reactflow_1.useNodesState)([]);
     const [edges, setEdges, onEdgesChange] = (0, reactflow_1.useEdgesState)([]);
     const [stats, setStats] = (0, react_1.useState)(null);
@@ -454,12 +564,14 @@ const ArchitectureGraphInner = () => {
     const [errorMessage, setErrorMessage] = (0, react_1.useState)(null);
     const [dataSource, setDataSource] = (0, react_1.useState)('local');
     const [selectedNode, setSelectedNode] = (0, react_1.useState)(null);
-    // Search and filter state
+    // Search and filter state - initialized from persistence
     const [searchVisible, setSearchVisible] = (0, react_1.useState)(false);
-    const [filters, setFilters] = (0, react_1.useState)({
+    const [filters, setFilters] = (0, react_1.useState)(state.filters || {
         searchTerm: '',
-        nodeType: 'all',
+        nodeTypes: [],
+        languages: [],
         pathPattern: '',
+        showNeighbors: false,
     });
     // Debounce filters for performance on large graphs (200ms delay)
     const debouncedFilters = useDebounce(filters, 200);
@@ -476,10 +588,14 @@ const ArchitectureGraphInner = () => {
     const [localSymbols, setLocalSymbols] = (0, react_1.useState)([]);
     const [localFileName, setLocalFileName] = (0, react_1.useState)('');
     const [localOutlineVisible, setLocalOutlineVisible] = (0, react_1.useState)(true);
-    // Layout state
-    const [layoutType, setLayoutType] = (0, react_1.useState)('hierarchical');
+    // Layout state - initialized from persistence
+    const [layoutType, setLayoutType] = (0, react_1.useState)(state.layoutType || 'hierarchical');
     const [layoutPanelVisible, setLayoutPanelVisible] = (0, react_1.useState)(false);
     const [isLayouting, setIsLayouting] = (0, react_1.useState)(false);
+    // Persist state when filters or layout change
+    (0, react_1.useEffect)(() => {
+        vscode.setState({ filters, layoutType });
+    }, [filters, layoutType, vscode]);
     // Clustering state (#11)
     const [clusters, setClusters] = (0, react_1.useState)([]);
     const [clusterState, setClusterState] = (0, react_1.useState)({});
@@ -491,6 +607,9 @@ const ArchitectureGraphInner = () => {
     const [keyboardHelpVisible, setKeyboardHelpVisible] = (0, react_1.useState)(false);
     // Relationship Visualizer state (#21)
     const [relationshipVisible, setRelationshipVisible] = (0, react_1.useState)(false);
+    // Export Menu state
+    const [exportMenuVisible, setExportMenuVisible] = (0, react_1.useState)(false);
+    const reactFlowWrapperRef = (0, react_1.useRef)(null);
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     // Zoom & Pan controls (#20)
@@ -504,8 +623,8 @@ const ArchitectureGraphInner = () => {
             reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
         }
     });
-    // VS Code API reference
-    const vscodeRef = (0, react_1.useRef)(null);
+    // (Removed duplicate vscodeRef init)
+    // ... (onConnect, mouse handlers...)
     const onConnect = (0, react_1.useCallback)((params) => setEdges((eds) => (0, reactflow_1.addEdge)(params, eds)), [setEdges]);
     // Handle node click - open file in VS Code
     const onNodeClick = (0, react_1.useCallback)((event, node) => {
@@ -520,6 +639,7 @@ const ArchitectureGraphInner = () => {
             });
         }
     }, []);
+    // ... (rest of handlers)
     // Handle node right-click - show context menu
     const onNodeContextMenu = (0, react_1.useCallback)((event, node) => {
         event.preventDefault();
@@ -538,6 +658,7 @@ const ArchitectureGraphInner = () => {
     const handleContextMenuAction = (0, react_1.useCallback)((action) => {
         if (!contextMenuNode || !vscodeRef.current)
             return;
+        // ... (implementation same as before)
         const filePath = contextMenuNode.data.filePath || contextMenuNode.id;
         const lineNumber = contextMenuNode.data.lineNumber;
         switch (action) {
@@ -616,7 +737,7 @@ const ArchitectureGraphInner = () => {
                 break;
         }
         setContextMenuNode(null);
-    }, [contextMenuNode]);
+    }, [contextMenuNode, rawData]);
     // Focus on filtered/matching nodes
     const handleFocusSelection = (0, react_1.useCallback)(() => {
         if (matchingNodeIds.size === 0)
@@ -643,18 +764,26 @@ const ArchitectureGraphInner = () => {
                 e.preventDefault();
                 setLayoutPanelVisible(prev => !prev);
             }
-            // Escape to close search, context menu, or layout panel
+            // Ctrl+E / Cmd+E to toggle export menu
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+                e.preventDefault();
+                setExportMenuVisible(prev => !prev);
+            }
+            // Escape to close search, context menu, layout panel, or export menu
             if (e.key === 'Escape') {
                 setSearchVisible(false);
                 setContextMenuNode(null);
                 setLayoutPanelVisible(false);
+                setExportMenuVisible(false);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
     // Update graph when debounced filters, layout type, or selection change
+    // ... (same as before)
     (0, react_1.useEffect)(() => {
+        // ... (runLayout implementation)
         if (!rawData)
             return;
         const { nodes: rawNodes, edges: rawEdges } = rawData;
@@ -677,8 +806,10 @@ const ArchitectureGraphInner = () => {
         };
         runLayout();
     }, [debouncedFilters, selectedNode, rawData, layoutType, setNodes, setEdges]);
+    // Message handling
     (0, react_1.useEffect)(() => {
         const handleMessage = (event) => {
+            // ... (message handling logic same as before)
             const message = event.data;
             // Handle loading state
             if (message.command === 'loading') {
@@ -737,25 +868,23 @@ const ArchitectureGraphInner = () => {
             }
         };
         window.addEventListener('message', handleMessage);
-        // Request data from extension
-        const vscode = acquireVsCodeApi();
-        vscodeRef.current = vscode;
+        // Request data (using stable vscode instance)
         vscode.postMessage({ command: 'requestArchitecture' });
         return () => {
             window.removeEventListener('message', handleMessage);
         };
-    }, [setNodes, setEdges]);
+    }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
     // Memoize minimap node color function
     const minimapNodeColor = (0, react_1.useCallback)((node) => {
         if (node.data?.type === 'directory')
-            return NODE_COLORS.directory;
+            return exports.NODE_COLORS.directory;
         if (node.data?.type === 'function')
-            return NODE_COLORS.function;
+            return exports.NODE_COLORS.function;
         if (node.data?.type === 'class')
-            return NODE_COLORS.class;
+            return exports.NODE_COLORS.class;
         if (node.data?.language)
-            return NODE_COLORS[node.data.language] || NODE_COLORS.default;
-        return NODE_COLORS.default;
+            return exports.NODE_COLORS[node.data.language] || exports.NODE_COLORS.default;
+        return exports.NODE_COLORS.default;
     }, []);
     // Clustering logic (#11) - compute clusters when rawData changes
     (0, react_1.useEffect)(() => {
@@ -849,6 +978,12 @@ const ArchitectureGraphInner = () => {
             vscodeRef.current.postMessage({ command: 'analyzeRepository' });
         }
     }, []);
+    // Calculate available languages from stats
+    const availableLanguages = (0, react_1.useMemo)(() => {
+        if (!stats || !stats.filesByLanguage)
+            return [];
+        return Object.keys(stats.filesByLanguage).sort();
+    }, [stats]);
     // Show error state
     if (errorMessage) {
         return (react_1.default.createElement("div", { className: "error-container" },
@@ -864,16 +999,17 @@ const ArchitectureGraphInner = () => {
             react_1.default.createElement("div", { className: "loading-spinner" }),
             react_1.default.createElement("p", null, loadingMessage)));
     }
-    return (react_1.default.createElement("div", { style: { width: '100%', height: '100%', position: 'relative' } },
+    return (react_1.default.createElement("div", { ref: reactFlowWrapperRef, style: { width: '100%', height: '100%', position: 'relative' } },
         react_1.default.createElement(StatsDisplay, { stats: stats, source: dataSource }),
-        react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size || (filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false) }),
+        react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size > 0 ? matchingNodeIds.size : (filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false), availableLanguages: availableLanguages }),
         !searchVisible && (react_1.default.createElement("button", { className: "search-toggle-btn", onClick: () => setSearchVisible(true), title: "Search & Filter (Ctrl+F)" }, "\uD83D\uDD0D")),
         react_1.default.createElement(LayoutPanel, { currentLayout: layoutType, onLayoutChange: setLayoutType, isLayouting: isLayouting, isVisible: layoutPanelVisible, onClose: () => setLayoutPanelVisible(false) }),
         !layoutPanelVisible && (react_1.default.createElement("button", { className: "layout-toggle-btn", onClick: () => setLayoutPanelVisible(true), title: "Layout Algorithm (Ctrl+L)" }, "\uD83D\uDCD0")),
+        !exportMenuVisible && (react_1.default.createElement("button", { className: "export-toggle-btn", onClick: () => setExportMenuVisible(true), title: "Export Graph (Ctrl+E)" }, "\uD83D\uDCE5")),
         react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, nodeTypes: nodeTypes, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
             }, style: { background: 'var(--am-bg)' } },
-            react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null }),
+            react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null, nodeColors: exports.NODE_COLORS, onNodeClick: handleMiniMapNodeClick }),
             react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 16, size: 1, color: "var(--am-fg)", style: { opacity: 0.15 } })),
         react_1.default.createElement(ZoomControls_1.ZoomControls, { zoomPan: zoomPan, position: "bottom-left" }),
         clusteringEnabled && clusters.length > 0 && (react_1.default.createElement("div", { className: "cluster-controls" },
@@ -900,6 +1036,7 @@ const ArchitectureGraphInner = () => {
                 }
             }, onClose: () => setRelationshipVisible(false) })),
         keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) })),
+        react_1.default.createElement(ExportModal_1.ExportModal, { isOpen: exportMenuVisible, onClose: () => setExportMenuVisible(false), nodes: nodes, edges: edges, rawData: rawData, reactFlowWrapper: reactFlowWrapperRef.current, source: rawData?.source || 'local' }),
         react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider

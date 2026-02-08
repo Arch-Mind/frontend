@@ -12,7 +12,19 @@
         "strict": true,
         "jsx": "react",
         "esModuleInterop": true,
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "baseUrl": ".",
+        "paths": {
+            "@components/*": [
+                "src/components/*"
+            ],
+            "@hooks/*": [
+                "src/hooks/*"
+            ],
+            "@utils/*": [
+                "src/utils/*"
+            ]
+        }
     },
     "exclude": [
         "node_modules",

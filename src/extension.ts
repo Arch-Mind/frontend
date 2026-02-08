@@ -4,12 +4,31 @@ import * as fs from 'fs';
 import { getApiClient, resetApiClient, ApiRequestError, TransformedGraphData } from './api';
 import { LocalParser } from './analyzer/localParser';
 
+import { AnalysisService } from './services/analysisService';
+import { DependencyCodeLensProvider } from './providers/DependencyCodeLensProvider';
+import { FingerprintService } from './services/fingerprintService';
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('ArchMind VS Code Extension is now active!');
 
     // Initialize LocalParser
     const localParser = LocalParser.getInstance(context.extensionUri);
     localParser.initialize();
+
+    // Initialize FingerprintService
+    FingerprintService.getInstance(context);
+
+    // Initialize AnalysisService
+    const analysisService = AnalysisService.getInstance();
+
+    // Register CodeLens Provider
+    const codeLensProvider = new DependencyCodeLensProvider(analysisService);
+    context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider(
+            ['typescript', 'javascript', 'python', 'rust', 'go'],
+            codeLensProvider
+        )
+    );
 
     // Register active document change listeners
     const onActiveEditorChanged = vscode.window.onDidChangeActiveTextEditor(async editor => {
@@ -26,12 +45,94 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Register main architecture view command
-    let showArchitectureCmd = vscode.commands.registerCommand('archmind.showArchitecture', () => {
+    let showArchitectureCmd = vscode.commands.registerCommand('archmind.showArchitecture', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
+
+        // Trigger backend/full analysis via service if workspace is open
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            try {
+                // Determine if we need to run analysis (if no data yet)
+                if (!analysisService.getData()) {
+                    vscode.window.withProgress({
+                        location: vscode.ProgressLocation.Notification,
+                        title: "Analyzing workspace...",
+                        cancellable: false
+                    }, async () => {
+                        await analysisService.analyze(rootPath);
+                        // Panel will pick up data if it listens to service, or we push it
+                        // For now, let's keep existing push mechanism in ArchitecturePanel for now
+                        // But updated to use service data? 
+                        // Actually, let's let the Panel handle its own loading invocation for now to avoid breaking existing flow,
+                        // calling `analyzeWorkspace` directly. 
+                        // Ideally checking `analysisService` first would be better.
+                    });
+                }
+            } catch (e) {
+                console.error("Analysis failed", e);
+            }
+        }
+
         // Trigger initial parse if editor is active
         if (vscode.window.activeTextEditor) {
             parseAndSendLocalData(vscode.window.activeTextEditor.document, localParser);
         }
+    });
+
+    // Register commands for CodeLens interactions
+    vscode.commands.registerCommand('archmind.showCallers', (filePath: string, funcName: string, callers: any[]) => {
+        // Show a quick pick or jump to location
+        if (callers.length === 0) return;
+
+        const items = callers.map(c => {
+            // Edge ID format: e-source-target-line
+            // We need source details. 
+            // Ideally we should have the source node info available.
+            // For now, let's just show the source ID
+            return {
+                label: c.source,
+                description: `Line: ${c.id.split('-').pop()}`,
+                detail: 'Click to navigate'
+            };
+        });
+
+        vscode.window.showQuickPick(items, { placeHolder: `Callers of ${funcName}` }).then(selection => {
+            if (selection) {
+                // Navigate to file
+                // Source ID usually is file path (for top level) or file#func
+                // We need to parse it. 
+                let targetPath = selection.label;
+                if (targetPath.includes('#')) {
+                    targetPath = targetPath.split('#')[0];
+                }
+
+                vscode.workspace.openTextDocument(targetPath).then(doc => {
+                    vscode.window.showTextDocument(doc);
+                });
+            }
+        });
+    });
+
+    vscode.commands.registerCommand('archmind.showCalls', (filePath: string, funcName: string, calls: any[]) => {
+        const items = calls.map(c => {
+            return {
+                label: c.target,
+                description: `Line: ${c.id.split('-').pop()}`,
+                detail: 'Click to navigate'
+            };
+        });
+
+        vscode.window.showQuickPick(items, { placeHolder: `Calls from ${funcName}` }).then(selection => {
+            if (selection) {
+                let targetPath = selection.label;
+                if (targetPath.includes('#')) {
+                    targetPath = targetPath.split('#')[0];
+                }
+                vscode.workspace.openTextDocument(targetPath).then(doc => {
+                    vscode.window.showTextDocument(doc);
+                });
+            }
+        });
     });
 
     // Register backend analysis command
@@ -41,6 +142,18 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register refresh command
     let refreshGraphCmd = vscode.commands.registerCommand('archmind.refreshGraph', async () => {
+        // Trigger re-analysis via service
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Refreshing analysis...",
+                cancellable: false
+            }, async () => {
+                await analysisService.analyze(rootPath);
+            });
+        }
+
         if (ArchitecturePanel.currentPanel) {
             await ArchitecturePanel.currentPanel.refresh();
             // Also refresh local data

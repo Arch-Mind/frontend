@@ -54,6 +54,9 @@ import { ZoomControls } from './ZoomControls';
 // Relationship Visualizer imports (#21)
 import { RelationshipVisualizer } from './RelationshipVisualizer';
 
+// Export Modal imports
+import { ExportModal } from '../components/ExportModal';
+
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode,
@@ -77,6 +80,7 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 // Types matching the backend analyzer
+// Types matching the backend analyzer
 interface RawNode {
     id: string;
     label: string;
@@ -88,6 +92,7 @@ interface RawNode {
     filePath?: string;
     lineNumber?: number;
     endLineNumber?: number;
+    status?: 'unchanged' | 'modified' | 'added' | 'deleted';
 }
 
 interface RawEdge {
@@ -114,7 +119,7 @@ interface ArchitectureData {
 }
 
 // Color scheme for different node types
-const NODE_COLORS: Record<string, string> = {
+export const NODE_COLORS: Record<string, string> = {
     directory: '#4a9eff',
     typescript: '#3178c6',
     javascript: '#f7df1e',
@@ -130,8 +135,18 @@ const NODE_COLORS: Record<string, string> = {
     default: '#6b7280',
 };
 
+// Status colors
+const STATUS_COLORS: Record<string, string> = {
+    modified: '#e67e22', // Orange for modified
+    added: '#2ecc71',    // Green for added
+    deleted: '#e74c3c',  // Red for deleted
+};
+
 // Get color based on node type/language
 function getNodeColor(node: RawNode): string {
+    if (node.status && node.status !== 'unchanged' && STATUS_COLORS[node.status]) {
+        return STATUS_COLORS[node.status];
+    }
     if (node.type === 'directory') return NODE_COLORS.directory;
     if (node.type === 'function') return NODE_COLORS.function;
     if (node.type === 'class') return NODE_COLORS.class;
@@ -141,21 +156,44 @@ function getNodeColor(node: RawNode): string {
 }
 
 // Search filter types
-type NodeTypeFilter = 'all' | 'file' | 'directory' | 'function' | 'class' | 'module';
+type NodeTypeFilter = 'file' | 'directory' | 'function' | 'class' | 'module';
 
 interface SearchFilters {
     searchTerm: string;
-    nodeType: NodeTypeFilter;
+    nodeTypes: NodeTypeFilter[]; // Multi-select
+    languages: string[];         // Multi-select
     pathPattern: string;
+    showNeighbors: boolean;      // Show connected nodes
 }
 
 // Check if a node matches the search filters
 function matchesFilters(node: RawNode, filters: SearchFilters): boolean {
-    const { searchTerm, nodeType, pathPattern } = filters;
+    const { searchTerm, nodeTypes, languages, pathPattern } = filters;
 
-    // Filter by node type
-    if (nodeType !== 'all' && node.type !== nodeType) {
+    // Filter by node type (if any selected)
+    if (nodeTypes.length > 0 && !nodeTypes.includes(node.type)) {
         return false;
+    }
+
+    // Filter by language (if any selected)
+    // Only applies to nodes that have a language property (files, functions, classes)
+    if (languages.length > 0) {
+        if (!node.language || !languages.includes(node.language)) {
+            // If it's a directory, we might want to show it if it contains matching files?
+            // For now, strict filtering: if language filter is active, only show nodes of that language.
+            // Directories usually don't have a specific language, so they might be hidden unless we handle them.
+            // Let's say directories match if their children match? No, that's complex path filtering.
+            // Simple rule: If language filter is on, hide anything that isn't that language.
+            // BUT: Directories don't have language. Maybe we should always show directories? 
+            // Or only if node.language is present.
+            if (node.type !== 'directory') {
+                return false;
+            }
+            // For directories, we default to hidden if we are strictly filtering by language?
+            // Actually, usually users want to see the structure. 
+            // Let's decide: strict filtering hides directories.
+            return false;
+        }
     }
 
     // Filter by path pattern (glob-like matching)
@@ -197,17 +235,42 @@ const NODE_HEIGHT = 40;
 // Calculate matching node IDs based on filters
 function calculateMatchingNodeIds(
     nodes: RawNode[],
+    edges: RawEdge[],
     filters: SearchFilters
 ): Set<string> {
     const matchingNodeIds = new Set<string>();
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const { searchTerm, nodeTypes, languages, pathPattern, showNeighbors } = filters;
+    const hasActiveFilter = searchTerm || nodeTypes.length > 0 || languages.length > 0 || pathPattern;
 
-    if (hasActiveFilter) {
-        nodes.forEach(node => {
-            if (matchesFilters(node, filters)) {
-                matchingNodeIds.add(node.id);
+    if (!hasActiveFilter) {
+        return matchingNodeIds; // Empty set means everything matches (or is handled by caller)
+    }
+
+    // Pass 1: Direct matches
+    nodes.forEach(node => {
+        if (matchesFilters(node, filters)) {
+            matchingNodeIds.add(node.id);
+        }
+    });
+
+    // Pass 2: Neighbors (if enabled)
+    if (showNeighbors && matchingNodeIds.size > 0) {
+        // Find all edges connected to matching nodes
+        // We iterate edges to find neighbors
+        // This acts as "bfs" of depth 1
+        const neighborIds = new Set<string>();
+
+        edges.forEach(edge => {
+            if (matchingNodeIds.has(edge.source)) {
+                neighborIds.add(edge.target);
+            }
+            if (matchingNodeIds.has(edge.target)) {
+                neighborIds.add(edge.source);
             }
         });
+
+        // Add neighbors to matching set
+        neighborIds.forEach(id => matchingNodeIds.add(id));
     }
 
     return matchingNodeIds;
@@ -221,17 +284,19 @@ function createStyledNode(
     isSelected: boolean
 ): Node {
     const color = getNodeColor(node);
+    const isChanged = node.status && node.status !== 'unchanged';
 
     return {
         id: node.id,
         data: {
-            label: node.label,
+            label: node.label + (isChanged ? ` (${node.status})` : ''),
             type: node.type,
             language: node.language,
             extension: node.extension,
             filePath: node.filePath || node.id,
             lineNumber: node.lineNumber,
             endLineNumber: node.endLineNumber,
+            status: node.status, // Pass status to data
         },
         position,
         style: {
@@ -244,6 +309,7 @@ function createStyledNode(
             borderRadius: node.type === 'directory' ? 8 : 4,
             opacity: isMatching ? 1 : 0.3,
             boxShadow: isSelected ? '0 0 10px var(--am-accent)' : undefined,
+            borderStyle: isChanged ? 'dashed' : 'solid', // Dashed border for changed files
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
     };
@@ -256,8 +322,8 @@ function calculateHierarchicalLayout(
     filters: SearchFilters,
     selectedNodeId: string | null
 ): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
-    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
 
     // Group nodes by depth
     const nodesByDepth: Map<number, RawNode[]> = new Map();
@@ -299,8 +365,8 @@ function calculateDagreLayout(
     selectedNodeId: string | null,
     direction: 'TB' | 'LR'
 ): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
-    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
 
     const layoutNodes: LayoutNode[] = nodes.map(n => ({
         id: n.id,
@@ -336,8 +402,8 @@ async function calculateElkLayout(
     selectedNodeId: string | null,
     algorithm: 'layered' | 'force'
 ): Promise<{ layoutedNodes: Node[]; matchingNodeIds: Set<string> }> {
-    const matchingNodeIds = calculateMatchingNodeIds(nodes, filters);
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
 
     const layoutNodes: LayoutNode[] = nodes.map(n => ({
         id: n.id,
@@ -484,7 +550,7 @@ interface SearchPanelProps {
     onClose: () => void;
 }
 
-const SearchPanel: React.FC<SearchPanelProps> = ({
+const SearchPanel: React.FC<SearchPanelProps & { availableLanguages: string[] }> = ({
     filters,
     onFiltersChange,
     matchCount,
@@ -492,6 +558,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
     onFocusSelection,
     isVisible,
     onClose,
+    availableLanguages
 }) => {
     const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -503,7 +570,25 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 
     if (!isVisible) return null;
 
-    const hasActiveFilter = filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern;
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
+
+    const toggleNodeType = (type: NodeTypeFilter) => {
+        const current = filters.nodeTypes;
+        if (current.includes(type)) {
+            onFiltersChange({ ...filters, nodeTypes: current.filter(t => t !== type) });
+        } else {
+            onFiltersChange({ ...filters, nodeTypes: [...current, type] });
+        }
+    };
+
+    const toggleLanguage = (lang: string) => {
+        const current = filters.languages;
+        if (current.includes(lang)) {
+            onFiltersChange({ ...filters, languages: current.filter(l => l !== lang) });
+        } else {
+            onFiltersChange({ ...filters, languages: [...current, lang] });
+        }
+    };
 
     return (
         <div className="search-panel">
@@ -525,22 +610,6 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
             </div>
 
             <div className="search-field">
-                <label>Filter by type:</label>
-                <select
-                    value={filters.nodeType}
-                    onChange={(e) => onFiltersChange({ ...filters, nodeType: e.target.value as NodeTypeFilter })}
-                    className="search-select"
-                >
-                    <option value="all">All Types</option>
-                    <option value="file">📄 Files</option>
-                    <option value="directory">📁 Directories</option>
-                    <option value="function">⚡ Functions</option>
-                    <option value="class">🏷️ Classes</option>
-                    <option value="module">📦 Modules</option>
-                </select>
-            </div>
-
-            <div className="search-field">
                 <label>Path pattern:</label>
                 <input
                     type="text"
@@ -549,6 +618,51 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
                     onChange={(e) => onFiltersChange({ ...filters, pathPattern: e.target.value })}
                     className="search-input"
                 />
+            </div>
+
+            <div className="search-section">
+                <label>Filter by Type:</label>
+                <div className="checkbox-group">
+                    {['file', 'directory', 'function', 'class', 'module'].map(type => (
+                        <label key={type} className="checkbox-label">
+                            <input
+                                type="checkbox"
+                                checked={filters.nodeTypes.includes(type as NodeTypeFilter)}
+                                onChange={() => toggleNodeType(type as NodeTypeFilter)}
+                            />
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </label>
+                    ))}
+                </div>
+            </div>
+
+            {availableLanguages.length > 0 && (
+                <div className="search-section">
+                    <label>Filter by Language:</label>
+                    <div className="checkbox-group">
+                        {availableLanguages.map(lang => (
+                            <label key={lang} className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={filters.languages.includes(lang)}
+                                    onChange={() => toggleLanguage(lang)}
+                                />
+                                {lang}
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div className="search-field toggle-field">
+                <label className="checkbox-label">
+                    <input
+                        type="checkbox"
+                        checked={filters.showNeighbors}
+                        onChange={(e) => onFiltersChange({ ...filters, showNeighbors: e.target.checked })}
+                    />
+                    Show Reachable Neighbors
+                </label>
             </div>
 
             <div className="search-results">
@@ -572,7 +686,13 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
                 </button>
                 <button
                     className="search-btn secondary"
-                    onClick={() => onFiltersChange({ searchTerm: '', nodeType: 'all', pathPattern: '' })}
+                    onClick={() => onFiltersChange({
+                        searchTerm: '',
+                        nodeTypes: [],
+                        languages: [],
+                        pathPattern: '',
+                        showNeighbors: false
+                    })}
                     disabled={!hasActiveFilter}
                 >
                     Clear Filters
@@ -582,6 +702,29 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
             <div className="search-hint">
                 <kbd>Ctrl</kbd>+<kbd>F</kbd> to toggle search
             </div>
+
+            <style>{`
+                .search-section { margin-bottom: 12px; }
+                .checkbox-group { 
+                    display: flex; 
+                    flex-wrap: wrap; 
+                    gap: 8px; 
+                    margin-top: 4px;
+                }
+                .checkbox-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    background: var(--am-bg-lighter);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    border: 1px solid var(--am-border);
+                }
+                .checkbox-label:hover { background: var(--am-bg-hover); }
+                .toggle-field { margin-top: 8px; }
+            `}</style>
         </div>
     );
 };
@@ -763,6 +906,12 @@ const LayoutPanel: React.FC<LayoutPanelProps> = ({
 
 // Inner component that uses ReactFlow hooks
 const ArchitectureGraphInner: React.FC = () => {
+    // VS Code API reference - memoized to call only once
+    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
+
+    const state = vscode.getState() as { filters?: SearchFilters; layoutType?: LayoutType } || {};
+
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [stats, setStats] = useState<GraphStats | null>(null);
@@ -772,12 +921,14 @@ const ArchitectureGraphInner: React.FC = () => {
     const [dataSource, setDataSource] = useState<'local' | 'backend'>('local');
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-    // Search and filter state
+    // Search and filter state - initialized from persistence
     const [searchVisible, setSearchVisible] = useState(false);
-    const [filters, setFilters] = useState<SearchFilters>({
+    const [filters, setFilters] = useState<SearchFilters>(state.filters || {
         searchTerm: '',
-        nodeType: 'all',
+        nodeTypes: [],
+        languages: [],
         pathPattern: '',
+        showNeighbors: false,
     });
 
     // Debounce filters for performance on large graphs (200ms delay)
@@ -800,10 +951,15 @@ const ArchitectureGraphInner: React.FC = () => {
     const [localFileName, setLocalFileName] = useState<string>('');
     const [localOutlineVisible, setLocalOutlineVisible] = useState<boolean>(true);
 
-    // Layout state
-    const [layoutType, setLayoutType] = useState<LayoutType>('hierarchical');
+    // Layout state - initialized from persistence
+    const [layoutType, setLayoutType] = useState<LayoutType>(state.layoutType || 'hierarchical');
     const [layoutPanelVisible, setLayoutPanelVisible] = useState(false);
     const [isLayouting, setIsLayouting] = useState(false);
+
+    // Persist state when filters or layout change
+    useEffect(() => {
+        vscode.setState({ filters, layoutType });
+    }, [filters, layoutType, vscode]);
 
     // Clustering state (#11)
     const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -819,6 +975,10 @@ const ArchitectureGraphInner: React.FC = () => {
 
     // Relationship Visualizer state (#21)
     const [relationshipVisible, setRelationshipVisible] = useState(false);
+
+    // Export Menu state
+    const [exportMenuVisible, setExportMenuVisible] = useState(false);
+    const reactFlowWrapperRef = useRef<HTMLDivElement>(null);
 
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
@@ -840,8 +1000,9 @@ const ArchitectureGraphInner: React.FC = () => {
         }
     });
 
-    // VS Code API reference
-    const vscodeRef = useRef<ReturnType<typeof acquireVsCodeApi> | null>(null);
+    // (Removed duplicate vscodeRef init)
+
+    // ... (onConnect, mouse handlers...)
 
     const onConnect = useCallback(
         (params: Connection) => setEdges((eds) => addEdge(params, eds)),
@@ -862,6 +1023,8 @@ const ArchitectureGraphInner: React.FC = () => {
             });
         }
     }, []);
+
+    // ... (rest of handlers)
 
     // Handle node right-click - show context menu
     const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
@@ -884,6 +1047,7 @@ const ArchitectureGraphInner: React.FC = () => {
     const handleContextMenuAction = useCallback((action: string) => {
         if (!contextMenuNode || !vscodeRef.current) return;
 
+        // ... (implementation same as before)
         const filePath = contextMenuNode.data.filePath || contextMenuNode.id;
         const lineNumber = contextMenuNode.data.lineNumber;
 
@@ -966,7 +1130,7 @@ const ArchitectureGraphInner: React.FC = () => {
         }
 
         setContextMenuNode(null);
-    }, [contextMenuNode]);
+    }, [contextMenuNode, rawData]);
 
     // Focus on filtered/matching nodes
     const handleFocusSelection = useCallback(() => {
@@ -995,11 +1159,17 @@ const ArchitectureGraphInner: React.FC = () => {
                 e.preventDefault();
                 setLayoutPanelVisible(prev => !prev);
             }
-            // Escape to close search, context menu, or layout panel
+            // Ctrl+E / Cmd+E to toggle export menu
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+                e.preventDefault();
+                setExportMenuVisible(prev => !prev);
+            }
+            // Escape to close search, context menu, layout panel, or export menu
             if (e.key === 'Escape') {
                 setSearchVisible(false);
                 setContextMenuNode(null);
                 setLayoutPanelVisible(false);
+                setExportMenuVisible(false);
             }
         };
 
@@ -1008,9 +1178,11 @@ const ArchitectureGraphInner: React.FC = () => {
     }, []);
 
     // Update graph when debounced filters, layout type, or selection change
-    useEffect(() => {
-        if (!rawData) return;
+    // ... (same as before)
 
+    useEffect(() => {
+        // ... (runLayout implementation)
+        if (!rawData) return;
         const { nodes: rawNodes, edges: rawEdges } = rawData;
 
         // Use async layout calculation
@@ -1039,8 +1211,11 @@ const ArchitectureGraphInner: React.FC = () => {
         runLayout();
     }, [debouncedFilters, selectedNode, rawData, layoutType, setNodes, setEdges]);
 
+
+    // Message handling
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
+            // ... (message handling logic same as before)
             const message = event.data;
 
             // Handle loading state
@@ -1116,15 +1291,13 @@ const ArchitectureGraphInner: React.FC = () => {
 
         window.addEventListener('message', handleMessage);
 
-        // Request data from extension
-        const vscode = acquireVsCodeApi();
-        vscodeRef.current = vscode;
+        // Request data (using stable vscode instance)
         vscode.postMessage({ command: 'requestArchitecture' });
 
         return () => {
             window.removeEventListener('message', handleMessage);
         };
-    }, [setNodes, setEdges]);
+    }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
 
     // Memoize minimap node color function
     const minimapNodeColor = useCallback((node: Node) => {
@@ -1235,6 +1408,12 @@ const ArchitectureGraphInner: React.FC = () => {
         }
     }, []);
 
+    // Calculate available languages from stats
+    const availableLanguages = useMemo(() => {
+        if (!stats || !stats.filesByLanguage) return [];
+        return Object.keys(stats.filesByLanguage).sort();
+    }, [stats]);
+
     // Show error state
     if (errorMessage) {
         return (
@@ -1264,18 +1443,19 @@ const ArchitectureGraphInner: React.FC = () => {
     }
 
     return (
-        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div ref={reactFlowWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
             <StatsDisplay stats={stats} source={dataSource} />
 
             {/* Search Panel */}
             <SearchPanel
                 filters={filters}
                 onFiltersChange={setFilters}
-                matchCount={matchingNodeIds.size || (filters.searchTerm || filters.nodeType !== 'all' || filters.pathPattern ? 0 : rawData?.nodes.length || 0)}
+                matchCount={matchingNodeIds.size > 0 ? matchingNodeIds.size : (filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern ? 0 : rawData?.nodes.length || 0)}
                 totalCount={rawData?.nodes.length || 0}
                 onFocusSelection={handleFocusSelection}
                 isVisible={searchVisible}
                 onClose={() => setSearchVisible(false)}
+                availableLanguages={availableLanguages}
             />
 
             {/* Search Toggle Button */}
@@ -1309,6 +1489,17 @@ const ArchitectureGraphInner: React.FC = () => {
                 </button>
             )}
 
+            {/* Export Toggle Button */}
+            {!exportMenuVisible && (
+                <button
+                    className="export-toggle-btn"
+                    onClick={() => setExportMenuVisible(true)}
+                    title="Export Graph (Ctrl+E)"
+                >
+                    📥
+                </button>
+            )}
+
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1332,6 +1523,8 @@ const ArchitectureGraphInner: React.FC = () => {
                 <EnhancedMiniMap
                     selectedNodeId={selectedNode}
                     hoveredNodeId={hoveredNode?.id || null}
+                    nodeColors={NODE_COLORS}
+                    onNodeClick={handleMiniMapNodeClick}
                 />
                 <Background
                     variant={BackgroundVariant.Dots}
@@ -1413,6 +1606,18 @@ const ArchitectureGraphInner: React.FC = () => {
             {keyboardHelpVisible && (
                 <KeyboardHelp onClose={() => setKeyboardHelpVisible(false)} />
             )}
+
+            {/* Export Modal */}
+            <ExportModal
+                isOpen={exportMenuVisible}
+                onClose={() => setExportMenuVisible(false)}
+                nodes={nodes}
+                edges={edges}
+                rawData={rawData}
+                reactFlowWrapper={reactFlowWrapperRef.current}
+                source={rawData?.source || 'local'}
+            />
+
 
             <LocalOutline
                 fileName={localFileName}

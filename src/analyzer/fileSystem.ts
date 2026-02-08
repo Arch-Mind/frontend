@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { parseFileDependencies, parseFileSymbols, parseFunctionCalls, SymbolInfo, ImportInfo, FunctionCall } from './dependencyParser';
+import { FingerprintService, FileStatus } from '../services/fingerprintService';
 
 // File extension to language mapping for better visualization
 const FILE_EXTENSIONS: Record<string, string> = {
@@ -51,6 +52,8 @@ export interface GraphNode {
     lineNumber?: number;
     /** End line number for the symbol */
     endLineNumber?: number;
+    /** Status of the file relative to last sync */
+    status?: FileStatus;
 }
 
 export interface GraphEdge {
@@ -61,17 +64,19 @@ export interface GraphEdge {
     type: 'contains' | 'imports' | 'calls';
 }
 
+export interface GraphStats {
+    totalFiles: number;
+    totalDirectories: number;
+    totalFunctions: number;
+    totalClasses: number;
+    filesByLanguage: Record<string, number>;
+}
+
 export interface GraphData {
     nodes: GraphNode[];
     edges: GraphEdge[];
     /** Statistics about the analyzed workspace */
-    stats: {
-        totalFiles: number;
-        totalDirectories: number;
-        totalFunctions: number;
-        totalClasses: number;
-        filesByLanguage: Record<string, number>;
-    };
+    stats: GraphStats;
 }
 
 interface FileCacheEntry {
@@ -99,26 +104,22 @@ function getFileMetadata(filename: string): { extension?: string; language?: str
     if (!ext) return {};
 
     return {
-        extension: ext.slice(1), // Remove the dot
-        language: FILE_EXTENSIONS[ext],
+        extension: ext.substring(1),
+        language: FILE_EXTENSIONS[ext]
     };
 }
 
 /**
- * Gets cached analysis data or parses the file if changed
+ * Analyzing a single file to extract imports, symbols, and calls
  */
-function getFileAnalysis(filePath: string): FileCacheEntry {
-    let mtime = 0;
-    try {
-        mtime = fs.statSync(filePath).mtimeMs;
-    } catch {
-        // File might have been deleted
-        return { mtime: 0, imports: [], symbols: [], calls: [] };
-    }
+function getFileAnalysis(filePath: string): { imports: ImportInfo[], symbols: SymbolInfo[], calls: FunctionCall[] } {
+    const stats = fs.statSync(filePath);
+    const mtime = stats.mtimeMs;
 
+    // Check cache
     const cached = fileCache.get(filePath);
     if (cached && cached.mtime === mtime) {
-        return cached;
+        return { imports: cached.imports, symbols: cached.symbols, calls: cached.calls };
     }
 
     // Parse fresh
@@ -126,9 +127,10 @@ function getFileAnalysis(filePath: string): FileCacheEntry {
     const symbols = parseFileSymbols(filePath);
     const calls = parseFunctionCalls(filePath, imports);
 
-    const entry: FileCacheEntry = { mtime, imports, symbols, calls };
-    fileCache.set(filePath, entry);
-    return entry;
+    // Update cache
+    fileCache.set(filePath, { mtime, imports, symbols, calls });
+
+    return { imports, symbols, calls };
 }
 
 /**
@@ -139,13 +141,16 @@ function getFileAnalysis(filePath: string): FileCacheEntry {
 export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
-    const stats = {
+    const stats: GraphStats = {
         totalFiles: 0,
         totalDirectories: 0,
         totalFunctions: 0,
         totalClasses: 0,
-        filesByLanguage: {} as Record<string, number>,
+        filesByLanguage: {},
     };
+
+    const fingerprintService = FingerprintService.getInstance();
+    const newSnapshots: Record<string, string> = {};
 
     async function traverse(currentPath: string, depth: number, parentId?: string): Promise<void> {
         let entries: fs.Dirent[];
@@ -178,6 +183,7 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
 
             // Get file metadata for files
             const metadata = isDirectory ? {} : getFileMetadata(entry.name);
+            let fileStatus: FileStatus = 'unchanged';
 
             // Update statistics
             if (isDirectory) {
@@ -187,6 +193,24 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                 if (metadata.language) {
                     stats.filesByLanguage[metadata.language] =
                         (stats.filesByLanguage[metadata.language] || 0) + 1;
+                }
+
+                // Compute hash and check status
+                try {
+                    const content = await fs.promises.readFile(fullPath, 'utf-8');
+                    const hash = fingerprintService.computeHash(content);
+                    const storedHash = fingerprintService.getStoredHash(fullPath);
+
+                    if (!storedHash) {
+                        fileStatus = 'added';
+                    } else if (hash !== storedHash) {
+                        fileStatus = 'modified';
+                    }
+
+                    // Track for saving later
+                    newSnapshots[fullPath] = hash;
+                } catch (e) {
+                    console.error(`Failed to process hash for ${fullPath}`, e);
                 }
 
                 // Analyze dependencies and symbols for supported files
@@ -230,6 +254,7 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                             filePath: fullPath,
                             lineNumber: symbol.lineNumber,
                             endLineNumber: symbol.endLineNumber,
+                            status: fileStatus // Inherit status from file for now, or refine later logic
                         });
 
                         // Add edge from file to symbol
@@ -284,6 +309,7 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
                 parentId,
                 depth,
                 filePath: fullPath,
+                status: fileStatus,
                 ...metadata,
             });
 
@@ -314,6 +340,18 @@ export async function analyzeWorkspace(rootPath: string): Promise<GraphData> {
     stats.totalDirectories++;
 
     await traverse(rootPath, 1, rootPath);
+
+    // Check for deleted files
+    // (Optional: Compare keys of newSnapshots with stored keys)
+    // For now, we just save the new state effectively creating a "sync" point
+
+    // Save snapshots - technically this should be done after successful analysis
+    // But since analyzeWorkspace is just a function, we might want to let the caller handle persistence
+    // However, we are calling fingerprintService directly here. 
+    // Let's rely on the caller (AnalysisService) to finalize the "sync" if needed, 
+    // OR we just save here as part of "Analysis Complete". 
+    // Given the requirement "Store/Retrieve fingerprints from workspaceState", saving here ensures consistency.
+    await fingerprintService.saveSnapshots(newSnapshots);
 
     return { nodes, edges, stats };
 }
