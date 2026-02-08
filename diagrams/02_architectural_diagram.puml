@@ -1,0 +1,245 @@
+@startuml ArchMind_Architectural_Diagram
+
+!theme plain
+skinparam componentStyle uml2
+skinparam linetype ortho
+skinparam packageBorderColor #555555
+skinparam packageFontSize 14
+skinparam componentFontSize 12
+skinparam noteFontSize 10
+
+title ArchMind — System Architecture Diagram\nReal-Time Codebase Intelligence Platform
+
+' ──────────────────────────────────────────────
+'  PRESENTATION LAYER (Client Side)
+' ──────────────────────────────────────────────
+
+package "Presentation Layer (Client)" #E8EAF6 {
+
+    package "VS Code Editor" #C5CAE9 {
+        [Extension Host] as exthost
+        [Command Palette\n(Ctrl+Shift+P)] as cmdpal
+        [Settings Manager\n(archmind.*)] as settings
+
+        package "Extension Core (TypeScript)" #9FA8DA {
+            [Extension Activator\n(extension.ts)] as activator
+            [Workspace Analyzer\n(fileSystem.ts)] as workspace
+            [Local Parser\n(Tree-sitter WASM)] as localparser
+            [API Client\n(HTTP/Fetch)] as apiclient
+            [File Watcher\n(fs.watch)] as filewatcher
+            [CodeLens Provider] as codelens
+        }
+
+        package "WebView Panel (React + ReactFlow)" #7986CB {
+            [Architecture Graph\n(ArchitectureGraph.tsx)] as archgraph
+            [Search & Filter Bar\n(SearchBar.tsx)] as searchbar
+            [Theme Toggle\n(ThemeContext.tsx)] as theme
+            [Mini-map Navigator\n(EnhancedMiniMap.tsx)] as minimap
+            [Export Modal\n(ExportModal.tsx)] as exportmodal
+            [Impact Visualizer] as impactviz
+            [Cluster Node\n(ClusterNode.tsx)] as cluster
+            [Zoom/Pan Controls\n(gestureHandler.ts)] as zoompan
+        }
+    }
+}
+
+' ──────────────────────────────────────────────
+'  COMMUNICATION LAYER
+' ──────────────────────────────────────────────
+
+package "Communication Layer" #FFF9C4 {
+    [VS Code Webview API\n(postMessage)] as webviewapi
+    [REST API\n(HTTP/JSON)] as restapi
+    [WebSocket\n(Real-time Updates)] as websocket
+}
+
+' ──────────────────────────────────────────────
+'  APPLICATION LAYER (Backend Services)
+' ──────────────────────────────────────────────
+
+package "Application Layer (Backend)" #E8F5E9 {
+
+    package "API Gateway (Go)" #A5D6A7 {
+        [HTTP Router\n(Gin Framework)] as router
+        [Request Validator] as validator
+        [Job Controller\n(POST /api/v1/analyze)] as jobctrl
+        [Status Controller\n(GET /api/v1/jobs/:id)] as statusctrl
+        [Webhook Handler\n(POST /webhooks/github)] as webhookctrl
+        [Health Check\n(GET /health)] as healthapi
+    }
+
+    package "Ingestion Worker (Rust)" #81C784 {
+        [Job Consumer\n(Redis Queue Listener)] as consumer
+        [Repository Cloner\n(git2 crate)] as cloner
+        [Tree-sitter Parser\n(Multi-language AST)] as treesitter
+        [Graph Builder\n(Symbol Table + Edges)] as graphbuilder
+        [Neo4j Storage\n(Batch UNWIND Queries)] as neo4jstorage
+        [Cleanup Manager\n(Temp File Removal)] as cleanup
+    }
+
+    package "Graph Engine (Python)" #66BB6A {
+        [FastAPI Server\n(Port 8000)] as fastapi
+        [Query Engine\n(Cypher Queries)] as queryengine
+        [Graph Transformer\n(Node/Edge Formatting)] as transformer
+        [Impact Analyzer\n(BFS/DFS Traversal)] as impactanalyzer
+        [Hotspot Calculator\n(Commit Frequency)] as hotspot
+    }
+}
+
+' ──────────────────────────────────────────────
+'  DATA LAYER (Databases)
+' ──────────────────────────────────────────────
+
+package "Data Layer (Persistence)" #FFEBEE {
+
+    database "PostgreSQL\n(Port 5432)" as postgres {
+        [analysis_jobs]
+        [repositories]
+        [users]
+        [webhook_events]
+    }
+
+    database "Neo4j\n(Port 7474/7687)" as neo4j {
+        [FileNode]
+        [FunctionNode]
+        [ClassNode]
+        [CALLS / IMPORTS\n/ DEFINES edges]
+    }
+
+    database "Redis\n(Port 6379)" as redis {
+        [Job Queue\n(analysis_queue)]
+        [Result Cache]
+    }
+}
+
+' ──────────────────────────────────────────────
+'  EXTERNAL SERVICES
+' ──────────────────────────────────────────────
+
+package "External Services" #F3E5F5 {
+    cloud "GitHub" as github {
+        [Repository API]
+        [Webhook Events\n(push, pull_request)]
+        [OAuth Authentication]
+    }
+}
+
+' ──────────────────────────────────────────────
+'  CONNECTIONS: Presentation → Communication
+' ──────────────────────────────────────────────
+
+activator --> workspace : "scans workspace"
+activator --> localparser : "parses locally"
+activator --> apiclient : "backend calls"
+activator --> filewatcher : "monitors changes"
+cmdpal --> activator : "triggers commands"
+settings --> apiclient : "configures URLs"
+
+archgraph --> searchbar : "filters nodes"
+archgraph --> minimap : "viewport sync"
+archgraph --> zoompan : "gesture events"
+archgraph --> cluster : "expand/collapse"
+archgraph --> impactviz : "impact radius"
+archgraph --> exportmodal : "export graph"
+theme --> archgraph : "applies theme"
+
+' Extension ↔ WebView
+activator --> webviewapi : "sends graph data"
+webviewapi --> archgraph : "renders graph"
+archgraph --> webviewapi : "node click events"
+webviewapi --> activator : "open file requests"
+
+' Extension → Backend
+apiclient --> restapi : "HTTP requests"
+restapi --> router : "routes request"
+
+' ──────────────────────────────────────────────
+'  CONNECTIONS: Application Layer
+' ──────────────────────────────────────────────
+
+router --> validator : "validates input"
+router --> jobctrl : "create job"
+router --> statusctrl : "poll status"
+router --> webhookctrl : "webhook events"
+router --> healthapi : "health check"
+
+jobctrl --> postgres : "INSERT job"
+jobctrl --> redis : "ENQUEUE job"
+statusctrl --> postgres : "SELECT job status"
+
+consumer --> redis : "DEQUEUE job"
+consumer --> cloner : "clone repo"
+cloner --> treesitter : "parse files"
+treesitter --> graphbuilder : "build graph"
+graphbuilder --> neo4jstorage : "batch store"
+neo4jstorage --> neo4j : "Cypher UNWIND"
+consumer --> postgres : "UPDATE job status"
+consumer --> cleanup : "remove temp files"
+
+fastapi --> queryengine : "execute query"
+queryengine --> neo4j : "Cypher queries"
+queryengine --> transformer : "format results"
+fastapi --> impactanalyzer : "analyze impact"
+fastapi --> hotspot : "compute hotspots"
+
+' ──────────────────────────────────────────────
+'  CONNECTIONS: External
+' ──────────────────────────────────────────────
+
+github --> webhookctrl : "POST webhook\n(X-Hub-Signature-256)"
+cloner --> github : "git clone\n(HTTPS + token)"
+
+' ──────────────────────────────────────────────
+'  CONNECTIONS: Graph Engine → Extension
+' ──────────────────────────────────────────────
+
+apiclient --> fastapi : "GET /api/graph/{job_id}"
+
+' ──────────────────────────────────────────────
+'  NOTES
+' ──────────────────────────────────────────────
+
+note right of localparser
+    Tree-sitter WASM parsers
+    for JS, TS, Python, Go, Rust.
+    Provides instant local
+    feedback without backend.
+end note
+
+note bottom of neo4j
+    Stores the full dependency
+    graph with nodes (File,
+    Function, Class) and edges
+    (CALLS, IMPORTS, DEFINES,
+    INHERITS, CONTAINS).
+end note
+
+note right of consumer
+    Listens to Redis queue,
+    processes one job at a time.
+    Retries on failure with
+    exponential backoff.
+end note
+
+note bottom of github
+    Webhooks trigger automatic
+    re-analysis on git push.
+    Signature verified using
+    HMAC-SHA256.
+end note
+
+legend right
+    |= Layer |= Technology |
+    | Presentation | TypeScript, React, ReactFlow |
+    | API Gateway | Go (Gin Framework) |
+    | Ingestion Worker | Rust (tree-sitter, git2) |
+    | Graph Engine | Python (FastAPI) |
+    | Relational DB | PostgreSQL |
+    | Graph DB | Neo4j |
+    | Message Queue | Redis |
+    | External | GitHub API + Webhooks |
+endlegend
+
+footer ArchMind — UH4 Real-Time Codebase Intelligence Platform\nArchitectural Diagram | Sprint 1
+
+@enduml

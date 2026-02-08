@@ -1,0 +1,186 @@
+@startuml ArchMind_ER_Schema_Diagram
+
+!theme plain
+title ArchMind - ER / Schema Diagram\n(PostgreSQL + Neo4j)
+
+' ──────────────────────────────────────────────
+'  POSTGRESQL RELATIONAL SCHEMA
+' ──────────────────────────────────────────────
+
+package "PostgreSQL (Relational Database)" #E8F5E9 {
+
+    entity "users" as users {
+        * **user_id** : UUID <<PK>>
+        --
+        * username : VARCHAR(100)
+        * email : VARCHAR(255)
+        * github_token : VARCHAR(500)
+        * created_at : TIMESTAMP
+        * updated_at : TIMESTAMP
+    }
+
+    entity "repositories" as repos {
+        * **repo_id** : UUID <<PK>>
+        --
+        * user_id : UUID <<FK>>
+        * repo_url : VARCHAR(500)
+        * repo_name : VARCHAR(255)
+        * branch : VARCHAR(100)
+        * last_commit_hash : VARCHAR(40)
+        * language : VARCHAR(50)
+        * status : VARCHAR(20)
+        * created_at : TIMESTAMP
+        * updated_at : TIMESTAMP
+    }
+
+    entity "analysis_jobs" as jobs {
+        * **job_id** : UUID <<PK>>
+        --
+        * repo_id : UUID <<FK>>
+        * status : ENUM('QUEUED','PROCESSING','COMPLETED','FAILED')
+        * progress : INTEGER
+        * result_summary : JSON
+        * error : TEXT
+        * created_at : TIMESTAMP
+        * started_at : TIMESTAMP
+        * completed_at : TIMESTAMP
+    }
+
+    entity "webhook_events" as webhooks {
+        * **event_id** : UUID <<PK>>
+        --
+        * repo_id : UUID <<FK>>
+        * event_type : VARCHAR(50)
+        * payload : JSON
+        * signature_valid : BOOLEAN
+        * processed : BOOLEAN
+        * received_at : TIMESTAMP
+    }
+
+    entity "file_fingerprints" as fingerprints {
+        * **fingerprint_id** : UUID <<PK>>
+        --
+        * repo_id : UUID <<FK>>
+        * file_path : VARCHAR(1000)
+        * sha256_hash : VARCHAR(64)
+        * last_synced_at : TIMESTAMP
+        * needs_sync : BOOLEAN
+    }
+
+    ' PostgreSQL Relationships
+    users ||--o{ repos : "owns"
+    repos ||--o{ jobs : "triggers"
+    repos ||--o{ webhooks : "receives"
+    repos ||--o{ fingerprints : "tracks"
+}
+
+' ──────────────────────────────────────────────
+'  NEO4J GRAPH SCHEMA
+' ──────────────────────────────────────────────
+
+package "Neo4j (Graph Database)" #E3F2FD {
+
+    entity "FileNode" as filenode {
+        * **id** : STRING (relative path)
+        --
+        * repo_id : UUID
+        * name : VARCHAR
+        * file_path : VARCHAR
+        * language : VARCHAR
+        * line_count : INTEGER
+        * depth : INTEGER
+        * last_modified : TIMESTAMP
+    }
+
+    entity "FunctionNode" as funcnode {
+        * **id** : STRING (qualified name)
+        --
+        * repo_id : UUID
+        * name : VARCHAR
+        * file_path : VARCHAR
+        * line_number : INTEGER
+        * end_line : INTEGER
+        * parameters : STRING[]
+        * return_type : VARCHAR
+        * complexity : INTEGER
+    }
+
+    entity "ClassNode" as classnode {
+        * **id** : STRING (qualified name)
+        --
+        * repo_id : UUID
+        * name : VARCHAR
+        * file_path : VARCHAR
+        * line_number : INTEGER
+        * end_line : INTEGER
+        * methods : STRING[]
+        * parent_class : VARCHAR
+    }
+
+    entity "ModuleNode" as modnode {
+        * **id** : STRING (module path)
+        --
+        * repo_id : UUID
+        * name : VARCHAR
+        * file_count : INTEGER
+        * function_count : INTEGER
+        * class_count : INTEGER
+    }
+
+    ' Neo4j Relationships (Edges)
+    filenode ||--o{ funcnode : "DEFINES"
+    filenode ||--o{ classnode : "DEFINES"
+    filenode }o--o{ filenode : "IMPORTS"
+    funcnode }o--o{ funcnode : "CALLS"
+    classnode ||--o{ funcnode : "CONTAINS"
+    classnode }o--|{ classnode : "INHERITS"
+    modnode ||--o{ filenode : "CONTAINS"
+}
+
+' ──────────────────────────────────────────────
+'  REDIS SCHEMA
+' ──────────────────────────────────────────────
+
+package "Redis (Message Queue)" #FFF3E0 {
+
+    entity "job_queue" as jobqueue {
+        * **queue_key** : STRING
+        --
+        * job_id : UUID
+        * repo_url : VARCHAR
+        * branch : VARCHAR
+        * priority : INTEGER
+        * enqueued_at : TIMESTAMP
+    }
+
+    entity "analysis_cache" as cache {
+        * **cache_key** : STRING
+        --
+        * repo_id : UUID
+        * graph_data : JSON
+        * ttl : INTEGER
+        * cached_at : TIMESTAMP
+    }
+}
+
+' ──────────────────────────────────────────────
+'  CROSS-DATABASE RELATIONSHIPS
+' ──────────────────────────────────────────────
+
+jobs ..> jobqueue : "enqueues to"
+jobs ..> filenode : "produces"
+repos ..> modnode : "maps to"
+cache ..> filenode : "caches graph from"
+
+legend right
+    |= Symbol |= Meaning |
+    | <<PK>> | Primary Key |
+    | <<FK>> | Foreign Key |
+    | ||--o{ | One-to-Many |
+    | }o--o{ | Many-to-Many |
+    | ..> | Cross-DB Reference |
+endlegend
+
+footer ArchMind — UH4 Real-Time Codebase Intelligence Platform\nER/Schema Diagram | Sprint 1
+
+@enduml

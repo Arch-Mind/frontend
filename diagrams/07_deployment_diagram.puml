@@ -1,0 +1,108 @@
+@startuml ArchMind_Deployment_Diagram
+
+skinparam dpi 100
+skinparam nodeFontSize 12
+skinparam componentFontSize 10
+skinparam artifactFontSize 10
+skinparam arrowFontSize 9
+skinparam noteFontSize 9
+skinparam linetype ortho
+
+title ArchMind — Deployment Diagram\nReal-Time Codebase Intelligence Platform
+
+node "Developer Machine" as devMachine #E3F2FD {
+  node "VS Code Editor" as vscode {
+    artifact "ArchMind Extension\n(TypeScript)" as ext #BBDEFB
+    artifact "WebView Panel\n(React + ReactFlow)" as webview #BBDEFB
+    artifact "tree-sitter WASM\n(Local Parser)" as wasm #BBDEFB
+  }
+}
+
+cloud "GitHub" as ghCloud #F3E5F5 {
+  artifact "Repository\nSource Code" as repo #E1BEE7
+  artifact "Webhooks\n(Push Events)" as webhooks #E1BEE7
+}
+
+node "Application Server" as appServer #E8F5E9 {
+
+  node "Docker: api-gateway" as apiContainer #C8E6C9 {
+    artifact "Go/Gin REST API\nPort 8080" as apiApp #A5D6A7
+    component "Auth Middleware" as auth
+    component "CORS Middleware" as cors
+    component "Analyze Handler" as analyzeH
+    component "Webhook Handler" as webhookH
+    component "Job Status Handler" as jobH
+  }
+
+  node "Docker: ingestion-worker" as workerContainer #FFE0B2 {
+    artifact "Rust Worker\nService" as workerApp #FFCC80
+    component "Job Consumer" as consumer
+    component "git2 Cloner" as cloner
+    component "tree-sitter Parser" as parser
+    component "Fingerprint Engine" as fingerprint
+    component "Graph Builder" as builder
+  }
+
+  node "Docker: graph-engine" as graphContainer #E1BEE7 {
+    artifact "Python/FastAPI\nPort 8000" as graphApp #CE93D8
+    component "Graph Service" as graphSvc
+    component "Layout Engine" as layout
+    component "Analysis Engine" as analysis
+    component "Risk Calculator" as risk
+  }
+}
+
+node "Database Server" as dbServer #FFEBEE {
+
+  database "PostgreSQL\nPort 5432" as postgres #EF9A9A {
+    artifact "users" as tUsers
+    artifact "repositories" as tRepos
+    artifact "analysis_jobs" as tJobs
+    artifact "webhook_events" as tWebhook
+    artifact "file_fingerprints" as tFingerprints
+  }
+
+  database "Neo4j\nPort 7687" as neo4j #EF9A9A {
+    artifact "FileNode" as nFile
+    artifact "FunctionNode" as nFunc
+    artifact "ClassNode" as nClass
+    artifact "Edges: CALLS, IMPORTS\nINHERITS, CONTAINS" as nEdges
+  }
+
+  database "Redis\nPort 6379" as redis #EF9A9A {
+    artifact "job_queue (List)" as rQueue
+    artifact "analysis_cache (KV)" as rCache
+  }
+}
+
+' === Connections ===
+
+ext -down-> apiApp : REST API\nHTTP/JSON :8080
+ext -left-> webview : postMessage()
+ext --> wasm : Local parsing
+
+webhooks -down-> webhookH : POST /api/v1/webhook\nHTTPS
+
+apiApp -down-> postgres : TCP :5432\nGORM
+apiApp -down-> redis : TCP :6379\ngo-redis
+apiApp -right-> graphApp : HTTP :8000
+
+workerApp -down-> redis : BRPOP\njob_queue
+workerApp -down-> postgres : Update job status
+workerApp -down-> neo4j : Bolt :7687\nneo4j-rust
+cloner --> repo : git2 clone\nHTTPS
+
+graphApp -down-> neo4j : Bolt :7687\nneo4j-python
+
+legend right
+  |= Color |= Layer |
+  | <#E3F2FD> | Client (VS Code) |
+  | <#E8F5E9> | API Gateway |
+  | <#FFF3E0> | Ingestion Worker |
+  | <#F3E5F5> | Graph Engine |
+  | <#FFEBEE> | Data Layer |
+endlegend
+
+footer ArchMind - UH4 | Deployment Diagram
+
+@enduml

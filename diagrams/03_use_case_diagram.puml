@@ -1,0 +1,142 @@
+@startuml ArchMind_Use_Case_Diagram
+
+skinparam dpi 150
+skinparam actorStyle hollow
+skinparam usecaseFontSize 11
+skinparam actorFontSize 12
+skinparam arrowFontSize 9
+skinparam rectangleFontSize 14
+skinparam defaultTextAlignment center
+
+left to right direction
+
+title ArchMind — Use Case Diagram\nReal-Time Codebase Intelligence Platform
+
+actor "Developer" as dev
+actor "GitHub" as github
+
+rectangle "ArchMind Platform" {
+
+  together {
+    (Install & Activate Extension) as UC1 #E8EAF6
+    (Auto-detect Workspace) as UC2 #E8EAF6
+    (Detect Languages) as UC3 #E8EAF6
+    (Ignore Binary Files) as UC4 #E8EAF6
+    (View Workspace Metadata) as UC5 #E8EAF6
+    (Configure Backend URL) as UC6 #E8EAF6
+    (Check Backend Health) as UC7 #E8EAF6
+  }
+
+  together {
+    (Reconstruct Architecture) as UC8 #E8F5E9
+    (Module-level View) as UC9 #E8F5E9
+    (High-level Overview) as UC10 #E8F5E9
+    (Auto-update on Changes) as UC11 #E8F5E9
+    (Highlight Violations) as UC12 #E8F5E9
+    (Toggle Dark Mode) as UC13 #E8F5E9
+    (Zoom & Pan Graph) as UC14 #E8F5E9
+  }
+
+  together {
+    (Visualize Dependencies) as UC15 #FFF9C4
+    (Explore Call Flows) as UC16 #FFF9C4
+    (Interactive Exploration) as UC17 #FFF9C4
+    (Detect Circular Deps) as UC18 #FFF9C4
+    (Search & Filter Nodes) as UC19 #FFF9C4
+    (Click Node to Open File) as UC20 #FFF9C4
+    (Cluster Large Graphs) as UC21 #FFF9C4
+    (Export Graph as Image) as UC22 #FFF9C4
+  }
+
+  together {
+    (View Impacted Components) as UC23 #FFEBEE
+    (Impact Severity Levels) as UC24 #FFEBEE
+    (Before/After Comparison) as UC25 #FFEBEE
+    (Drift Alerts) as UC26 #FFEBEE
+    (Map Impact to Tests) as UC27 #FFEBEE
+  }
+
+  together {
+    (Frequent File Changes) as UC28 #FFF3E0
+    (Detect Coupled Modules) as UC29 #FFF3E0
+    (Hotspot Indicators) as UC30 #FFF3E0
+    (Ownership Info) as UC31 #FFF3E0
+    (Risk Reports) as UC32 #FFF3E0
+    (CodeLens Decorations) as UC33 #FFF3E0
+  }
+
+  together {
+    (Auto-analyze on Push) as UC34 #F3E5F5
+    (Analyze Repo via URL) as UC35 #F3E5F5
+    (Per-Commit Analysis) as UC36 #F3E5F5
+    (Validation Error Logs) as UC37 #F3E5F5
+    (Violation Alerts) as UC38 #F3E5F5
+    (File Fingerprints) as UC39 #F3E5F5
+  }
+
+  together {
+    (Parse Code via Tree-sitter) as UCB1 #E0E0E0
+    (Clone Repo via git2) as UCB2 #E0E0E0
+    (Build Neo4j Graph) as UCB3 #E0E0E0
+    (Verify Webhook Signature) as UCB4 #E0E0E0
+    (Poll Job Status) as UCB5 #E0E0E0
+  }
+}
+
+dev -- UC1
+dev -- UC2
+dev -- UC5
+dev -- UC6
+dev -- UC7
+dev -- UC8
+dev -- UC9
+dev -- UC10
+dev -- UC13
+dev -- UC14
+dev -- UC15
+dev -- UC17
+dev -- UC20
+dev -- UC22
+dev -- UC23
+dev -- UC25
+dev -- UC28
+dev -- UC30
+dev -- UC31
+dev -- UC33
+dev -- UC35
+dev -- UC36
+dev -- UC39
+
+github -- UC34
+github -- UC38
+
+UC8 ..> UCB1 : <<include>>
+UC34 ..> UCB4 : <<include>>
+UC35 ..> UCB2 : <<include>>
+UC35 ..> UCB5 : <<include>>
+UCB2 ..> UCB1 : <<include>>
+UCB1 ..> UCB3 : <<include>>
+
+UC4 ..> UC3 : <<extend>>
+UC12 ..> UC8 : <<extend>>
+UC18 ..> UC15 : <<extend>>
+UC19 ..> UC17 : <<extend>>
+UC21 ..> UC17 : <<extend>>
+UC26 ..> UC25 : <<extend>>
+UC27 ..> UC23 : <<extend>>
+UC32 ..> UC28 : <<extend>>
+
+legend right
+  |= Color |= Epic |
+  | <#E8EAF6> | Setup & Workspace |
+  | <#E8F5E9> | Architecture Visualization |
+  | <#FFF9C4> | Dependency Exploration |
+  | <#FFEBEE> | Impact Analysis |
+  | <#FFF3E0> | Hotspot & Ownership |
+  | <#F3E5F5> | Git-Aware Analysis |
+  | <#E0E0E0> | Backend Processing |
+endlegend
+
+footer ArchMind - UH4 | Use Case Diagram
+
+@enduml

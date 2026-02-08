@@ -1,0 +1,160 @@
+@startuml ArchMind_Component_Diagram
+
+skinparam dpi 100
+skinparam componentFontSize 11
+skinparam interfaceFontSize 9
+skinparam arrowFontSize 9
+skinparam packageFontSize 12
+skinparam linetype ortho
+
+title ArchMind - Component Diagram\nSoftware Components and Interfaces
+
+package "VS Code Extension" #E3F2FD {
+
+  component "Extension Core" as extCore #BBDEFB {
+    portin " " as extIn
+    portout " " as extOut
+  }
+
+  component "Command Registry" as cmdReg #BBDEFB
+  component "File System Analyzer" as fsAnalyzer #BBDEFB
+  component "API Client" as apiClient #BBDEFB
+  component "WebView Provider" as webProvider #BBDEFB
+
+  component "WebView Panel" as webPanel #90CAF9 {
+    component "React App" as reactApp
+    component "ReactFlow Graph" as reactFlow
+    component "Dark Mode Toggle" as darkMode
+    component "Search & Filter" as searchFilter
+    component "Export Module" as exportMod
+  }
+
+  component "tree-sitter WASM" as tsWasm #BBDEFB
+
+  extCore --> cmdReg : registers
+  extCore --> fsAnalyzer : uses
+  extCore --> apiClient : uses
+  extCore --> webProvider : creates
+  webProvider --> webPanel : renders
+  fsAnalyzer --> tsWasm : local parsing
+  reactApp --> reactFlow
+  reactApp --> darkMode
+  reactApp --> searchFilter
+  reactApp --> exportMod
+}
+
+package "API Gateway (Go/Gin)" #E8F5E9 {
+
+  component "HTTP Router" as httpRouter #C8E6C9 {
+    portin " " as apiIn
+  }
+
+  component "Auth Middleware" as authMid #C8E6C9
+  component "CORS Middleware" as corsMid #C8E6C9
+  component "Analyze Controller" as analyzeCtr #C8E6C9
+  component "Webhook Controller" as webhookCtr #C8E6C9
+  component "Job Status Controller" as jobCtr #C8E6C9
+  component "Graph Proxy" as graphProxy #C8E6C9
+
+  httpRouter --> authMid : filters
+  httpRouter --> corsMid : filters
+  httpRouter --> analyzeCtr : /api/v1/analyze
+  httpRouter --> webhookCtr : /api/v1/webhook
+  httpRouter --> jobCtr : /api/v1/jobs
+  httpRouter --> graphProxy : /api/v1/graph
+}
+
+package "Ingestion Worker (Rust)" #FFF3E0 {
+
+  component "Job Consumer" as jobConsumer #FFE0B2
+  component "Repo Cloner (git2)" as repoCloner #FFE0B2
+  component "tree-sitter Parser" as tsParser #FFE0B2
+  component "Fingerprint Engine" as fpEngine #FFE0B2
+  component "Graph Builder" as graphBuilder #FFE0B2
+
+  jobConsumer --> repoCloner : clones
+  jobConsumer --> tsParser : parses
+  jobConsumer --> fpEngine : checks
+  jobConsumer --> graphBuilder : builds
+}
+
+package "Graph Engine (Python/FastAPI)" #F3E5F5 {
+
+  component "Graph API Router" as graphRouter #E1BEE7 {
+    portin " " as graphIn
+  }
+
+  component "Graph Service" as graphSvc #E1BEE7
+  component "Layout Engine" as layoutEng #E1BEE7
+  component "Circular Dep Detector" as circDet #E1BEE7
+  component "Hotspot Calculator" as hotCalc #E1BEE7
+  component "Impact Analyzer" as impactAn #E1BEE7
+  component "Risk Calculator" as riskCalc #E1BEE7
+
+  graphRouter --> graphSvc
+  graphSvc --> layoutEng
+  graphSvc --> circDet
+  graphSvc --> hotCalc
+  graphSvc --> impactAn
+  graphSvc --> riskCalc
+}
+
+package "Data Layer" #FFEBEE {
+
+  database "PostgreSQL" as postgres #EF9A9A {
+    component "users" as tblUsers
+    component "repositories" as tblRepos
+    component "analysis_jobs" as tblJobs
+    component "webhook_events" as tblWebhook
+    component "file_fingerprints" as tblFP
+  }
+
+  database "Neo4j" as neo4j #EF9A9A {
+    component "FileNode" as nFile
+    component "FunctionNode" as nFunc
+    component "ClassNode" as nClass
+    component "CALLS / IMPORTS" as nEdges
+  }
+
+  database "Redis" as redis #EF9A9A {
+    component "job_queue" as rQueue
+    component "analysis_cache" as rCache
+  }
+}
+
+cloud "GitHub" as github #F3E5F5
+
+' === Cross-package connections ===
+
+apiClient --> httpRouter : REST HTTP/JSON :8080
+graphProxy --> graphRouter : HTTP :8000
+
+analyzeCtr --> postgres : GORM
+analyzeCtr --> redis : go-redis LPUSH
+webhookCtr --> postgres : GORM
+jobCtr --> postgres : GORM
+
+jobConsumer --> redis : BRPOP
+jobConsumer --> postgres : status updates
+graphBuilder --> neo4j : Bolt :7687
+fpEngine --> postgres : fingerprints
+
+graphSvc --> neo4j : Bolt :7687
+
+repoCloner --> github : git2 HTTPS clone
+github --> webhookCtr : POST webhook
+
+webPanel ..> apiClient : postMessage
+
+legend right
+  |= Color |= Layer |
+  | <#E3F2FD> | VS Code Extension |
+  | <#E8F5E9> | API Gateway (Go) |
+  | <#FFF3E0> | Ingestion Worker (Rust) |
+  | <#F3E5F5> | Graph Engine (Python) |
+  | <#FFEBEE> | Data Layer |
+endlegend
+
+footer ArchMind - UH4 | Component Diagram
+
+@enduml

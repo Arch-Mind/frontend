@@ -1,0 +1,248 @@
+@startuml ArchMind_Class_Diagram
+
+skinparam dpi 100
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam classAttributeFontSize 10
+skinparam arrowFontSize 9
+skinparam packageFontSize 12
+skinparam linetype ortho
+
+title ArchMind — Class Diagram\nReal-Time Codebase Intelligence Platform
+
+package "VS Code Extension (TypeScript)" #E3F2FD {
+
+  class Extension {
+    - context: ExtensionContext
+    + activate(): void
+    + deactivate(): void
+    + registerCommands(): void
+  }
+
+  class ArchitecturePanel {
+    - panel: WebviewPanel
+    - extensionUri: Uri
+    + createOrShow(): void
+    + postMessage(msg: object): void
+    + dispose(): void
+    - getWebviewContent(): string
+    - handleMessage(msg: object): void
+  }
+
+  class FileSystemAnalyzer {
+    - workspaceRoot: string
+    - ignoredPatterns: string[]
+    + scanWorkspace(): FileNode[]
+    + detectLanguages(): string[]
+    + computeFingerprint(path: string): string
+    + isIgnored(path: string): boolean
+  }
+
+  class ApiClient {
+    - baseUrl: string
+    - authToken: string
+    + analyzeRepo(url: string): Job
+    + getJobStatus(id: string): JobStatus
+    + getGraph(repo: string): GraphData
+    + checkHealth(): boolean
+  }
+
+  class ArchitectureGraph {
+    - nodes: ReactFlowNode[]
+    - edges: ReactFlowEdge[]
+    + renderGraph(data: GraphData): void
+    + onNodeClick(id: string): void
+    + zoomIn(): void
+    + zoomOut(): void
+    + exportAsImage(): void
+    + toggleDarkMode(): void
+    + searchNodes(query: string): Node[]
+  }
+}
+
+package "API Gateway (Go/Gin)" #E8F5E9 {
+
+  class Router {
+    - engine: gin.Engine
+    + setupRoutes(): void
+    + authMiddleware(): HandlerFunc
+    + corsMiddleware(): HandlerFunc
+  }
+
+  class AnalyzeHandler {
+    - db: PostgresDB
+    - redis: RedisClient
+    + HandleAnalyze(c: Context): void
+    + HandleJobStatus(c: Context): void
+    + HandleGraph(c: Context): void
+  }
+
+  class WebhookHandler {
+    - secret: string
+    + HandleGitHubWebhook(c: Context): void
+    - verifySignature(payload: []byte): bool
+    - parseEvent(payload: []byte): PushEvent
+  }
+
+  class AnalysisJob {
+    + id: uuid
+    + repoUrl: string
+    + branch: string
+    + status: string
+    + createdAt: time.Time
+    + completedAt: time.Time
+    + errorMessage: string
+  }
+
+  class WebhookEvent {
+    + id: uuid
+    + repoUrl: string
+    + eventType: string
+    + payload: json
+    + processedAt: time.Time
+  }
+}
+
+package "Ingestion Worker (Rust)" #FFF3E0 {
+
+  class JobConsumer {
+    - redis: RedisConnection
+    - neo4j: Neo4jConnection
+    + pollQueue(): Job
+    + processJob(job: Job): Result
+    + updateStatus(id: str, status: str): void
+  }
+
+  class RepoCloner {
+    - tempDir: PathBuf
+    + cloneRepo(url: str): Repository
+    + checkout(branch: str): Result
+    + cleanup(): void
+  }
+
+  class TreeSitterParser {
+    - languages: HashMap<str, Language>
+    + parseFile(path: str): AST
+    + extractSymbols(ast: AST): Vec<Symbol>
+    + extractRelationships(ast: AST): Vec<Relation>
+    + detectLanguage(path: str): Language
+  }
+
+  class FingerprintEngine {
+    - cache: HashMap<str, str>
+    + computeSHA256(path: str): String
+    + hasChanged(path: str, old: str): bool
+    + updateCache(path: str, hash: str): void
+  }
+
+  class GraphBuilder {
+    - neo4j: Neo4jConnection
+    + createFileNode(f: FileInfo): Node
+    + createFunctionNode(f: FuncInfo): Node
+    + createClassNode(c: ClassInfo): Node
+    + createEdge(src: str, tgt: str, rel: str): Edge
+    + buildGraph(symbols: Vec<Symbol>): void
+  }
+}
+
+package "Graph Engine (Python/FastAPI)" #F3E5F5 {
+
+  class GraphService {
+    - neo4j_driver: Driver
+    + getGraph(repo: str): GraphData
+    + getNodeDetails(id: str): NodeInfo
+    + getDependencies(id: str): list
+  }
+
+  class LayoutEngine {
+    + forceDirected(nodes, edges): Layout
+    + hierarchical(nodes, edges): Layout
+    + cluster(nodes, threshold): Groups
+  }
+
+  class AnalysisEngine {
+    + detectCircularDeps(graph): list
+    + computeHotspots(graph, history): list
+    + computeImpact(changed, graph): list
+    + severityLevel(impact): str
+  }
+
+  class RiskCalculator {
+    + couplingScore(module): float
+    + changeFrequency(file): int
+    + ownershipInfo(file): dict
+    + generateReport(repo): Report
+  }
+}
+
+package "Data Models" #FFEBEE {
+
+  class FileNode {
+    + id: string
+    + path: string
+    + language: string
+    + fingerprint: string
+    + linesOfCode: int
+  }
+
+  class FunctionNode {
+    + id: string
+    + name: string
+    + parameters: string[]
+    + returnType: string
+    + startLine: int
+    + endLine: int
+  }
+
+  class ClassNode {
+    + id: string
+    + name: string
+    + methods: string[]
+    + properties: string[]
+    + isAbstract: bool
+  }
+
+  class GraphData {
+    + nodes: Node[]
+    + edges: Edge[]
+    + metadata: object
+  }
+}
+
+' === Relationships ===
+
+Extension --> ArchitecturePanel : creates
+Extension --> FileSystemAnalyzer : uses
+Extension --> ApiClient : uses
+ArchitecturePanel --> ArchitectureGraph : renders
+
+ApiClient --> AnalyzeHandler : HTTP calls
+ApiClient --> WebhookHandler : receives
+
+Router --> AnalyzeHandler : routes
+Router --> WebhookHandler : routes
+AnalyzeHandler --> AnalysisJob : creates
+WebhookHandler --> WebhookEvent : creates
+AnalyzeHandler ..> JobConsumer : queues job
+
+JobConsumer --> RepoCloner : uses
+JobConsumer --> TreeSitterParser : uses
+JobConsumer --> FingerprintEngine : uses
+JobConsumer --> GraphBuilder : uses
+TreeSitterParser --> FileNode : produces
+TreeSitterParser --> FunctionNode : produces
+TreeSitterParser --> ClassNode : produces
+GraphBuilder --> FileNode : stores
+GraphBuilder --> FunctionNode : stores
+GraphBuilder --> ClassNode : stores
+
+GraphService --> LayoutEngine : uses
+GraphService --> AnalysisEngine : uses
+GraphService --> RiskCalculator : uses
+GraphService --> GraphData : returns
+
+ArchitectureGraph --> GraphData : consumes
+
+footer ArchMind - UH4 | Class Diagram
+
+@enduml
