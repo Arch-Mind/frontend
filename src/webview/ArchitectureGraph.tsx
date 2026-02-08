@@ -116,7 +116,7 @@ interface ArchitectureData {
 }
 
 // Color scheme for different node types
-const NODE_COLORS: Record<string, string> = {
+export const NODE_COLORS: Record<string, string> = {
     directory: '#4a9eff',
     typescript: '#3178c6',
     javascript: '#f7df1e',
@@ -1499,6 +1499,8 @@ const ArchitectureGraphInner: React.FC = () => {
                 <EnhancedMiniMap
                     selectedNodeId={selectedNode}
                     hoveredNodeId={hoveredNode?.id || null}
+                    nodeColors={NODE_COLORS}
+                    onNodeClick={handleMiniMapNodeClick}
                 />
                 <Background
                     variant={BackgroundVariant.Dots}

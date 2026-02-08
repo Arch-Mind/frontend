@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.NODE_COLORS = void 0;
 const react_1 = __importStar(require("react"));
 const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
@@ -71,7 +72,7 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 // Color scheme for different node types
-const NODE_COLORS = {
+exports.NODE_COLORS = {
     directory: '#4a9eff',
     typescript: '#3178c6',
     javascript: '#f7df1e',
@@ -98,16 +99,16 @@ function getNodeColor(node) {
         return STATUS_COLORS[node.status];
     }
     if (node.type === 'directory')
-        return NODE_COLORS.directory;
+        return exports.NODE_COLORS.directory;
     if (node.type === 'function')
-        return NODE_COLORS.function;
+        return exports.NODE_COLORS.function;
     if (node.type === 'class')
-        return NODE_COLORS.class;
+        return exports.NODE_COLORS.class;
     if (node.type === 'module')
-        return NODE_COLORS.module;
+        return exports.NODE_COLORS.module;
     if (node.language)
-        return NODE_COLORS[node.language] || NODE_COLORS.default;
-    return NODE_COLORS.default;
+        return exports.NODE_COLORS[node.language] || exports.NODE_COLORS.default;
+    return exports.NODE_COLORS.default;
 }
 // Check if a node matches the search filters
 function matchesFilters(node, filters) {
@@ -366,7 +367,7 @@ const StatsDisplay = ({ stats, source = 'local' }) => {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 5)
             .map(([lang, count]) => (react_1.default.createElement("span", { key: lang, className: "language-badge", style: {
-                backgroundColor: NODE_COLORS[lang] || NODE_COLORS.default,
+                backgroundColor: exports.NODE_COLORS[lang] || exports.NODE_COLORS.default,
             } },
             lang,
             ": ",
@@ -865,14 +866,14 @@ const ArchitectureGraphInner = () => {
     // Memoize minimap node color function
     const minimapNodeColor = (0, react_1.useCallback)((node) => {
         if (node.data?.type === 'directory')
-            return NODE_COLORS.directory;
+            return exports.NODE_COLORS.directory;
         if (node.data?.type === 'function')
-            return NODE_COLORS.function;
+            return exports.NODE_COLORS.function;
         if (node.data?.type === 'class')
-            return NODE_COLORS.class;
+            return exports.NODE_COLORS.class;
         if (node.data?.language)
-            return NODE_COLORS[node.data.language] || NODE_COLORS.default;
-        return NODE_COLORS.default;
+            return exports.NODE_COLORS[node.data.language] || exports.NODE_COLORS.default;
+        return exports.NODE_COLORS.default;
     }, []);
     // Clustering logic (#11) - compute clusters when rawData changes
     (0, react_1.useEffect)(() => {
@@ -996,7 +997,7 @@ const ArchitectureGraphInner = () => {
         react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, nodeTypes: nodeTypes, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
             }, style: { background: 'var(--am-bg)' } },
-            react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null }),
+            react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null, nodeColors: exports.NODE_COLORS, onNodeClick: handleMiniMapNodeClick }),
             react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 16, size: 1, color: "var(--am-fg)", style: { opacity: 0.15 } })),
         react_1.default.createElement(ZoomControls_1.ZoomControls, { zoomPan: zoomPan, position: "bottom-left" }),
         clusteringEnabled && clusters.length > 0 && (react_1.default.createElement("div", { className: "cluster-controls" },
