@@ -97,8 +97,8 @@ export const EnhancedMiniMap: React.FC<EnhancedMiniMapProps> = ({
             nodeStrokeWidth={2}
             maskColor="rgba(0, 0, 0, 0.15)"
             style={{
-                backgroundColor: 'var(--vscode-sideBar-background)',
-                border: '1px solid var(--vscode-widget-border)',
+                backgroundColor: 'var(--am-panel-bg)',
+                border: '1px solid var(--am-border)',
                 borderRadius: '6px',
                 ...minimapPosition,
             }}
