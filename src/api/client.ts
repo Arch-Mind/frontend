@@ -369,6 +369,7 @@ export class ArchMindApiClient {
 
     /**
      * Transform Neo4j graph data to extension format
+     * Fixes Issue #9: Normalizes node IDs, resolves edge references, calculates proper depth
      */
     private transformGraphData(
         graphData: Neo4jGraphResponse,
@@ -401,18 +402,59 @@ export class ArchMindApiClient {
             'Function': 3,
         };
 
-        // Transform nodes with calculated depth
+        // FIX 1: Build ID mapping to handle inconsistent node IDs from backend
+        // Maps various ID formats (full paths, function names) to normalized IDs
+        const idMapping = new Map<string, string>();
+        const nameToIdMap = new Map<string, string[]>(); // Multiple nodes can have same name
+        
+        // First pass: normalize IDs and build mappings
+        graphData.nodes.forEach(node => {
+            const props = node.properties || {};
+            const filePath = String(props['file_path'] || props['path'] || props['file'] || '');
+            const name = String(props['name'] || node.label || '');
+            
+            // Normalize ID to relative path (remove temp directories)
+            const normalizedId = this.normalizeNodeId(node.id, filePath, name, node.type);
+            
+            // Store original -> normalized mapping
+            idMapping.set(node.id, normalizedId);
+            
+            // Store name -> ID mapping for edge resolution
+            if (name) {
+                const existing = nameToIdMap.get(name) || [];
+                existing.push(normalizedId);
+                nameToIdMap.set(name, existing);
+            }
+        });
+
+        // FIX 2: Transform nodes with normalized IDs and calculated depth
         const nodes: TransformedNode[] = graphData.nodes.map((node, index) => {
             const props = node.properties || {};
             const nodeType = typeMapping[node.type] || 'module';
-            // Calculate depth based on node type for hierarchical layout
-            const depth = depthByType[node.type] ?? Number(props['depth']) ?? index % 4;
+            
+            // FIX 3: Calculate depth properly based on node type hierarchy
+            let depth = depthByType[node.type];
+            if (depth === undefined) {
+                // Fallback: try from properties, or use type-based default
+                depth = Number(props['depth']) || this.getDefaultDepth(nodeType);
+            }
+            
+            // Get normalized ID
+            const normalizedId = idMapping.get(node.id) || node.id;
+            
+            // Normalize parent ID if present
+            let parentId: string | undefined = String(props['parent_id'] || '');
+            if (parentId && idMapping.has(parentId)) {
+                parentId = idMapping.get(parentId)!;
+            } else if (!parentId) {
+                parentId = undefined;
+            }
             
             return {
-                id: node.id,
-                label: node.label || String(props['name']) || node.id,
+                id: normalizedId,
+                label: node.label || String(props['name']) || normalizedId,
                 type: nodeType,
-                parentId: String(props['parent_id']) || undefined,
+                parentId: parentId,
                 extension: String(props['extension']) || undefined,
                 language: String(props['language']) || this.inferLanguage(String(props['extension'])),
                 depth: depth,
@@ -423,13 +465,41 @@ export class ArchMindApiClient {
             };
         });
 
-        // Transform edges
-        const edges: TransformedEdge[] = graphData.edges.map((edge, index) => ({
-            id: `e-${edge.source}-${edge.target}-${index}`,
-            source: edge.source,
-            target: edge.target,
-            type: edgeTypeMapping[edge.type] || 'imports',
-        }));
+        // FIX 4: Transform edges with ID resolution
+        const edges: TransformedEdge[] = graphData.edges
+            .map((edge, index) => {
+                // Resolve source and target using ID mapping
+                let source = idMapping.get(edge.source) || edge.source;
+                let target = idMapping.get(edge.target) || edge.target;
+                
+                // If source/target not found, try name-based lookup
+                if (!idMapping.has(edge.source)) {
+                    const matches = nameToIdMap.get(edge.source);
+                    if (matches && matches.length > 0) {
+                        source = matches[0]; // Use first match
+                    }
+                }
+                
+                if (!idMapping.has(edge.target)) {
+                    const matches = nameToIdMap.get(edge.target);
+                    if (matches && matches.length > 0) {
+                        target = matches[0]; // Use first match
+                    }
+                }
+                
+                return {
+                    id: `e-${source}-${target}-${index}`,
+                    source: source,
+                    target: target,
+                    type: edgeTypeMapping[edge.type] || 'imports',
+                };
+            })
+            // Filter out edges where source or target doesn't exist in nodes
+            .filter(edge => {
+                const hasSource = nodes.some(n => n.id === edge.source);
+                const hasTarget = nodes.some(n => n.id === edge.target);
+                return hasSource && hasTarget;
+            });
 
         // Build stats from metrics or calculate from nodes
         const stats = {
@@ -447,6 +517,55 @@ export class ArchMindApiClient {
             source: 'backend',
             repoId,
         };
+    }
+
+    /**
+     * Normalize node ID to relative path format
+     * Removes temp directory prefixes and standardizes format
+     */
+    private normalizeNodeId(id: string, filePath: string, name: string, type: string): string {
+        // For function/class nodes, prefer name-based ID
+        if (type === 'Function' || type === 'Class') {
+            if (name && filePath) {
+                return `${filePath}::${name}`;
+            }
+            return name || id;
+        }
+        
+        // For file nodes, extract relative path
+        if (type === 'File' && filePath) {
+            // Remove temp directories like /tmp/archmind-xxx/
+            const normalized = filePath
+                .replace(/^\/tmp\/[^/]+\//, '')
+                .replace(/^C:\\Users\\[^\\]+\\AppData\\Local\\Temp\\[^\\]+\\/, '')
+                .replace(/\\/g, '/'); // Normalize path separators
+            return normalized;
+        }
+        
+        // For directory/module nodes
+        if (filePath) {
+            return filePath
+                .replace(/^\/tmp\/[^/]+\//, '')
+                .replace(/^C:\\Users\\[^\\]+\\AppData\\Local\\Temp\\[^\\]+\\/, '')
+                .replace(/\\/g, '/');
+        }
+        
+        // Fallback: use ID as-is
+        return id;
+    }
+
+    /**
+     * Get default depth based on node type
+     */
+    private getDefaultDepth(type: TransformedNode['type']): number {
+        const defaults: Record<TransformedNode['type'], number> = {
+            'module': 0,
+            'directory': 0,
+            'file': 1,
+            'class': 2,
+            'function': 3,
+        };
+        return defaults[type] || 1;
     }
 
     /**
