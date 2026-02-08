@@ -2,13 +2,36 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getApiClient, resetApiClient, ApiRequestError, TransformedGraphData } from './api';
+import { LocalParser } from './analyzer/localParser';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('ArchMind VS Code Extension is now active!');
 
+    // Initialize LocalParser
+    const localParser = LocalParser.getInstance(context.extensionUri);
+    localParser.initialize();
+
+    // Register active document change listeners
+    const onActiveEditorChanged = vscode.window.onDidChangeActiveTextEditor(async editor => {
+        if (editor && ArchitecturePanel.currentPanel) {
+            await parseAndSendLocalData(editor.document, localParser);
+        }
+    });
+
+    const onDocumentChanged = vscode.workspace.onDidChangeTextDocument(async e => {
+        if (ArchitecturePanel.currentPanel && e.document === vscode.window.activeTextEditor?.document) {
+            // Debounce logic could be added here, but for now we rely on fast parsing
+            await parseAndSendLocalData(e.document, localParser);
+        }
+    });
+
     // Register main architecture view command
     let showArchitectureCmd = vscode.commands.registerCommand('archmind.showArchitecture', () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
+        // Trigger initial parse if editor is active
+        if (vscode.window.activeTextEditor) {
+            parseAndSendLocalData(vscode.window.activeTextEditor.document, localParser);
+        }
     });
 
     // Register backend analysis command
@@ -20,6 +43,10 @@ export function activate(context: vscode.ExtensionContext) {
     let refreshGraphCmd = vscode.commands.registerCommand('archmind.refreshGraph', async () => {
         if (ArchitecturePanel.currentPanel) {
             await ArchitecturePanel.currentPanel.refresh();
+            // Also refresh local data
+            if (vscode.window.activeTextEditor) {
+                parseAndSendLocalData(vscode.window.activeTextEditor.document, localParser);
+            }
         } else {
             vscode.window.showInformationMessage('No architecture panel is open. Run "ArchMind: Show Architecture" first.');
         }
@@ -43,8 +70,27 @@ export function activate(context: vscode.ExtensionContext) {
         analyzeRepositoryCmd,
         refreshGraphCmd,
         checkBackendStatusCmd,
-        configChangeListener
+        configChangeListener,
+        onActiveEditorChanged,
+        onDocumentChanged
     );
+}
+
+async function parseAndSendLocalData(document: vscode.TextDocument, parser: LocalParser) {
+    if (document.uri.scheme !== 'file') return;
+
+    // Only parse supported languages
+    const supportedLangs = ['typescript', 'javascript', 'python', 'rust', 'go'];
+    if (!supportedLangs.includes(document.languageId)) return;
+
+    try {
+        const symbols = await parser.parse(document);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.sendLocalData(symbols, document.fileName);
+        }
+    } catch (error) {
+        console.error('Error parsing local file:', error);
+    }
 }
 
 export function deactivate() {
@@ -56,14 +102,14 @@ export function deactivate() {
  */
 async function checkBackendHealth(): Promise<void> {
     const apiClient = getApiClient();
-    
+
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: 'Checking ArchMind Backend Status...',
         cancellable: false
     }, async (progress) => {
         const results: string[] = [];
-        
+
         // Check API Gateway
         try {
             progress.report({ message: 'Checking API Gateway...' });
@@ -178,7 +224,7 @@ class ArchitecturePanel {
     public static async analyzeWithBackend(extensionUri: vscode.Uri): Promise<void> {
         // Create or show panel first
         ArchitecturePanel.createOrShow(extensionUri);
-        
+
         const panel = ArchitecturePanel.currentPanel;
         if (!panel) {
             return;
@@ -271,7 +317,7 @@ class ArchitecturePanel {
     private async _openFile(filePath: string, lineNumber?: number) {
         try {
             const uri = vscode.Uri.file(filePath);
-            
+
             // Check if it's a binary/image file that can't be opened as text
             const binaryExtensions = [
                 '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', '.svg',
@@ -282,15 +328,15 @@ class ArchitecturePanel {
                 '.ttf', '.otf', '.woff', '.woff2',
                 '.bin', '.dat'
             ];
-            
+
             const ext = path.extname(filePath).toLowerCase();
-            
+
             if (binaryExtensions.includes(ext)) {
                 // Open binary files with the default system application or VS Code's binary viewer
                 await vscode.commands.executeCommand('vscode.open', uri);
                 return;
             }
-            
+
             const document = await vscode.workspace.openTextDocument(uri);
             const editor = await vscode.window.showTextDocument(document, {
                 viewColumn: vscode.ViewColumn.One,
@@ -324,7 +370,7 @@ class ArchitecturePanel {
             });
 
             const position = new vscode.Position((lineNumber || 1) - 1, 0);
-            
+
             // Execute go to definition command
             await vscode.commands.executeCommand(
                 'editor.action.revealDefinition',
@@ -351,7 +397,7 @@ class ArchitecturePanel {
 
             const position = new vscode.Position((lineNumber || 1) - 1, 0);
             editor.selection = new vscode.Selection(position, position);
-            
+
             // Execute find references command
             await vscode.commands.executeCommand('references-view.findReferences', uri, position);
         } catch (error) {
@@ -413,14 +459,14 @@ class ArchitecturePanel {
 
         const rootPath = workspaceFolders[0].uri.fsPath;
         try {
-            this._panel.webview.postMessage({ 
-                command: 'loading', 
-                message: 'Analyzing workspace...' 
+            this._panel.webview.postMessage({
+                command: 'loading',
+                message: 'Analyzing workspace...'
             });
 
             const { analyzeWorkspace } = require('./analyzer/fileSystem');
             const data = await analyzeWorkspace(rootPath);
-            
+
             // Add source indicator
             const enrichedData = { ...data, source: 'local' };
             this._panel.webview.postMessage({ command: 'architectureData', data: enrichedData });
@@ -437,9 +483,9 @@ class ArchitecturePanel {
         try {
             // If we have a previous repo ID, fetch that
             if (this._lastRepoId) {
-                this._panel.webview.postMessage({ 
-                    command: 'loading', 
-                    message: 'Fetching graph data from backend...' 
+                this._panel.webview.postMessage({
+                    command: 'loading',
+                    message: 'Fetching graph data from backend...'
                 });
 
                 const apiClient = getApiClient();
@@ -447,8 +493,8 @@ class ArchitecturePanel {
                 this._panel.webview.postMessage({ command: 'architectureData', data });
             } else {
                 // Prompt to analyze first
-                this._panel.webview.postMessage({ 
-                    command: 'noData', 
+                this._panel.webview.postMessage({
+                    command: 'noData',
                     message: 'No repository has been analyzed yet. Use "ArchMind: Analyze Repository (Backend)" to start.'
                 });
             }
@@ -488,9 +534,9 @@ class ArchitecturePanel {
                 });
 
                 progress.report({ message: 'Triggering analysis...', increment: 10 });
-                this._panel.webview.postMessage({ 
-                    command: 'loading', 
-                    message: 'Starting repository analysis...' 
+                this._panel.webview.postMessage({
+                    command: 'loading',
+                    message: 'Starting repository analysis...'
                 });
 
                 // Use analyzeAndFetchGraph for complete workflow
@@ -499,9 +545,9 @@ class ArchitecturePanel {
                     branch,
                     (status, job) => {
                         progress.report({ message: status });
-                        this._panel.webview.postMessage({ 
-                            command: 'loading', 
-                            message: status 
+                        this._panel.webview.postMessage({
+                            command: 'loading',
+                            message: status
                         });
                     }
                 );
@@ -543,16 +589,26 @@ class ArchitecturePanel {
     }
 
     /**
+     * Send local parsed data to webview
+     */
+    public sendLocalData(symbols: any[], fileName: string) {
+        this._panel.webview.postMessage({
+            command: 'localData',
+            data: { symbols, fileName }
+        });
+    }
+
+    /**
      * Get impact analysis for a specific node
      */
     private async _getImpactAnalysis(nodeId: string) {
         try {
             const apiClient = getApiClient();
             const impact = await apiClient.getImpactAnalysis(nodeId);
-            
-            this._panel.webview.postMessage({ 
-                command: 'impactAnalysis', 
-                data: impact 
+
+            this._panel.webview.postMessage({
+                command: 'impactAnalysis',
+                data: impact
             });
         } catch (error) {
             console.error(error);
@@ -566,9 +622,9 @@ class ArchitecturePanel {
      * Send error message to webview
      */
     private _sendError(message: string) {
-        this._panel.webview.postMessage({ 
-            command: 'error', 
-            message 
+        this._panel.webview.postMessage({
+            command: 'error',
+            message
         });
     }
 

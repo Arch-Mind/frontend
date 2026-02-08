@@ -39,6 +39,7 @@ import { ClusterNode, ClusterNodeData } from './ClusterNode';
 
 // Impact Analysis imports (#15)
 import { ImpactAnalysisPanel, ImpactAnalysisData, useImpactAnalysis } from './ImpactAnalysis';
+import { LocalOutline, LocalSymbol } from './LocalOutline';
 
 // Keyboard Navigation imports (#18)
 import { useKeyboardNavigation, KeyboardHelp } from './KeyboardNavigation';
@@ -794,6 +795,11 @@ const ArchitectureGraphInner: React.FC = () => {
     const [rawData, setRawData] = useState<ArchitectureData | null>(null);
     const [matchingNodeIds, setMatchingNodeIds] = useState<Set<string>>(new Set());
 
+    // Local Outline State
+    const [localSymbols, setLocalSymbols] = useState<LocalSymbol[]>([]);
+    const [localFileName, setLocalFileName] = useState<string>('');
+    const [localOutlineVisible, setLocalOutlineVisible] = useState<boolean>(true);
+
     // Layout state
     const [layoutType, setLayoutType] = useState<LayoutType>('hierarchical');
     const [layoutPanelVisible, setLayoutPanelVisible] = useState(false);
@@ -1036,7 +1042,7 @@ const ArchitectureGraphInner: React.FC = () => {
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
-            
+
             // Handle loading state
             if (message.command === 'loading') {
                 setIsLoading(true);
@@ -1044,21 +1050,21 @@ const ArchitectureGraphInner: React.FC = () => {
                 setErrorMessage(null);
                 return;
             }
-            
+
             // Handle error state
             if (message.command === 'error') {
                 setIsLoading(false);
                 setErrorMessage(message.message || 'An error occurred');
                 return;
             }
-            
+
             // Handle no data state
             if (message.command === 'noData') {
                 setIsLoading(false);
                 setErrorMessage(message.message || 'No data available');
                 return;
             }
-            
+
             if (message.command === 'architectureData') {
                 setErrorMessage(null);
                 const data: ArchitectureData = message.data;
@@ -1092,11 +1098,19 @@ const ArchitectureGraphInner: React.FC = () => {
 
                 initLayout();
             }
-            
+
             // Handle impact analysis response
             if (message.command === 'impactAnalysis') {
                 console.log('Impact analysis data:', message.data);
                 // TODO: Highlight impacted nodes in the graph
+            }
+
+            // Handle local parsed data
+            if (message.command === 'localData') {
+                const { symbols, fileName } = message.data;
+                setLocalSymbols(symbols);
+                setLocalFileName(fileName);
+                setLocalOutlineVisible(true);
             }
         };
 
@@ -1399,6 +1413,14 @@ const ArchitectureGraphInner: React.FC = () => {
             {keyboardHelpVisible && (
                 <KeyboardHelp onClose={() => setKeyboardHelpVisible(false)} />
             )}
+
+            <LocalOutline
+                fileName={localFileName}
+                symbols={localSymbols}
+                isVisible={localOutlineVisible}
+                onClose={() => setLocalOutlineVisible(false)}
+                onSymbolClick={(line) => console.log('Jump to line', line)}
+            />
         </div>
     );
 };
