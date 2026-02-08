@@ -1,7 +1,5 @@
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
-    MiniMap,
-    Controls,
     Background,
     useNodesState,
     useEdgesState,
@@ -26,6 +24,39 @@ import {
     LayoutNode,
     LayoutEdge,
 } from './layoutAlgorithms';
+
+// Clustering imports (#11)
+import {
+    clusterNodesByDirectory,
+    filterByClusterState,
+    ClusterState,
+    toggleCluster,
+    expandAllClusters,
+    collapseAllClusters,
+    Cluster,
+} from './clustering';
+import { ClusterNode, ClusterNodeData } from './ClusterNode';
+
+// Impact Analysis imports (#15)
+import { ImpactAnalysisPanel, ImpactAnalysisData, useImpactAnalysis } from './ImpactAnalysis';
+
+// Keyboard Navigation imports (#18)
+import { useKeyboardNavigation, KeyboardHelp } from './KeyboardNavigation';
+
+// Enhanced MiniMap imports (#19)
+import { EnhancedMiniMap, useMiniMapNavigation } from './EnhancedMiniMap';
+
+// Zoom & Pan imports (#20)
+import { useZoomPan, useZoomPanKeyboard } from './useZoomPan';
+import { ZoomControls } from './ZoomControls';
+
+// Relationship Visualizer imports (#21)
+import { RelationshipVisualizer } from './RelationshipVisualizer';
+
+// Custom node types for ReactFlow
+const nodeTypes = {
+    clusterNode: ClusterNode,
+};
 
 // Debounce hook for performant search on large graphs
 function useDebounce<T>(value: T, delay: number): T {
@@ -205,12 +236,13 @@ function createStyledNode(
         style: {
             background: node.type === 'directory'
                 ? `${color}20`
-                : 'var(--vscode-editor-background)',
-            borderColor: isSelected ? 'var(--vscode-focusBorder)' : color,
+                : 'var(--am-panel-bg)',
+            color: 'var(--am-panel-fg)',
+            borderColor: isSelected ? 'var(--am-accent)' : color,
             borderWidth: isSelected ? 3 : (node.type === 'directory' ? 2 : 1),
             borderRadius: node.type === 'directory' ? 8 : 4,
             opacity: isMatching ? 1 : 0.3,
-            boxShadow: isSelected ? '0 0 10px var(--vscode-focusBorder)' : undefined,
+            boxShadow: isSelected ? '0 0 10px var(--am-accent)' : undefined,
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
     };
@@ -371,8 +403,8 @@ function formatEdges(rawEdges: RawEdge[], selectedNodeId: string | null, matchin
             animated: isConnectedToSelected ? true : false,
             style: {
                 stroke: isConnectedToSelected
-                    ? 'var(--vscode-focusBorder)'
-                    : 'var(--vscode-editor-foreground)',
+                    ? 'var(--am-accent)'
+                    : 'var(--am-fg)',
                 strokeWidth: isConnectedToSelected ? 2 : 1,
                 opacity: isMatching ? (isConnectedToSelected ? 0.9 : 0.5) : 0.15,
             },
@@ -663,6 +695,13 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ node, position, onAction, onC
             <button className="context-menu-item" onClick={() => onAction('copyPath')}>
                 📋 Copy Path
             </button>
+            <div className="context-menu-divider" />
+            <button className="context-menu-item" onClick={() => onAction('analyzeImpact')}>
+                💥 Analyze Impact
+            </button>
+            <button className="context-menu-item" onClick={() => onAction('showRelationships')}>
+                🔗 Show Relationships
+            </button>
         </div>
     );
 };
@@ -760,8 +799,40 @@ const ArchitectureGraphInner: React.FC = () => {
     const [layoutPanelVisible, setLayoutPanelVisible] = useState(false);
     const [isLayouting, setIsLayouting] = useState(false);
 
+    // Clustering state (#11)
+    const [clusters, setClusters] = useState<Cluster[]>([]);
+    const [clusterState, setClusterState] = useState<ClusterState>({});
+    const [clusteringEnabled, setClusteringEnabled] = useState(false);
+
+    // Impact Analysis state (#15)
+    const [impactData, setImpactData] = useState<ImpactAnalysisData | null>(null);
+    const [impactVisible, setImpactVisible] = useState(false);
+
+    // Keyboard Navigation state (#18)
+    const [keyboardHelpVisible, setKeyboardHelpVisible] = useState(false);
+
+    // Relationship Visualizer state (#21)
+    const [relationshipVisible, setRelationshipVisible] = useState(false);
+
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
+
+    // Zoom & Pan controls (#20)
+    const zoomPan = useZoomPan({ minZoom: 0.1, maxZoom: 4.0 });
+    useZoomPanKeyboard(zoomPan);
+
+    // Mini-map click navigation (#19)
+    const { handleMiniMapNodeClick } = useMiniMapNavigation((nodeId) => {
+        setSelectedNode(nodeId);
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+            reactFlowInstance.setCenter(
+                node.position.x + (NODE_WIDTH / 2),
+                node.position.y + (NODE_HEIGHT / 2),
+                { zoom: 1, duration: 300 }
+            );
+        }
+    });
 
     // VS Code API reference
     const vscodeRef = useRef<ReturnType<typeof acquireVsCodeApi> | null>(null);
@@ -843,6 +914,48 @@ const ArchitectureGraphInner: React.FC = () => {
                     command: 'copyPath',
                     filePath,
                 });
+                break;
+            case 'analyzeImpact':
+                // Perform local impact analysis based on edges
+                if (rawData) {
+                    const affectedNodes: { nodeId: string; distance: number; impactType: 'direct' | 'indirect' }[] = [];
+                    const visited = new Set<string>();
+                    const queue: { id: string; distance: number }[] = [{ id: contextMenuNode.id, distance: 0 }];
+                    visited.add(contextMenuNode.id);
+
+                    while (queue.length > 0) {
+                        const current = queue.shift()!;
+                        if (current.distance > 0) {
+                            affectedNodes.push({
+                                nodeId: current.id,
+                                distance: current.distance,
+                                impactType: current.distance === 1 ? 'direct' : 'indirect',
+                            });
+                        }
+                        if (current.distance < 3) {
+                            rawData.edges.forEach(edge => {
+                                const neighbor = edge.source === current.id ? edge.target :
+                                    edge.target === current.id ? edge.source : null;
+                                if (neighbor && !visited.has(neighbor)) {
+                                    visited.add(neighbor);
+                                    queue.push({ id: neighbor, distance: current.distance + 1 });
+                                }
+                            });
+                        }
+                    }
+
+                    setImpactData({
+                        sourceNodeId: contextMenuNode.id,
+                        affectedNodes,
+                        maxDepth: Math.max(0, ...affectedNodes.map(n => n.distance)),
+                        totalImpact: affectedNodes.length,
+                    });
+                    setImpactVisible(true);
+                }
+                break;
+            case 'showRelationships':
+                setSelectedNode(contextMenuNode.id);
+                setRelationshipVisible(true);
                 break;
         }
 
@@ -1008,6 +1121,89 @@ const ArchitectureGraphInner: React.FC = () => {
         return NODE_COLORS.default;
     }, []);
 
+    // Clustering logic (#11) - compute clusters when rawData changes
+    useEffect(() => {
+        if (!rawData || rawData.nodes.length < 20) {
+            setClusters([]);
+            setClusteringEnabled(false);
+            return;
+        }
+        const computed = clusterNodesByDirectory(rawData.nodes, 5, 3);
+        setClusters(computed);
+        setClusteringEnabled(computed.length > 0);
+    }, [rawData]);
+
+    // Handle cluster toggle
+    const handleClusterToggle = useCallback((clusterId: string) => {
+        setClusterState(prev => toggleCluster(clusterId, prev));
+    }, []);
+
+    // Keyboard Navigation (#18)
+    const getConnectedNodes = useCallback((nodeId: string): string[] => {
+        if (!rawData) return [];
+        const connected: string[] = [];
+        rawData.edges.forEach(edge => {
+            if (edge.source === nodeId) connected.push(edge.target);
+            if (edge.target === nodeId) connected.push(edge.source);
+        });
+        return connected;
+    }, [rawData]);
+
+    const handleNodeActivate = useCallback((nodeId: string) => {
+        if (vscodeRef.current) {
+            const rawNode = rawData?.nodes.find(n => n.id === nodeId);
+            if (rawNode && rawNode.type !== 'directory') {
+                vscodeRef.current.postMessage({
+                    command: 'openFile',
+                    filePath: rawNode.filePath || rawNode.id,
+                    lineNumber: rawNode.lineNumber,
+                });
+            }
+        }
+    }, [rawData]);
+
+    useKeyboardNavigation({
+        nodes: rawData?.nodes || [],
+        onNodeSelect: (nodeId: string) => {
+            setSelectedNode(nodeId);
+            // Center on selected node
+            const node = nodes.find(n => n.id === nodeId);
+            if (node) {
+                reactFlowInstance.setCenter(
+                    node.position.x + (NODE_WIDTH / 2),
+                    node.position.y + (NODE_HEIGHT / 2),
+                    { zoom: 1, duration: 300 }
+                );
+            }
+        },
+        onNodeActivate: handleNodeActivate,
+        getCurrentNodeId: () => selectedNode,
+        getConnectedNodes,
+        onFocusSearch: () => setSearchVisible(true),
+        onShowHelp: () => setKeyboardHelpVisible(true),
+    });
+
+    // Relationship nodes for the visualizer (#21)
+    const relationshipNodes = useMemo(() => {
+        if (!rawData) return [];
+        return rawData.nodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            parentId: n.parentId,
+            filePath: n.filePath,
+        }));
+    }, [rawData]);
+
+    const relationshipEdges = useMemo(() => {
+        if (!rawData) return [];
+        return rawData.edges.map(e => ({
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            type: e.type,
+        }));
+    }, [rawData]);
+
     // Retry loading / trigger backend analysis
     const handleRetry = useCallback(() => {
         if (vscodeRef.current) {
@@ -1109,6 +1305,7 @@ const ArchitectureGraphInner: React.FC = () => {
                 onNodeContextMenu={onNodeContextMenu}
                 onNodeMouseEnter={onNodeMouseEnter}
                 onNodeMouseLeave={onNodeMouseLeave}
+                nodeTypes={nodeTypes}
                 fitView
                 fitViewOptions={{ padding: 0.2 }}
                 minZoom={0.1}
@@ -1116,23 +1313,36 @@ const ArchitectureGraphInner: React.FC = () => {
                 defaultEdgeOptions={{
                     type: 'smoothstep',
                 }}
+                style={{ background: 'var(--am-bg)' }}
             >
-                <Controls showInteractive={false} />
-                <MiniMap
-                    nodeColor={minimapNodeColor}
-                    maskColor="rgba(0, 0, 0, 0.8)"
-                    style={{
-                        backgroundColor: 'var(--vscode-editor-background)',
-                    }}
+                <EnhancedMiniMap
+                    selectedNodeId={selectedNode}
+                    hoveredNodeId={hoveredNode?.id || null}
                 />
                 <Background
                     variant={BackgroundVariant.Dots}
                     gap={16}
                     size={1}
-                    color="var(--vscode-editor-foreground)"
-                    style={{ opacity: 0.1 }}
+                    color="var(--am-fg)"
+                    style={{ opacity: 0.15 }}
                 />
             </ReactFlow>
+
+            {/* Zoom & Pan Controls (#20) */}
+            <ZoomControls zoomPan={zoomPan} position="bottom-left" />
+
+            {/* Clustering Controls (#11) */}
+            {clusteringEnabled && clusters.length > 0 && (
+                <div className="cluster-controls">
+                    <span className="cluster-label">📦 Clusters ({clusters.length})</span>
+                    <button className="cluster-btn" onClick={() => setClusterState(expandAllClusters(clusters))} title="Expand All">
+                        ⊞
+                    </button>
+                    <button className="cluster-btn" onClick={() => setClusterState(collapseAllClusters(clusters))} title="Collapse All">
+                        ⊟
+                    </button>
+                </div>
+            )}
 
             {/* Hover Tooltip */}
             <NodeTooltip node={hoveredNode} position={tooltipPosition} />
@@ -1144,6 +1354,51 @@ const ArchitectureGraphInner: React.FC = () => {
                 onAction={handleContextMenuAction}
                 onClose={() => setContextMenuNode(null)}
             />
+
+            {/* Impact Analysis Panel (#15) */}
+            {impactVisible && (
+                <ImpactAnalysisPanel
+                    data={impactData}
+                    onClose={() => { setImpactVisible(false); setImpactData(null); }}
+                    onNodeClick={(nodeId) => {
+                        setSelectedNode(nodeId);
+                        const node = nodes.find(n => n.id === nodeId);
+                        if (node) {
+                            reactFlowInstance.setCenter(
+                                node.position.x + (NODE_WIDTH / 2),
+                                node.position.y + (NODE_HEIGHT / 2),
+                                { zoom: 1, duration: 300 }
+                            );
+                        }
+                    }}
+                />
+            )}
+
+            {/* Relationship Visualizer (#21) */}
+            {relationshipVisible && selectedNode && (
+                <RelationshipVisualizer
+                    selectedNodeId={selectedNode}
+                    nodes={relationshipNodes}
+                    edges={relationshipEdges}
+                    onNodeClick={(nodeId) => {
+                        setSelectedNode(nodeId);
+                        const node = nodes.find(n => n.id === nodeId);
+                        if (node) {
+                            reactFlowInstance.setCenter(
+                                node.position.x + (NODE_WIDTH / 2),
+                                node.position.y + (NODE_HEIGHT / 2),
+                                { zoom: 1, duration: 300 }
+                            );
+                        }
+                    }}
+                    onClose={() => setRelationshipVisible(false)}
+                />
+            )}
+
+            {/* Keyboard Help (#18) */}
+            {keyboardHelpVisible && (
+                <KeyboardHelp onClose={() => setKeyboardHelpVisible(false)} />
+            )}
         </div>
     );
 };
