@@ -1514,3 +1514,194 @@ body {
 .react-flow__node.impact-animating {
     animation: impactPulse 0.6s ease-in-out;
 }
+
+/* Theme System Styles (Issue #22) */
+:root {
+    --theme-transition-duration: 0.3s;
+}
+
+/* Smooth transitions for theme changes */
+* {
+    transition: background-color var(--theme-transition-duration) ease,
+                color var(--theme-transition-duration) ease,
+                border-color var(--theme-transition-duration) ease,
+                box-shadow var(--theme-transition-duration) ease;
+}
+
+/* Theme Toggle Component */
+.theme-toggle {
+    position: absolute;
+    z-index: 35;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 180px;
+}
+
+.theme-toggle-top-right {
+    top: 10px;
+    right: 10px;
+}
+
+.theme-toggle-top-left {
+    top: 10px;
+    left: 10px;
+}
+
+.theme-toggle-bottom-right {
+    bottom: 10px;
+    right: 10px;
+}
+
+.theme-toggle-bottom-left {
+    bottom: 10px;
+    left: 10px;
+}
+
+.theme-toggle-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 4px;
+}
+
+.toggle-label-text {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.theme-options {
+    display: flex;
+    gap: 6px;
+}
+
+.theme-option {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 2px solid transparent;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.theme-option:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.theme-option.active {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.option-icon {
+    font-size: 20px;
+}
+
+.option-label {
+    font-weight: 500;
+}
+
+.theme-auto-indicator {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-left: 3px solid var(--vscode-textLink-foreground);
+    border-radius: 4px;
+}
+
+.auto-hint {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Compact Theme Toggle */
+.compact-theme-toggle {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.compact-theme-toggle:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.compact-theme-toggle:active {
+    transform: scale(0.95);
+}
+
+.compact-icon {
+    font-size: 20px;
+}
+
+/* Dark theme enhancements */
+[data-theme="dark"] {
+    /* Enhance contrast for dark theme */
+}
+
+[data-theme="dark"] .react-flow__node {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .react-flow__edge-path {
+    opacity: 0.8;
+}
+
+[data-theme="dark"] .stats-panel,
+[data-theme="dark"] .search-bar-container,
+[data-theme="dark"] .zoom-controls,
+[data-theme="dark"] .impact-analysis-panel {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Light theme enhancements */
+[data-theme="light"] {
+    /* Enhance contrast for light theme */
+}
+
+[data-theme="light"] .react-flow__node {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .react-flow__edge-path {
+    opacity: 0.9;
+}
+
+/* Theme transition animation */
+@keyframes themeTransition {
+    0% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.theme-transitioning {
+    animation: themeTransition 0.3s ease;
+}
