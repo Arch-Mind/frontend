@@ -1,0 +1,156 @@
+@startuml ArchMind_Activity_Diagram
+
+!pragma layout smetana
+skinparam dpi 100
+scale max 4096 width
+scale max 8192 height
+skinparam activityFontSize 12
+skinparam arrowFontSize 10
+skinparam activityBackgroundColor #E8EAF6
+skinparam activityBorderColor #3F51B5
+skinparam activityDiamondBackgroundColor #FFF9C4
+skinparam activityDiamondBorderColor #F9A825
+skinparam swimlaneBorderColor #455A64
+skinparam swimlaneWidth 200
+skinparam noteFontSize 10
+
+title ArchMind — Activity Diagram\nRepository Analysis Workflow
+
+|#E3F2FD| VS Code Extension (Frontend) |
+|#E8F5E9| API Gateway (Go) |
+|#FFF3E0| Ingestion Worker (Rust) |
+|#F3E5F5| Graph Engine (Python) |
+|#FFEBEE| Database Layer |
+
+|VS Code Extension (Frontend)|
+start
+
+:Developer opens VS Code\nwith workspace;
+
+if (Analyze Local or Remote?) then (Local Workspace)
+  :Detect workspace root\nand file structure;
+  :Scan files using\ntree-sitter WASM;
+  :Parse AST to extract\nfunctions, classes, imports;
+  :Build local dependency\nmap in memory;
+  :Send parsed data\nto API Gateway;
+else (Remote via URL)
+  :Developer enters\nGitHub repo URL;
+  :Send POST /api/v1/analyze\nwith repo URL;
+endif
+
+|API Gateway (Go)|
+:Receive analysis request;
+:Validate request payload\n(URL format, auth token);
+
+if (Valid Request?) then (Yes)
+  :Create analysis_job record\nin PostgreSQL;
+  note right
+    status = "queued"
+    repo_url, branch
+    created_at timestamp
+  end note
+  :Push job to Redis\njob_queue (LPUSH);
+  :Return job_id to\nVS Code Extension;
+else (No)
+  :Return 400/401\nerror response;
+  |VS Code Extension (Frontend)|
+  :Display error message\nin notification panel;
+  stop
+endif
+
+|Ingestion Worker (Rust)|
+:Poll Redis queue\n(BRPOP job_queue);
+:Dequeue analysis job;
+:Update job status\nto "processing";
+
+if (Remote Repo?) then (Yes)
+  :Clone repository using\ngit2 library;
+  if (Clone Successful?) then (Yes)
+    :Read cloned files\nfrom temp directory;
+  else (No)
+    :Update job status\nto "failed";
+    :Log error details\nin validation_errors;
+    |VS Code Extension (Frontend)|
+    :Poll GET /api/v1/jobs/{id}\nreceives failure;
+    :Display clone error\nto developer;
+    stop
+  endif
+else (No - Local)
+  :Receive pre-parsed\nAST data;
+endif
+
+:Walk directory tree\nskipping binary/ignored files;
+:Compute SHA-256\nfile fingerprints;
+
+if (Fingerprint Changed?) then (Yes - New/Modified)
+  :Parse each file with\ntree-sitter (language-specific);
+  :Extract symbols:\nfunctions, classes, modules;
+  :Extract relationships:\ncalls, imports, inherits;
+  :Build dependency edges\nfrom cross-file references;
+else (No - Unchanged)
+  :Skip parsing,\nreuse cached graph data;
+endif
+
+|Database Layer|
+:Store FileNode, FunctionNode,\nClassNode in Neo4j;
+:Create CALLS, IMPORTS,\nINHERITS, CONTAINS edges;
+:Update file_fingerprints\nin PostgreSQL;
+:Cache analysis results\nin Redis (SETEX 1hr);
+
+|Ingestion Worker (Rust)|
+:Update job status\nto "completed";
+:Record completion\ntimestamp;
+
+|API Gateway (Go)|
+:Extension polls\nGET /api/v1/jobs/{id};
+:Return job status\n"completed" with metadata;
+
+|Graph Engine (Python)|
+:Receive graph query from\nGET /api/v1/graph/{repo};
+:Query Neo4j for nodes\nand relationships;
+:Apply layout algorithm\n(force-directed / hierarchical);
+:Detect circular dependencies;
+:Calculate hotspot scores\nfrom git history;
+:Compute impact analysis\nfor changed files;
+:Return structured JSON\nwith nodes + edges;
+
+|VS Code Extension (Frontend)|
+:Receive graph data\nvia REST response;
+:Render interactive graph\nusing ReactFlow;
+:Apply color coding:\nhotspots, violations;
+:Enable zoom, pan,\nfilter, search;
+:Add CodeLens decorations\nfor ownership info;
+
+if (Developer Makes Changes?) then (Yes)
+  :Detect file save event\nvia VS Code FileWatcher;
+  :Re-parse changed file\nlocally with tree-sitter;
+  :Send incremental update\nto API Gateway;
+  |API Gateway (Go)|
+  :Queue incremental\nanalysis job;
+  |Ingestion Worker (Rust)|
+  :Process only changed\nfiles (fingerprint check);
+  |Database Layer|
+  :Update affected nodes\nand edges in Neo4j;
+  |VS Code Extension (Frontend)|
+  :Auto-refresh graph\nvisualization;
+else (No)
+  :Developer continues\nbrowsing graph;
+endif
+
+:Developer clicks node\nto open source file;
+:Developer exports graph\nas PNG/SVG;
+
+stop
+
+legend right
+  |= Swimlane |= Component |
+  | <#E3F2FD> | VS Code Extension |
+  | <#E8F5E9> | API Gateway (Go/Gin) |
+  | <#FFF3E0> | Ingestion Worker (Rust) |
+  | <#F3E5F5> | Graph Engine (Python) |
+  | <#FFEBEE> | Database Layer |
+endlegend
+
+footer ArchMind - UH4 Codebase Intelligence Platform | Activity Diagram
+
+@enduml

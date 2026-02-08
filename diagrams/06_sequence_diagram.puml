@@ -1,0 +1,159 @@
+@startuml ArchMind_Sequence_Diagram
+
+skinparam dpi 100
+skinparam sequenceMessageAlign center
+skinparam sequenceParticipantFontSize 11
+skinparam sequenceMessageFontSize 10
+skinparam noteFontSize 9
+skinparam sequenceLifeLineBorderColor #455A64
+skinparam sequenceArrowColor #37474F
+
+title ArchMind — Sequence Diagram\nRepository Analysis & Graph Visualization Flow
+
+actor "Developer" as dev #E3F2FD
+participant "VS Code\nExtension" as ext #E3F2FD
+participant "WebView\nPanel" as web #E3F2FD
+participant "API Gateway\n(Go/Gin)" as api #E8F5E9
+database "PostgreSQL" as pg #FFEBEE
+database "Redis" as redis #FFEBEE
+participant "Ingestion\nWorker (Rust)" as worker #FFF3E0
+database "Neo4j" as neo #FFEBEE
+participant "Graph\nEngine (Python)" as graph #F3E5F5
+actor "GitHub" as gh #F3E5F5
+
+== Activation & Setup ==
+
+dev -> ext : Open VS Code with workspace
+activate ext
+ext -> ext : registerCommands()
+ext -> api : GET /api/v1/health
+api --> ext : 200 OK {status: "healthy"}
+ext --> dev : Status bar: "ArchMind Connected"
+
+== Remote Repository Analysis ==
+
+dev -> ext : Command: "Analyze Repository"
+ext -> ext : Prompt for GitHub URL
+dev -> ext : Enter repo URL
+ext -> api : POST /api/v1/analyze\n{repo_url, branch: "main"}
+activate api
+api -> api : Validate URL & auth token
+api -> pg : INSERT analysis_job\n(status="queued")
+activate pg
+pg --> api : job_id (uuid)
+deactivate pg
+api -> redis : LPUSH job_queue {job_id, repo_url}
+activate redis
+redis --> api : OK
+deactivate redis
+api --> ext : 202 Accepted {job_id}
+deactivate api
+ext --> dev : Notification: "Analysis started"
+
+== Ingestion Processing ==
+
+worker -> redis : BRPOP job_queue (blocking)
+activate worker
+redis --> worker : {job_id, repo_url}
+worker -> pg : UPDATE job SET status="processing"
+worker -> worker : git2::clone(repo_url)
+
+alt Clone Success
+  worker -> worker : Walk directory tree
+  worker -> worker : Compute SHA-256 fingerprints
+
+  loop For each changed file
+    worker -> worker : tree-sitter parse(file)
+    worker -> worker : Extract symbols\n(functions, classes, modules)
+    worker -> worker : Extract relationships\n(calls, imports, inherits)
+  end
+
+  worker -> neo : CREATE (:FileNode), (:FunctionNode),\n(:ClassNode)
+  activate neo
+  neo --> worker : Nodes created
+  worker -> neo : CREATE edges\n(CALLS, IMPORTS, INHERITS, CONTAINS)
+  neo --> worker : Edges created
+  deactivate neo
+  worker -> pg : UPDATE file_fingerprints
+  worker -> redis : SETEX analysis_cache\n{repo_id: result} TTL=3600
+  worker -> pg : UPDATE job SET\nstatus="completed"
+  deactivate worker
+
+else Clone Failed
+  worker -> pg : UPDATE job SET\nstatus="failed",\nerror="clone error"
+  deactivate worker
+end
+
+== Polling & Graph Retrieval ==
+
+ext -> api : GET /api/v1/jobs/{job_id}
+activate api
+api -> pg : SELECT status FROM analysis_jobs
+pg --> api : status="completed"
+api --> ext : 200 {status: "completed"}
+deactivate api
+
+ext -> api : GET /api/v1/graph/{repo_id}
+activate api
+api -> graph : Forward graph request
+activate graph
+graph -> neo : MATCH (n)-[r]->(m)\nWHERE repo={repo_id}
+activate neo
+neo --> graph : Nodes + Relationships
+deactivate neo
+graph -> graph : Apply force-directed layout
+graph -> graph : Detect circular dependencies
+graph -> graph : Calculate hotspot scores
+graph --> api : JSON {nodes[], edges[], metadata}
+deactivate graph
+api --> ext : 200 {graphData}
+deactivate api
+
+== Rendering & Interaction ==
+
+ext -> web : postMessage({type: "graph", data})
+activate web
+web -> web : ReactFlow.render(nodes, edges)
+web -> web : Apply color coding\n(hotspots=red, violations=yellow)
+web --> ext : Graph rendered
+web --> dev : Interactive architecture graph
+
+dev -> web : Click on node
+web -> ext : postMessage({type: "openFile", path})
+ext -> ext : vscode.openTextDocument(path)
+ext --> dev : Opens source file in editor
+
+dev -> web : Search nodes
+web -> web : Filter & highlight matches
+web --> dev : Filtered graph view
+
+dev -> web : Export as image
+web -> web : html2canvas → PNG
+web --> dev : Download PNG
+
+== Webhook-Triggered Re-analysis ==
+
+gh -> api : POST /api/v1/webhook\n{push event payload}
+activate api
+api -> api : verifySignature(secret, payload)
+api -> pg : INSERT webhook_event
+api -> redis : LPUSH job_queue\n{job_id, repo_url}
+api --> gh : 200 OK
+deactivate api
+
+worker -> redis : BRPOP job_queue
+activate worker
+worker -> worker : Incremental analysis\n(fingerprint check)
+worker -> neo : Update changed nodes/edges
+worker -> pg : UPDATE job status
+deactivate worker
+
+ext -> api : Poll job status
+api --> ext : "completed"
+ext -> web : postMessage({type: "refresh"})
+web -> web : Re-render graph
+web --> dev : Updated visualization
+
+footer ArchMind - UH4 | Sequence Diagram
+
+@enduml

@@ -604,8 +604,8 @@ class ArchitecturePanel {
 						height: 100%;
 						margin: 0;
 						overflow: hidden;
-						background-color: var(--vscode-editor-background);
-						color: var(--vscode-editor-foreground);
+						background-color: var(--am-bg, var(--vscode-editor-background));
+						color: var(--am-fg, var(--vscode-editor-foreground));
 					}
 				</style>
 			</head>

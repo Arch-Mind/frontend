@@ -38,6 +38,24 @@ const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
 // Layout algorithm imports
 const layoutAlgorithms_1 = require("./layoutAlgorithms");
+// Clustering imports (#11)
+const clustering_1 = require("./clustering");
+const ClusterNode_1 = require("./ClusterNode");
+// Impact Analysis imports (#15)
+const ImpactAnalysis_1 = require("./ImpactAnalysis");
+// Keyboard Navigation imports (#18)
+const KeyboardNavigation_1 = require("./KeyboardNavigation");
+// Enhanced MiniMap imports (#19)
+const EnhancedMiniMap_1 = require("./EnhancedMiniMap");
+// Zoom & Pan imports (#20)
+const useZoomPan_1 = require("./useZoomPan");
+const ZoomControls_1 = require("./ZoomControls");
+// Relationship Visualizer imports (#21)
+const RelationshipVisualizer_1 = require("./RelationshipVisualizer");
+// Custom node types for ReactFlow
+const nodeTypes = {
+    clusterNode: ClusterNode_1.ClusterNode,
+};
 // Debounce hook for performant search on large graphs
 function useDebounce(value, delay) {
     const [debouncedValue, setDebouncedValue] = (0, react_1.useState)(value);
@@ -149,12 +167,13 @@ function createStyledNode(node, position, isMatching, isSelected) {
         style: {
             background: node.type === 'directory'
                 ? `${color}20`
-                : 'var(--vscode-editor-background)',
-            borderColor: isSelected ? 'var(--vscode-focusBorder)' : color,
+                : 'var(--am-panel-bg)',
+            color: 'var(--am-panel-fg)',
+            borderColor: isSelected ? 'var(--am-accent)' : color,
             borderWidth: isSelected ? 3 : (node.type === 'directory' ? 2 : 1),
             borderRadius: node.type === 'directory' ? 8 : 4,
             opacity: isMatching ? 1 : 0.3,
-            boxShadow: isSelected ? '0 0 10px var(--vscode-focusBorder)' : undefined,
+            boxShadow: isSelected ? '0 0 10px var(--am-accent)' : undefined,
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
     };
@@ -263,8 +282,8 @@ function formatEdges(rawEdges, selectedNodeId, matchingNodeIds) {
             animated: isConnectedToSelected ? true : false,
             style: {
                 stroke: isConnectedToSelected
-                    ? 'var(--vscode-focusBorder)'
-                    : 'var(--vscode-editor-foreground)',
+                    ? 'var(--am-accent)'
+                    : 'var(--am-fg)',
                 strokeWidth: isConnectedToSelected ? 2 : 1,
                 opacity: isMatching ? (isConnectedToSelected ? 0.9 : 0.5) : 0.15,
             },
@@ -400,7 +419,10 @@ const ContextMenu = ({ node, position, onAction, onClose }) => {
             react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('findReferences') }, "\uD83D\uDD17 Find References"),
             react_1.default.createElement("div", { className: "context-menu-divider" }))),
         react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('revealInExplorer') }, "\uD83D\uDCC2 Reveal in Explorer"),
-        react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('copyPath') }, "\uD83D\uDCCB Copy Path")));
+        react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('copyPath') }, "\uD83D\uDCCB Copy Path"),
+        react_1.default.createElement("div", { className: "context-menu-divider" }),
+        react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('analyzeImpact') }, "\uD83D\uDCA5 Analyze Impact"),
+        react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('showRelationships') }, "\uD83D\uDD17 Show Relationships")));
 };
 const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, onClose, }) => {
     if (!isVisible)
@@ -453,8 +475,30 @@ const ArchitectureGraphInner = () => {
     const [layoutType, setLayoutType] = (0, react_1.useState)('hierarchical');
     const [layoutPanelVisible, setLayoutPanelVisible] = (0, react_1.useState)(false);
     const [isLayouting, setIsLayouting] = (0, react_1.useState)(false);
+    // Clustering state (#11)
+    const [clusters, setClusters] = (0, react_1.useState)([]);
+    const [clusterState, setClusterState] = (0, react_1.useState)({});
+    const [clusteringEnabled, setClusteringEnabled] = (0, react_1.useState)(false);
+    // Impact Analysis state (#15)
+    const [impactData, setImpactData] = (0, react_1.useState)(null);
+    const [impactVisible, setImpactVisible] = (0, react_1.useState)(false);
+    // Keyboard Navigation state (#18)
+    const [keyboardHelpVisible, setKeyboardHelpVisible] = (0, react_1.useState)(false);
+    // Relationship Visualizer state (#21)
+    const [relationshipVisible, setRelationshipVisible] = (0, react_1.useState)(false);
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
+    // Zoom & Pan controls (#20)
+    const zoomPan = (0, useZoomPan_1.useZoomPan)({ minZoom: 0.1, maxZoom: 4.0 });
+    (0, useZoomPan_1.useZoomPanKeyboard)(zoomPan);
+    // Mini-map click navigation (#19)
+    const { handleMiniMapNodeClick } = (0, EnhancedMiniMap_1.useMiniMapNavigation)((nodeId) => {
+        setSelectedNode(nodeId);
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+            reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
+        }
+    });
     // VS Code API reference
     const vscodeRef = (0, react_1.useRef)(null);
     const onConnect = (0, react_1.useCallback)((params) => setEdges((eds) => (0, reactflow_1.addEdge)(params, eds)), [setEdges]);
@@ -524,6 +568,46 @@ const ArchitectureGraphInner = () => {
                     command: 'copyPath',
                     filePath,
                 });
+                break;
+            case 'analyzeImpact':
+                // Perform local impact analysis based on edges
+                if (rawData) {
+                    const affectedNodes = [];
+                    const visited = new Set();
+                    const queue = [{ id: contextMenuNode.id, distance: 0 }];
+                    visited.add(contextMenuNode.id);
+                    while (queue.length > 0) {
+                        const current = queue.shift();
+                        if (current.distance > 0) {
+                            affectedNodes.push({
+                                nodeId: current.id,
+                                distance: current.distance,
+                                impactType: current.distance === 1 ? 'direct' : 'indirect',
+                            });
+                        }
+                        if (current.distance < 3) {
+                            rawData.edges.forEach(edge => {
+                                const neighbor = edge.source === current.id ? edge.target :
+                                    edge.target === current.id ? edge.source : null;
+                                if (neighbor && !visited.has(neighbor)) {
+                                    visited.add(neighbor);
+                                    queue.push({ id: neighbor, distance: current.distance + 1 });
+                                }
+                            });
+                        }
+                    }
+                    setImpactData({
+                        sourceNodeId: contextMenuNode.id,
+                        affectedNodes,
+                        maxDepth: Math.max(0, ...affectedNodes.map(n => n.distance)),
+                        totalImpact: affectedNodes.length,
+                    });
+                    setImpactVisible(true);
+                }
+                break;
+            case 'showRelationships':
+                setSelectedNode(contextMenuNode.id);
+                setRelationshipVisible(true);
                 break;
         }
         setContextMenuNode(null);
@@ -661,6 +745,83 @@ const ArchitectureGraphInner = () => {
             return NODE_COLORS[node.data.language] || NODE_COLORS.default;
         return NODE_COLORS.default;
     }, []);
+    // Clustering logic (#11) - compute clusters when rawData changes
+    (0, react_1.useEffect)(() => {
+        if (!rawData || rawData.nodes.length < 20) {
+            setClusters([]);
+            setClusteringEnabled(false);
+            return;
+        }
+        const computed = (0, clustering_1.clusterNodesByDirectory)(rawData.nodes, 5, 3);
+        setClusters(computed);
+        setClusteringEnabled(computed.length > 0);
+    }, [rawData]);
+    // Handle cluster toggle
+    const handleClusterToggle = (0, react_1.useCallback)((clusterId) => {
+        setClusterState(prev => (0, clustering_1.toggleCluster)(clusterId, prev));
+    }, []);
+    // Keyboard Navigation (#18)
+    const getConnectedNodes = (0, react_1.useCallback)((nodeId) => {
+        if (!rawData)
+            return [];
+        const connected = [];
+        rawData.edges.forEach(edge => {
+            if (edge.source === nodeId)
+                connected.push(edge.target);
+            if (edge.target === nodeId)
+                connected.push(edge.source);
+        });
+        return connected;
+    }, [rawData]);
+    const handleNodeActivate = (0, react_1.useCallback)((nodeId) => {
+        if (vscodeRef.current) {
+            const rawNode = rawData?.nodes.find(n => n.id === nodeId);
+            if (rawNode && rawNode.type !== 'directory') {
+                vscodeRef.current.postMessage({
+                    command: 'openFile',
+                    filePath: rawNode.filePath || rawNode.id,
+                    lineNumber: rawNode.lineNumber,
+                });
+            }
+        }
+    }, [rawData]);
+    (0, KeyboardNavigation_1.useKeyboardNavigation)({
+        nodes: rawData?.nodes || [],
+        onNodeSelect: (nodeId) => {
+            setSelectedNode(nodeId);
+            // Center on selected node
+            const node = nodes.find(n => n.id === nodeId);
+            if (node) {
+                reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
+            }
+        },
+        onNodeActivate: handleNodeActivate,
+        getCurrentNodeId: () => selectedNode,
+        getConnectedNodes,
+        onFocusSearch: () => setSearchVisible(true),
+        onShowHelp: () => setKeyboardHelpVisible(true),
+    });
+    // Relationship nodes for the visualizer (#21)
+    const relationshipNodes = (0, react_1.useMemo)(() => {
+        if (!rawData)
+            return [];
+        return rawData.nodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            parentId: n.parentId,
+            filePath: n.filePath,
+        }));
+    }, [rawData]);
+    const relationshipEdges = (0, react_1.useMemo)(() => {
+        if (!rawData)
+            return [];
+        return rawData.edges.map(e => ({
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            type: e.type,
+        }));
+    }, [rawData]);
     // Retry loading / trigger backend analysis
     const handleRetry = (0, react_1.useCallback)(() => {
         if (vscodeRef.current) {
@@ -697,16 +858,36 @@ const ArchitectureGraphInner = () => {
         !searchVisible && (react_1.default.createElement("button", { className: "search-toggle-btn", onClick: () => setSearchVisible(true), title: "Search & Filter (Ctrl+F)" }, "\uD83D\uDD0D")),
         react_1.default.createElement(LayoutPanel, { currentLayout: layoutType, onLayoutChange: setLayoutType, isLayouting: isLayouting, isVisible: layoutPanelVisible, onClose: () => setLayoutPanelVisible(false) }),
         !layoutPanelVisible && (react_1.default.createElement("button", { className: "layout-toggle-btn", onClick: () => setLayoutPanelVisible(true), title: "Layout Algorithm (Ctrl+L)" }, "\uD83D\uDCD0")),
-        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
+        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, nodeTypes: nodeTypes, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
-            } },
-            react_1.default.createElement(reactflow_1.Controls, { showInteractive: false }),
-            react_1.default.createElement(reactflow_1.MiniMap, { nodeColor: minimapNodeColor, maskColor: "rgba(0, 0, 0, 0.8)", style: {
-                    backgroundColor: 'var(--vscode-editor-background)',
-                } }),
-            react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 16, size: 1, color: "var(--vscode-editor-foreground)", style: { opacity: 0.1 } })),
+            }, style: { background: 'var(--am-bg)' } },
+            react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null }),
+            react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 16, size: 1, color: "var(--am-fg)", style: { opacity: 0.15 } })),
+        react_1.default.createElement(ZoomControls_1.ZoomControls, { zoomPan: zoomPan, position: "bottom-left" }),
+        clusteringEnabled && clusters.length > 0 && (react_1.default.createElement("div", { className: "cluster-controls" },
+            react_1.default.createElement("span", { className: "cluster-label" },
+                "\uD83D\uDCE6 Clusters (",
+                clusters.length,
+                ")"),
+            react_1.default.createElement("button", { className: "cluster-btn", onClick: () => setClusterState((0, clustering_1.expandAllClusters)(clusters)), title: "Expand All" }, "\u229E"),
+            react_1.default.createElement("button", { className: "cluster-btn", onClick: () => setClusterState((0, clustering_1.collapseAllClusters)(clusters)), title: "Collapse All" }, "\u229F"))),
         react_1.default.createElement(NodeTooltip, { node: hoveredNode, position: tooltipPosition }),
-        react_1.default.createElement(ContextMenu, { node: contextMenuNode, position: contextMenuPosition, onAction: handleContextMenuAction, onClose: () => setContextMenuNode(null) })));
+        react_1.default.createElement(ContextMenu, { node: contextMenuNode, position: contextMenuPosition, onAction: handleContextMenuAction, onClose: () => setContextMenuNode(null) }),
+        impactVisible && (react_1.default.createElement(ImpactAnalysis_1.ImpactAnalysisPanel, { data: impactData, onClose: () => { setImpactVisible(false); setImpactData(null); }, onNodeClick: (nodeId) => {
+                setSelectedNode(nodeId);
+                const node = nodes.find(n => n.id === nodeId);
+                if (node) {
+                    reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
+                }
+            } })),
+        relationshipVisible && selectedNode && (react_1.default.createElement(RelationshipVisualizer_1.RelationshipVisualizer, { selectedNodeId: selectedNode, nodes: relationshipNodes, edges: relationshipEdges, onNodeClick: (nodeId) => {
+                setSelectedNode(nodeId);
+                const node = nodes.find(n => n.id === nodeId);
+                if (node) {
+                    reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
+                }
+            }, onClose: () => setRelationshipVisible(false) })),
+        keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) }))));
 };
 // Wrapper component with ReactFlowProvider
 const ArchitectureGraph = () => {
