@@ -54,8 +54,8 @@ import { ZoomControls } from './ZoomControls';
 // Relationship Visualizer imports (#21)
 import { RelationshipVisualizer } from './RelationshipVisualizer';
 
-// Export Menu imports
-import { ExportMenu } from './ExportMenu';
+// Export Modal imports
+import { ExportModal } from '../components/ExportModal';
 
 // Custom node types for ReactFlow
 const nodeTypes = {
@@ -1607,15 +1607,17 @@ const ArchitectureGraphInner: React.FC = () => {
                 <KeyboardHelp onClose={() => setKeyboardHelpVisible(false)} />
             )}
 
-            {/* Export Menu */}
-            <ExportMenu
+            {/* Export Modal */}
+            <ExportModal
+                isOpen={exportMenuVisible}
+                onClose={() => setExportMenuVisible(false)}
                 nodes={nodes}
                 edges={edges}
                 rawData={rawData}
                 reactFlowWrapper={reactFlowWrapperRef.current}
-                isVisible={exportMenuVisible}
-                onClose={() => setExportMenuVisible(false)}
+                source={rawData?.source || 'local'}
             />
+
 
             <LocalOutline
                 fileName={localFileName}

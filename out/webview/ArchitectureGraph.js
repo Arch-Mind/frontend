@@ -54,8 +54,8 @@ const useZoomPan_1 = require("./useZoomPan");
 const ZoomControls_1 = require("./ZoomControls");
 // Relationship Visualizer imports (#21)
 const RelationshipVisualizer_1 = require("./RelationshipVisualizer");
-// Export Menu imports
-const ExportMenu_1 = require("./ExportMenu");
+// Export Modal imports
+const ExportModal_1 = require("../components/ExportModal");
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode_1.ClusterNode,
@@ -1036,7 +1036,7 @@ const ArchitectureGraphInner = () => {
                 }
             }, onClose: () => setRelationshipVisible(false) })),
         keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) })),
-        react_1.default.createElement(ExportMenu_1.ExportMenu, { nodes: nodes, edges: edges, rawData: rawData, reactFlowWrapper: reactFlowWrapperRef.current, isVisible: exportMenuVisible, onClose: () => setExportMenuVisible(false) }),
+        react_1.default.createElement(ExportModal_1.ExportModal, { isOpen: exportMenuVisible, onClose: () => setExportMenuVisible(false), nodes: nodes, edges: edges, rawData: rawData, reactFlowWrapper: reactFlowWrapperRef.current, source: rawData?.source || 'local' }),
         react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider
