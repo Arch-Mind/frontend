@@ -61,17 +61,19 @@ export interface GraphEdge {
     type: 'contains' | 'imports' | 'calls';
 }
 
+export interface GraphStats {
+    totalFiles: number;
+    totalDirectories: number;
+    totalFunctions: number;
+    totalClasses: number;
+    filesByLanguage: Record<string, number>;
+}
+
 export interface GraphData {
     nodes: GraphNode[];
     edges: GraphEdge[];
     /** Statistics about the analyzed workspace */
-    stats: {
-        totalFiles: number;
-        totalDirectories: number;
-        totalFunctions: number;
-        totalClasses: number;
-        filesByLanguage: Record<string, number>;
-    };
+    stats: GraphStats;
 }
 
 interface FileCacheEntry {

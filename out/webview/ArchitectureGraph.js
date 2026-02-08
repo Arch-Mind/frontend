@@ -43,6 +43,7 @@ const clustering_1 = require("./clustering");
 const ClusterNode_1 = require("./ClusterNode");
 // Impact Analysis imports (#15)
 const ImpactAnalysis_1 = require("./ImpactAnalysis");
+const LocalOutline_1 = require("./LocalOutline");
 // Keyboard Navigation imports (#18)
 const KeyboardNavigation_1 = require("./KeyboardNavigation");
 // Enhanced MiniMap imports (#19)
@@ -471,6 +472,10 @@ const ArchitectureGraphInner = () => {
     // Store raw data for re-filtering
     const [rawData, setRawData] = (0, react_1.useState)(null);
     const [matchingNodeIds, setMatchingNodeIds] = (0, react_1.useState)(new Set());
+    // Local Outline State
+    const [localSymbols, setLocalSymbols] = (0, react_1.useState)([]);
+    const [localFileName, setLocalFileName] = (0, react_1.useState)('');
+    const [localOutlineVisible, setLocalOutlineVisible] = (0, react_1.useState)(true);
     // Layout state
     const [layoutType, setLayoutType] = (0, react_1.useState)('hierarchical');
     const [layoutPanelVisible, setLayoutPanelVisible] = (0, react_1.useState)(false);
@@ -723,6 +728,13 @@ const ArchitectureGraphInner = () => {
                 console.log('Impact analysis data:', message.data);
                 // TODO: Highlight impacted nodes in the graph
             }
+            // Handle local parsed data
+            if (message.command === 'localData') {
+                const { symbols, fileName } = message.data;
+                setLocalSymbols(symbols);
+                setLocalFileName(fileName);
+                setLocalOutlineVisible(true);
+            }
         };
         window.addEventListener('message', handleMessage);
         // Request data from extension
@@ -887,7 +899,8 @@ const ArchitectureGraphInner = () => {
                     reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
                 }
             }, onClose: () => setRelationshipVisible(false) })),
-        keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) }))));
+        keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) })),
+        react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider
 const ArchitectureGraph = () => {

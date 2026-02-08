@@ -65,6 +65,8 @@ const IGNORED_DIRECTORIES = new Set([
     'target',
     'vendor',
 ]);
+// Simple in-memory cache
+const fileCache = new Map();
 /**
  * Determines if a file or directory should be ignored during analysis
  */
@@ -82,6 +84,30 @@ function getFileMetadata(filename) {
         extension: ext.slice(1), // Remove the dot
         language: FILE_EXTENSIONS[ext],
     };
+}
+/**
+ * Gets cached analysis data or parses the file if changed
+ */
+function getFileAnalysis(filePath) {
+    let mtime = 0;
+    try {
+        mtime = fs.statSync(filePath).mtimeMs;
+    }
+    catch {
+        // File might have been deleted
+        return { mtime: 0, imports: [], symbols: [], calls: [] };
+    }
+    const cached = fileCache.get(filePath);
+    if (cached && cached.mtime === mtime) {
+        return cached;
+    }
+    // Parse fresh
+    const imports = (0, dependencyParser_1.parseFileDependencies)(filePath);
+    const symbols = (0, dependencyParser_1.parseFileSymbols)(filePath);
+    const calls = (0, dependencyParser_1.parseFunctionCalls)(filePath, imports);
+    const entry = { mtime, imports, symbols, calls };
+    fileCache.set(filePath, entry);
+    return entry;
 }
 /**
  * Analyzes a workspace directory and builds a graph representation
@@ -139,23 +165,24 @@ async function analyzeWorkspace(rootPath) {
                 }
                 // Analyze dependencies and symbols for supported files
                 if (['typescript', 'javascript'].includes(metadata.language || '')) {
-                    // Parse import dependencies
-                    const dependencies = (0, dependencyParser_1.parseFileDependencies)(fullPath);
-                    for (const depPath of dependencies) {
+                    const analysis = getFileAnalysis(fullPath);
+                    // Add import edges
+                    for (const imp of analysis.imports) {
                         edges.push({
-                            id: `e-${id}-${depPath}`,
+                            id: `e-${id}-${imp.modulePath}`,
                             source: id,
-                            target: depPath,
+                            target: imp.modulePath,
                             type: 'imports',
                         });
                     }
-                    // Parse symbols (functions, classes, etc.)
-                    const symbols = (0, dependencyParser_1.parseFileSymbols)(fullPath);
-                    for (const symbol of symbols) {
+                    // Process symbols
+                    const symbolMap = new Map(); // Name -> NodeID
+                    for (const symbol of analysis.symbols) {
                         const symbolId = `${fullPath}#${symbol.name}`;
                         const symbolType = symbol.kind === 'class' ? 'class' :
                             symbol.kind === 'function' || symbol.kind === 'method' ? 'function' :
                                 'module';
+                        symbolMap.set(symbol.name, symbolId);
                         // Update stats
                         if (symbolType === 'class') {
                             stats.totalClasses++;
@@ -181,6 +208,36 @@ async function analyzeWorkspace(rootPath) {
                             target: symbolId,
                             type: 'contains',
                         });
+                    }
+                    // Process function calls
+                    for (const call of analysis.calls) {
+                        let sourceId = id; // Default to file level call
+                        // Try to find specific caller node
+                        if (call.callerName !== 'global' && call.callerName !== 'anonymous') {
+                            const callerNodeId = symbolMap.get(call.callerName);
+                            if (callerNodeId) {
+                                sourceId = callerNodeId;
+                            }
+                        }
+                        let targetId;
+                        if (call.importPath) {
+                            // External call (imported)
+                            // We construct the ID of the target symbol based on convention: FilePath#SymbolName
+                            // This assumes the target file will be/has been parsed and has that symbol
+                            targetId = `${call.importPath}#${call.calleeName}`;
+                        }
+                        else {
+                            // Local call
+                            targetId = symbolMap.get(call.calleeName);
+                        }
+                        if (targetId) {
+                            edges.push({
+                                id: `e-${sourceId}-${targetId}-${call.lineNumber}`,
+                                source: sourceId,
+                                target: targetId,
+                                type: 'calls'
+                            });
+                        }
                     }
                 }
             }

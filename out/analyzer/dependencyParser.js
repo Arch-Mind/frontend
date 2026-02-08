@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveImportPath = resolveImportPath;
 exports.parseFileDependencies = parseFileDependencies;
+exports.parseFunctionCalls = parseFunctionCalls;
 exports.parseFileSymbols = parseFileSymbols;
 const ts = __importStar(require("typescript"));
 const fs = __importStar(require("fs"));
@@ -82,10 +83,10 @@ function resolveImportPath(currentFilePath, importPath) {
  * Parses a TypeScript/JavaScript file to extract its imports.
  *
  * @param filePath - Absolute path to the file
- * @returns List of resolved absolute paths to imported files
+ * @returns List of detailed import information
  */
 function parseFileDependencies(filePath) {
-    const dependencies = [];
+    const imports = [];
     let content;
     try {
         content = fs.readFileSync(filePath, 'utf-8');
@@ -94,40 +95,94 @@ function parseFileDependencies(filePath) {
         console.warn(`Failed to read file for parsing: ${filePath}`);
         return [];
     }
-    // Create a SourceFile
-    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true // setParentNodes
-    );
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
     function visit(node) {
-        // Handle Import Declarations: import ... from '...'
         if (ts.isImportDeclaration(node)) {
             if (node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-                const importPath = node.moduleSpecifier.text;
-                const resolved = resolveImportPath(filePath, importPath);
+                const importPathStr = node.moduleSpecifier.text;
+                const resolved = resolveImportPath(filePath, importPathStr);
                 if (resolved) {
-                    dependencies.push(resolved);
+                    const specifiers = [];
+                    if (node.importClause) {
+                        // Default import: import foo from 'bar'
+                        if (node.importClause.name) {
+                            specifiers.push({
+                                name: 'default',
+                                alias: node.importClause.name.text,
+                                isDefault: true,
+                                isNamespace: false
+                            });
+                        }
+                        // Named imports: import { foo, bar as baz } from 'bar'
+                        if (node.importClause.namedBindings) {
+                            if (ts.isNamedImports(node.importClause.namedBindings)) {
+                                node.importClause.namedBindings.elements.forEach(element => {
+                                    specifiers.push({
+                                        name: element.propertyName ? element.propertyName.text : element.name.text,
+                                        alias: element.name.text,
+                                        isDefault: false,
+                                        isNamespace: false
+                                    });
+                                });
+                            }
+                            // Namespace import: import * as foo from 'bar'
+                            else if (ts.isNamespaceImport(node.importClause.namedBindings)) {
+                                specifiers.push({
+                                    name: '*',
+                                    alias: node.importClause.namedBindings.name.text,
+                                    isDefault: false,
+                                    isNamespace: true
+                                });
+                            }
+                        }
+                    }
+                    imports.push({
+                        modulePath: resolved,
+                        originalPath: importPathStr,
+                        specifiers
+                    });
                 }
             }
         }
-        // Handle Export Declarations: export ... from '...'
+        // Handle Export Declarations with module specifier: export ... from '...'
         else if (ts.isExportDeclaration(node)) {
             if (node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-                const importPath = node.moduleSpecifier.text;
-                const resolved = resolveImportPath(filePath, importPath);
+                const importPathStr = node.moduleSpecifier.text;
+                const resolved = resolveImportPath(filePath, importPathStr);
                 if (resolved) {
-                    dependencies.push(resolved);
+                    // Start with empty specifiers
+                    const specifiers = [];
+                    if (node.exportClause && ts.isNamedExports(node.exportClause)) {
+                        node.exportClause.elements.forEach(element => {
+                            specifiers.push({
+                                name: element.propertyName ? element.propertyName.text : element.name.text,
+                                alias: element.name.text,
+                                isDefault: false,
+                                isNamespace: false
+                            });
+                        });
+                    }
+                    imports.push({
+                        modulePath: resolved,
+                        originalPath: importPathStr,
+                        specifiers
+                    });
                 }
             }
         }
-        // Handle require calls: require('...') - simplistic check
-        // We look for CallExpression where expression is identifier 'require' and has 1 string arg
         else if (ts.isCallExpression(node)) {
             if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
                 const args = node.arguments;
                 if (args.length > 0 && ts.isStringLiteral(args[0])) {
-                    const importPath = args[0].text;
-                    const resolved = resolveImportPath(filePath, importPath);
+                    const importPathStr = args[0].text;
+                    const resolved = resolveImportPath(filePath, importPathStr);
                     if (resolved) {
-                        dependencies.push(resolved);
+                        // require usually returns the whole module or any
+                        imports.push({
+                            modulePath: resolved,
+                            originalPath: importPathStr,
+                            specifiers: [] // require is dynamic, hard to track specifiers statically simply
+                        });
                     }
                 }
             }
@@ -135,8 +190,122 @@ function parseFileDependencies(filePath) {
         ts.forEachChild(node, visit);
     }
     visit(sourceFile);
-    // Remove duplicates
-    return Array.from(new Set(dependencies));
+    return imports;
+}
+/**
+ * Parses a TypeScript/JavaScript file to extract function calls.
+ */
+function parseFunctionCalls(filePath, imports) {
+    const calls = [];
+    let content;
+    try {
+        content = fs.readFileSync(filePath, 'utf-8');
+    }
+    catch (err) {
+        return [];
+    }
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+    // Build a map of local aliases to imported modules
+    // alias -> { modulePath, name }
+    const importMap = new Map();
+    imports.forEach(imp => {
+        imp.specifiers.forEach(spec => {
+            const alias = spec.alias || spec.name;
+            importMap.set(alias, { modulePath: imp.modulePath, name: spec.name });
+        });
+    });
+    let currentCaller = 'global';
+    function getCallerName(node) {
+        let parent = node.parent;
+        while (parent) {
+            if (ts.isFunctionDeclaration(parent) && parent.name) {
+                return parent.name.text;
+            }
+            else if (ts.isMethodDeclaration(parent) && parent.name) {
+                // Approximate method name
+                return parent.name.getText(sourceFile);
+            }
+            else if (ts.isClassDeclaration(parent) && parent.name) {
+                return parent.name.text; // Constructor or field init
+            }
+            else if (ts.isArrowFunction(parent) || ts.isFunctionExpression(parent)) {
+                // Try to find variable name assignment
+                const varDecl = findParentVariableDeclaration(parent);
+                if (varDecl)
+                    return varDecl;
+                return 'anonymous';
+            }
+            parent = parent.parent;
+        }
+        return 'global';
+    }
+    function findParentVariableDeclaration(node) {
+        let p = node.parent;
+        while (p) {
+            if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) {
+                return p.name.text;
+            }
+            if (ts.isBlock(p) || ts.isSourceFile(p))
+                break;
+            p = p.parent;
+        }
+        return undefined;
+    }
+    function visit(node) {
+        // Track current scope roughly (not perfect for nested)
+        if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+            const prevCaller = currentCaller;
+            currentCaller = getCallerName(node.body || node);
+            ts.forEachChild(node, visit);
+            currentCaller = prevCaller;
+            return;
+        }
+        if (ts.isCallExpression(node)) {
+            // Simple calls: foo()
+            if (ts.isIdentifier(node.expression)) {
+                const calleeName = node.expression.text;
+                const imported = importMap.get(calleeName);
+                calls.push({
+                    callerName: currentCaller,
+                    calleeName: imported ? imported.name : calleeName,
+                    importPath: imported ? imported.modulePath : undefined,
+                    lineNumber: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1
+                });
+            }
+            // Property access calls: obj.foo()
+            else if (ts.isPropertyAccessExpression(node.expression)) {
+                const propAccess = node.expression;
+                // Case: ImportedModule.foo() (Namespace import)
+                if (ts.isIdentifier(propAccess.expression)) {
+                    const objName = propAccess.expression.text;
+                    const methodName = propAccess.name.text;
+                    const importedObj = importMap.get(objName);
+                    if (importedObj && importedObj.name === '*') { // Namespace import
+                        calls.push({
+                            callerName: currentCaller,
+                            calleeName: methodName,
+                            importPath: importedObj.modulePath,
+                            lineNumber: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1
+                        });
+                    }
+                    else {
+                        // Method call on object: obj.method()
+                        // Hard to resolve obj type without full type checker
+                        // We record it as method call
+                        calls.push({
+                            callerName: currentCaller,
+                            calleeName: `${objName}.${methodName}`,
+                            importPath: undefined, // Cannot easily determine definition file
+                            lineNumber: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1
+                        });
+                    }
+                }
+            }
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    return calls;
 }
 /**
  * Parses a TypeScript/JavaScript file to extract symbols (functions, classes, etc.)
