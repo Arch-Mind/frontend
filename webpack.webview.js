@@ -1,13 +1,18 @@
 const path = require('path');
 
 module.exports = {
-    entry: './src/webview/index.tsx', // Verify this path later
+    entry: './src/webview/index.tsx',
     output: {
         path: path.resolve(__dirname, 'out/webview'),
         filename: 'bundle.js',
     },
     resolve: {
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.css'],
+        alias: {
+            '@components': path.resolve(__dirname, 'src/components'),
+            '@hooks': path.resolve(__dirname, 'src/hooks'),
+            '@utils': path.resolve(__dirname, 'src/utils'),
+        },
     },
     module: {
         rules: [
@@ -22,8 +27,19 @@ module.exports = {
             },
         ],
     },
+    optimization: {
+        splitChunks: {
+            chunks: 'all',
+            cacheGroups: {
+                vendor: {
+                    test: /[\\/]node_modules[\\/]/,
+                    name: 'vendors',
+                    priority: 10,
+                },
+            },
+        },
+    },
     devtool: 'nosources-source-map',
-    // Disable performance warnings for VS Code webview bundle
     performance: {
         hints: false,
         maxEntrypointSize: 512000,
