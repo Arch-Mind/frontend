@@ -257,11 +257,65 @@ body {
     fill: var(--vscode-editor-foreground);
 }
 
-/* ReactFlow minimap */
+/* Enhanced ReactFlow minimap (Issue #19) */
 .react-flow__minimap {
     background-color: var(--vscode-sideBar-background);
     border: 1px solid var(--vscode-widget-border);
     border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Mini-map node colors by type */
+.minimap-node-file {
+    fill: #3498db !important;
+}
+
+.minimap-node-directory {
+    fill: #9b59b6 !important;
+}
+
+.minimap-node-function {
+    fill: #2ecc71 !important;
+}
+
+.minimap-node-class {
+    fill: #e67e22 !important;
+}
+
+.minimap-node-module {
+    fill: #1abc9c !important;
+}
+
+/* Selected node in minimap */
+.minimap-node-selected {
+    fill: #f39c12 !important;
+    stroke: #f39c12 !important;
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 4px #f39c12);
+}
+
+/* Hovered node in minimap */
+.minimap-node-hovered {
+    fill: #e74c3c !important;
+    stroke: #e74c3c !important;
+    stroke-width: 2px !important;
+}
+
+/* Minimap mask (viewport indicator) */
+.react-flow__minimap-mask {
+    fill: rgba(0, 150, 255, 0.1);
+    stroke: var(--vscode-focusBorder);
+    stroke-width: 2px;
+}
+
+/* Dark theme minimap adjustments */
+[data-theme="dark"] .react-flow__minimap {
+    background-color: rgba(30, 30, 30, 0.95);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .react-flow__minimap-mask {
+    fill: rgba(100, 150, 255, 0.15);
 }
 
 /* Search Panel Styles */
