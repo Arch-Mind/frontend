@@ -1,6 +1,17 @@
 /**
- * Keyboard Navigation Hook (Issue #18)
- * Enable keyboard-only navigation: Arrow keys, Enter, Tab, shortcuts
+ * useKeyboardNavigation Hook
+ * -------------------------
+ * Enables keyboard-only navigation for graph nodes (arrow keys, enter, tab, shortcuts).
+ * Used to improve accessibility and efficiency for power users.
+ *
+ * Features:
+ * - Arrow keys to move between nodes
+ * - Enter to activate/select node
+ * - Tab to cycle through connected nodes
+ * - Keyboard shortcuts for search, help, zoom, and theme
+ *
+ * @param {KeyboardNavigationOptions} options - Node list, selection/activation handlers, and helpers
+ * @returns {object} Navigation state
  */
 
 import React, { useEffect, useCallback, useRef } from 'react';
@@ -29,7 +40,9 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions) {
     const isNavigating = useRef(false);
 
     /**
-     * Get next node in direction
+     * Returns the next node ID in the given direction (up, down, left, right)
+     * @param direction - Navigation direction
+     * @returns {string | null} Next node ID
      */
     const getNextNode = useCallback((direction: 'up' | 'down' | 'left' | 'right'): string | null => {
         const currentId = getCurrentNodeId();
@@ -68,7 +81,8 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions) {
     }, [nodes, getCurrentNodeId, getConnectedNodes]);
 
     /**
-     * Navigate with arrow keys
+     * Handles navigation with arrow keys
+     * @param direction - Navigation direction
      */
     const handleArrowKey = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         const nextNodeId = getNextNode(direction);
@@ -78,7 +92,8 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions) {
     }, [getNextNode, onNodeSelect]);
 
     /**
-     * Tab navigation - cycle through connected nodes
+     * Handles tab navigation to cycle through connected nodes
+     * @param shiftKey - Whether shift is held (reverse direction)
      */
     const handleTab = useCallback((shiftKey: boolean) => {
         const currentId = getCurrentNodeId();
@@ -107,7 +122,8 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions) {
     }, [getCurrentNodeId, getConnectedNodes, nodes, onNodeSelect, handleArrowKey]);
 
     /**
-     * Main keyboard event handler
+     * Main keyboard event handler for navigation and shortcuts
+     * @effect
      */
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -179,13 +195,20 @@ export function useKeyboardNavigation(options: KeyboardNavigationOptions) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [nodes, handleArrowKey, handleTab, getCurrentNodeId, onNodeActivate, onFocusSearch, onShowHelp, onNodeSelect]);
 
+    // Return navigation state (can be expanded for more features)
     return {
         isNavigating: isNavigating.current,
     };
 }
 
 /**
- * Keyboard Shortcuts Help Component
+ * KeyboardHelp Component
+ * ----------------------
+ * Displays a help overlay listing all keyboard shortcuts for navigation, search, zoom, and theme.
+ *
+ * @component
+ * @param {KeyboardHelpProps} props - onClose handler
+ * @returns {JSX.Element}
  */
 export interface KeyboardHelpProps {
     onClose: () => void;

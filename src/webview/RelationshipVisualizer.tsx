@@ -36,159 +36,204 @@ export interface RelationshipVisualizerProps {
 }
 
 /**
- * Calculate relationships for a node
- */
-function calculateRelationships(
-    nodeId: string,
-    nodes: Node[],
-    edges: Edge[]
-): RelationshipInfo {
-    const nodeMap = new Map(nodes.map(n => [n.id, n]));
-    const currentNode = nodeMap.get(nodeId);
-    
-    if (!currentNode) {
-        return { children: [], siblings: [], ancestors: [], descendants: [] };
-    }
-
-    // Find parent
-    const parent = currentNode.parentId ? nodeMap.get(currentNode.parentId) : undefined;
-
-    // Find children (nodes with this node as parent)
-    const children = nodes.filter(n => n.parentId === nodeId);
-
-    // Find siblings (nodes with same parent)
-    const siblings = currentNode.parentId
-        ? nodes.filter(n => n.parentId === currentNode.parentId && n.id !== nodeId)
-        : [];
-
-    // Find ancestors (walk up parent chain)
-    const ancestors: Node[] = [];
-    let currentParentId = currentNode.parentId;
-    while (currentParentId) {
-        const ancestorNode = nodeMap.get(currentParentId);
-        if (!ancestorNode) break;
-        ancestors.push(ancestorNode);
-        currentParentId = ancestorNode.parentId;
-    }
-
-    // Find descendants (walk down children)
-    const descendants: Node[] = [];
-    const visited = new Set<string>();
-    
-    const findDescendants = (parentId: string) => {
-        const childNodes = nodes.filter(n => n.parentId === parentId);
-        childNodes.forEach(child => {
-            if (!visited.has(child.id)) {
-                visited.add(child.id);
-                descendants.push(child);
-                findDescendants(child.id);
-            }
-        });
-    };
-    
-    findDescendants(nodeId);
-
-    return {
-        parent,
-        children,
-        siblings,
-        ancestors,
-        descendants,
-    };
-}
-
 /**
- * Get icon for node type
+ * RelationshipVisualizer component
+ * --------------------------------
+ * Visualizes the relationships (parents, children, siblings, ancestors, descendants) of a given node.
+ * Provides interactive sections for each relationship type, allowing users to explore the node's context in the graph.
+ *
+ * Props:
+ * - node: The current node being visualized.
+ * - relationships: Object containing arrays of related nodes by type.
+ * - onNodeClick: Handler for clicking a related node.
  */
-function getNodeIcon(type: string): string {
-    const icons: Record<string, string> = {
-        file: '📄',
-        directory: '📁',
-        function: 'ƒ',
-        class: '◆',
-        module: '📦',
-    };
-    return icons[type] || '•';
-}
-
-/**
- * Relationship strength based on connection count
- */
-function getRelationshipStrength(count: number): 'weak' | 'medium' | 'strong' {
-    if (count >= 5) return 'strong';
-    if (count >= 2) return 'medium';
-    return 'weak';
-}
-
 export const RelationshipVisualizer: React.FC<RelationshipVisualizerProps> = ({
-    selectedNodeId,
-    nodes,
-    edges,
+    node,
+    relationships,
     onNodeClick,
-    onClose,
 }) => {
-    const relationships = useMemo(() => {
-        if (!selectedNodeId) return null;
-        return calculateRelationships(selectedNodeId, nodes, edges);
-    }, [selectedNodeId, nodes, edges]);
+    // Destructure relationship arrays from the relationships prop
+    const { parents, children, siblings, ancestors, descendants } = relationships;
+    // Calculate total number of relationships
+    const totalRelationships =
+        parents.length + children.length + siblings.length + ancestors.length + descendants.length;
 
-    const selectedNode = useMemo(() => {
-        return nodes.find(n => n.id === selectedNodeId);
-    }, [selectedNodeId, nodes]);
-
-    if (!selectedNodeId || !relationships || !selectedNode) {
-        return null;
+    /**
+     * Returns a string representing the strength of a relationship based on count.
+     * Used for descendants section indicator.
+     */
+    function getRelationshipStrength(count: number): string {
+        if (count > 20) return 'strong';
+        if (count > 10) return 'medium';
+        if (count > 0) return 'weak';
+        return 'none';
     }
 
-    const { parent, children, siblings, ancestors, descendants } = relationships;
-
-    const totalRelationships =
-        (parent ? 1 : 0) +
-        children.length +
-        siblings.length +
-        ancestors.length +
-        descendants.length;
+    /**
+     * Returns an icon for a node type.
+     * Used in RelationshipNode.
+     */
+    function getNodeIcon(type: string): string {
+        switch (type) {
+            case 'class':
+                return '📦';
+            case 'function':
+                return '🔧';
+            case 'interface':
+                return '🔗';
+            default:
+                return '🔹';
+        }
+    }
 
     return (
         <div className="relationship-visualizer">
-            <div className="relationship-header">
-                <div className="relationship-title">
-                    <span className="relationship-icon">🔗</span>
-                    <span>Relationships</span>
-                </div>
-                <button className="relationship-close-btn" onClick={onClose} title="Close">
-                    ✕
-                </button>
-            </div>
-
             <div className="relationship-summary">
-                <div className="selected-node-info">
-                    <span className="node-type-icon">{getNodeIcon(selectedNode.type)}</span>
-                    <div className="node-details">
-                        <div className="node-name">{selectedNode.id}</div>
-                        <div className="node-type-label">{selectedNode.type}</div>
+                {/* Summary Section: Shows counts for each relationship type */}
+                <div className="summary-header">
+                    <span className="summary-title">Relationships</span>
+                    <span className="summary-badge">{totalRelationships}</span>
+                </div>
+                <div className="summary-items">
+                    <div className="summary-item">
+                        <span className="summary-label">Parents</span>
+                        <span className="summary-value">{parents.length}</span>
+                    </div>
+                    <div className="summary-item">
+                        <span className="summary-label">Children</span>
+                        <span className="summary-value">{children.length}</span>
+                    </div>
+                    <div className="summary-item">
+                        <span className="summary-label">Siblings</span>
+                        <span className="summary-value">{siblings.length}</span>
                     </div>
                 </div>
-                <div className="relationship-count">
-                    {totalRelationships} relationship{totalRelationships !== 1 ? 's' : ''}
-                </div>
             </div>
 
-            <div className="relationship-sections">
-                {/* Parent Section */}
-                {parent && (
-                    <div className="relationship-section">
-                        <div className="section-header">
-                            <span className="section-icon">⬆️</span>
-                            <span className="section-title">Parent</span>
-                            <span className="section-badge">1</span>
-                        </div>
-                        <div className="relationship-items">
+            {/* Parents Section: Lists parent nodes */}
+            {parents.length > 0 && (
+                <div className="relationship-section">
+                    <div className="section-header">
+                        <span className="section-icon">⬆️</span>
+                        <span className="section-title">Parents</span>
+                        <span className="section-badge">{parents.length}</span>
+                    </div>
+                    <div className="relationship-items">
+                        {parents.map(parent => (
                             <RelationshipNode
+                                key={parent.id}
                                 node={parent}
                                 relationshipType="parent"
                                 onClick={onNodeClick}
                             />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Children Section: Lists child nodes */}
+            {children.length > 0 && (
+                <div className="relationship-section">
+                    <div className="section-header">
+                        <span className="section-icon">⬇️</span>
+                        <span className="section-title">Children</span>
+                        <span className="section-badge">{children.length}</span>
+                    </div>
+                    <div className="relationship-items">
+                        {children.map(child => (
+                            <RelationshipNode
+                                key={child.id}
+                                node={child}
+                                relationshipType="child"
+                                onClick={onNodeClick}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Siblings Section: Lists sibling nodes */}
+            {siblings.length > 0 && (
+                <div className="relationship-section">
+                    <div className="section-header">
+                        <span className="section-icon">↔️</span>
+                        <span className="section-title">Siblings</span>
+                        <span className="section-badge">{siblings.length}</span>
+                    </div>
+                    <div className="relationship-items">
+                        {siblings.map(sibling => (
+                            <RelationshipNode
+                                key={sibling.id}
+                                node={sibling}
+                                relationshipType="sibling"
+                                onClick={onNodeClick}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Ancestors Section: Lists ancestor nodes with depth */}
+            {ancestors.length > 0 && (
+                <div className="relationship-section">
+                    <div className="section-header">
+                        <span className="section-icon">⏫</span>
+                        <span className="section-title">Ancestors</span>
+                        <span className="section-badge">{ancestors.length}</span>
+                    </div>
+                    <div className="relationship-items">
+                        {ancestors.map((node, index) => (
+                            <RelationshipNode
+                                key={node.id}
+                                node={node}
+                                relationshipType="ancestor"
+                                depth={index + 1}
+                                onClick={onNodeClick}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Descendants Section: Lists descendant nodes, shows strength indicator, limits to 10 with overflow */}
+            {descendants.length > 0 && (
+                <div className="relationship-section">
+                    <div className="section-header">
+                        <span className="section-icon">⏬</span>
+                        <span className="section-title">Descendants</span>
+                        <span className="section-badge">{descendants.length}</span>
+                        <span className={`strength-indicator strength-${getRelationshipStrength(descendants.length)}`}>
+                            {getRelationshipStrength(descendants.length)}
+                        </span>
+                    </div>
+                    <div className="relationship-items">
+                        {descendants.slice(0, 10).map(node => (
+                            <RelationshipNode
+                                key={node.id}
+                                node={node}
+                                relationshipType="descendant"
+                                onClick={onNodeClick}
+                            />
+                        ))}
+                        {descendants.length > 10 && (
+                            <div className="more-items">
+                                +{descendants.length - 10} more...
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* No relationships fallback */}
+            {totalRelationships === 0 && (
+                <div className="no-relationships">
+                    <span className="no-rel-icon">🔍</span>
+                    <span className="no-rel-text">No relationships found</span>
+                </div>
+            )}
+        </div>
+    );
+};
                         </div>
                     </div>
                 )}
@@ -301,7 +346,16 @@ export const RelationshipVisualizer: React.FC<RelationshipVisualizerProps> = ({
 };
 
 /**
- * Individual relationship node item
+ * RelationshipNode component
+ * -------------------------
+ * Renders an individual node in a relationship list (parent, child, sibling, ancestor, descendant).
+ * Shows node icon, name, type, and (optionally) depth/level for ancestors.
+ *
+ * Props:
+ * - node: The node to display.
+ * - relationshipType: The type of relationship (for styling).
+ * - depth: Optional depth/level (for ancestors).
+ * - onClick: Optional handler for node click.
  */
 interface RelationshipNodeProps {
     node: Node;
@@ -316,10 +370,12 @@ const RelationshipNode: React.FC<RelationshipNodeProps> = ({
     depth,
     onClick,
 }) => {
+    // Handle click on node, call parent handler if provided
     const handleClick = () => {
         onClick?.(node.id);
     };
 
+    // Indent based on depth (for ancestor tree visualization)
     const indent = depth ? depth * 12 : 0;
 
     return (
@@ -329,11 +385,13 @@ const RelationshipNode: React.FC<RelationshipNodeProps> = ({
             onClick={handleClick}
         >
             <div className="rel-node-connector"></div>
+            {/* Node type icon */}
             <span className="rel-node-icon">{getNodeIcon(node.type)}</span>
             <div className="rel-node-content">
                 <div className="rel-node-name">{node.id}</div>
                 <div className="rel-node-type">{node.type}</div>
             </div>
+            {/* Show depth/level for ancestors */}
             {depth && <span className="rel-node-depth">Level {depth}</span>}
         </div>
     );

@@ -1,6 +1,17 @@
 /**
- * Theme Toggle Component (Issue #22)
- * UI control for switching between light/dark/auto themes
+ * ThemeToggle Component
+ * ---------------------
+ * UI control for switching between light, dark, and auto themes.
+ * Used to let users toggle the application theme preference.
+ *
+ * Features:
+ * - Shows theme options (auto, light, dark) with icons
+ * - Displays current theme and system-following status
+ * - Supports compact and full modes
+ *
+ * @component
+ * @param {ThemeToggleProps} props - Position and label display options
+ * @returns {JSX.Element}
  */
 
 import React from 'react';
@@ -15,8 +26,13 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
     position = 'top-right',
     showLabel = true,
 }) => {
+    // Get theme state and setter from context
     const { theme, resolvedTheme, setTheme } = useTheme();
 
+    /**
+     * Returns the icon for a given theme option
+     * @param themeOption - Theme value
+     */
     const getIcon = (themeOption: Theme): string => {
         switch (themeOption) {
             case 'light':
@@ -28,6 +44,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         }
     };
 
+    /**
+     * Returns the label for a given theme option
+     * @param themeOption - Theme value
+     */
     const getLabel = (themeOption: Theme): string => {
         switch (themeOption) {
             case 'light':
@@ -39,6 +59,9 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         }
     };
 
+    /**
+     * Returns the tooltip for the current theme
+     */
     const getTooltip = (): string => {
         if (theme === 'auto') {
             return `Auto (Currently: ${resolvedTheme}) • Ctrl+Shift+T`;
@@ -46,6 +69,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         return `${getLabel(theme)} Mode • Ctrl+Shift+T`;
     };
 
+    // Theme options to display
     const options: Theme[] = ['auto', 'light', 'dark'];
 
     return (
@@ -53,7 +77,6 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
             <div className="theme-toggle-label">
                 {showLabel && <span className="toggle-label-text">Theme:</span>}
             </div>
-            
             <div className="theme-options">
                 {options.map(option => (
                     <button
@@ -67,7 +90,6 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                     </button>
                 ))}
             </div>
-
             {theme === 'auto' && (
                 <div className="theme-auto-indicator">
                     <span className="auto-hint">
@@ -80,11 +102,19 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 };
 
 /**
- * Compact theme toggle button (just icon)
+ * CompactThemeToggle Component
+ * ---------------------------
+ * Renders a compact button for toggling theme (icon only).
+ *
+ * @component
+ * @returns {JSX.Element}
  */
 export const CompactThemeToggle: React.FC = () => {
     const { theme, toggleTheme } = useTheme();
 
+    /**
+     * Returns the icon for the current theme
+     */
     const getIcon = (): string => {
         switch (theme) {
             case 'light':

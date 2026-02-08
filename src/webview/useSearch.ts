@@ -1,6 +1,10 @@
 /**
  * useSearch Hook (Issue #23)
- * Custom hook for managing search state and operations
+ * -------------------------
+ * Custom React hook for managing search state, debouncing, and result navigation.
+ * Provides search query state, debounced search, result selection, and keyboard navigation helpers.
+ *
+ * Used in the search bar and related UI components.
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -33,7 +37,13 @@ export interface UseSearchReturn {
 }
 
 /**
- * Custom hook for search functionality
+ * useSearch
+ * ---------
+ * Main hook for search functionality. Handles debounced search, result selection, and exposes search state.
+ *
+ * @param nodes - Array of searchable nodes
+ * @param options - Search options (debounce, min length, etc.)
+ * @returns UseSearchReturn - Search state and handlers
  */
 export function useSearch(
     nodes: SearchableNode[],
@@ -50,7 +60,7 @@ export function useSearch(
         ...searchOptions
     } = options;
 
-    // Debounce query input
+    // Debounce query input to avoid excessive search calls
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedQuery(query);
@@ -59,7 +69,7 @@ export function useSearch(
         return () => clearTimeout(timer);
     }, [query, debounceMs]);
 
-    // Perform search
+    // Perform search when debouncedQuery changes
     const results = useMemo(() => {
         if (debouncedQuery.length < minQueryLength) {
             setIsSearching(false);
@@ -76,55 +86,61 @@ export function useSearch(
         return searchResults;
     }, [nodes, debouncedQuery, minQueryLength, searchOptions]);
 
-    // Select next result
+    // Select next result in the list
     const selectNext = useCallback(() => {
         if (results.length === 0) return;
         setSelectedIndex(prev => (prev + 1) % results.length);
     }, [results.length]);
 
-    // Select previous result
+    // Select previous result in the list
     const selectPrevious = useCallback(() => {
         if (results.length === 0) return;
         setSelectedIndex(prev => (prev - 1 + results.length) % results.length);
     }, [results.length]);
 
-    // Select specific result
+    // Select a specific result by index
     const selectResult = useCallback((index: number) => {
         if (index >= 0 && index < results.length) {
             setSelectedIndex(index);
         }
     }, [results.length]);
 
-    // Clear search
+    // Clear search state and selection
     const clearSearch = useCallback(() => {
         setQuery('');
         setDebouncedQuery('');
         setSelectedIndex(-1);
     }, []);
 
-    // Get selected result
+    // Get the currently selected result (or null)
     const selectedResult = selectedIndex >= 0 && selectedIndex < results.length
         ? results[selectedIndex]
         : null;
 
     return {
-        query,
-        setQuery,
-        results,
-        isSearching,
-        selectedIndex,
-        selectedResult,
-        selectNext,
-        selectPrevious,
-        selectResult,
-        clearSearch,
-        hasResults: results.length > 0,
-        resultCount: results.length,
+        query, // Current search query
+        setQuery, // Setter for query
+        results, // Array of search results
+        isSearching, // Search in progress flag
+        selectedIndex, // Index of selected result
+        selectedResult, // The selected result object
+        selectNext, // Select next result
+        selectPrevious, // Select previous result
+        selectResult, // Select result by index
+        clearSearch, // Clear search state
+        hasResults: results.length > 0, // True if there are results
+        resultCount: results.length, // Number of results
     };
 }
 
 /**
- * Hook for keyboard shortcuts
+ * useSearchKeyboard
+ * -----------------
+ * Hook for handling keyboard shortcuts for search UI.
+ * Supports opening (/, Ctrl+F), closing (Esc), navigating (arrows), and selecting (Enter) search results.
+ *
+ * @param searchHook - The useSearch return object
+ * @param callbacks - Optional callbacks for open, close, and navigation
  */
 export function useSearchKeyboard(
     searchHook: UseSearchReturn,
@@ -139,9 +155,8 @@ export function useSearchKeyboard(
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Open search with '/' key
+            // Open search with '/' key (if not in input/textarea)
             if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
-                // Only if not in an input field
                 const target = e.target as HTMLElement;
                 if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
                     e.preventDefault();

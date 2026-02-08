@@ -1,6 +1,17 @@
 /**
- * ClusterNode Component (Issue #11)
- * Displays a collapsed cluster with metrics and expand button
+ * ClusterNode Component
+ * ---------------------
+ * Displays a collapsed cluster node with summary metrics and an expand button.
+ * Used for grouping nodes in large graphs for better visualization and navigation.
+ *
+ * Features:
+ * - Shows cluster label and metrics (nodes, files, functions, classes)
+ * - Provides expand button to reveal cluster contents
+ * - Integrates with React Flow for graph rendering
+ *
+ * @component
+ * @param {NodeProps<ClusterNodeData>} props - Cluster data and expand handler
+ * @returns {JSX.Element}
  */
 
 import React from 'react';
@@ -13,9 +24,14 @@ export interface ClusterNodeData {
 }
 
 export function ClusterNode({ data }: NodeProps<ClusterNodeData>) {
+    // Destructure cluster data and expand handler
     const { cluster, onExpand } = data;
     const { label, metrics } = cluster;
 
+    /**
+     * Handles click on expand button to reveal cluster contents
+     * @param e - Mouse event
+     */
     const handleExpand = (e: React.MouseEvent) => {
         e.stopPropagation();
         onExpand(cluster.id);
@@ -23,13 +39,12 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeData>) {
 
     return (
         <div className="cluster-node">
+            {/* Target handle for React Flow connections */}
             <Handle type="target" position={Position.Top} />
-            
             <div className="cluster-header">
                 <div className="cluster-icon">📁</div>
                 <div className="cluster-title">{label}</div>
             </div>
-            
             <div className="cluster-metrics">
                 <div className="metric">
                     <span className="metric-label">Nodes:</span>
@@ -54,7 +69,7 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeData>) {
                     </div>
                 )}
             </div>
-            
+            {/* Expand button to reveal cluster */}
             <button 
                 className="cluster-expand-button" 
                 onClick={handleExpand}
@@ -62,7 +77,7 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeData>) {
             >
                 Expand ▶
             </button>
-            
+            {/* Source handle for React Flow connections */}
             <Handle type="source" position={Position.Bottom} />
         </div>
     );
