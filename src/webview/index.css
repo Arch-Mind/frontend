@@ -855,3 +855,231 @@ body {
     font-size: 10px;
     line-height: 1.4;
 }
+
+/* Enhanced Search Bar Styles (Issue #23) */
+.search-bar-container {
+    position: absolute;
+    top: 60px;
+    right: 10px;
+    z-index: 30;
+    background-color: var(--vscode-sideBar-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    min-width: 400px;
+    max-width: 500px;
+    max-height: 600px;
+    display: flex;
+    flex-direction: column;
+}
+
+.search-bar-header {
+    padding: 12px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.search-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+.search-input-wrapper:focus-within {
+    border-color: var(--vscode-focusBorder);
+}
+
+.search-icon {
+    font-size: 16px;
+    opacity: 0.6;
+}
+
+.search-bar-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--vscode-input-foreground);
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+}
+
+.search-bar-input::placeholder {
+    color: var(--vscode-input-placeholderForeground);
+}
+
+.search-clear-btn,
+.search-close-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-icon-foreground);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    opacity: 0.6;
+    transition: all 0.15s;
+}
+
+.search-clear-btn:hover,
+.search-close-btn:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    opacity: 1;
+}
+
+.search-bar-stats {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.result-count {
+    font-weight: 500;
+}
+
+/* Search Results */
+.search-results-container {
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.search-result-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.search-result-item:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.search-result-item.selected {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.result-icon {
+    font-size: 16px;
+    margin-top: 2px;
+}
+
+.result-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.result-label {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+.result-path {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.result-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.result-type {
+    text-transform: capitalize;
+    padding: 2px 6px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 3px;
+}
+
+.result-language {
+    opacity: 0.8;
+}
+
+.result-score {
+    opacity: 0.7;
+}
+
+.meta-separator {
+    opacity: 0.5;
+}
+
+.result-indicator {
+    font-size: 12px;
+    color: var(--vscode-list-activeSelectionForeground);
+    margin-top: 4px;
+}
+
+/* Search Highlighting */
+.search-highlight {
+    background-color: var(--vscode-editor-findMatchHighlightBackground);
+    color: var(--vscode-editor-foreground);
+    padding: 1px 2px;
+    border-radius: 2px;
+    font-weight: 600;
+}
+
+.search-result-item.selected .search-highlight {
+    background-color: var(--vscode-editor-findMatchBackground);
+}
+
+/* No Results */
+.search-no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--vscode-descriptionForeground);
+    text-align: center;
+    gap: 12px;
+}
+
+.no-results-icon {
+    font-size: 36px;
+    opacity: 0.5;
+}
+
+.no-results-text {
+    font-size: 13px;
+}
+
+/* Search Hints */
+.search-bar-hints {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--vscode-widget-border);
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.hint kbd {
+    background-color: var(--vscode-keybindingLabel-background);
+    border: 1px solid var(--vscode-keybindingLabel-border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 9px;
+    font-family: inherit;
+}
