@@ -61,22 +61,29 @@ class DependencyCodeLensProvider {
         this.traverseSymbols(symbols, document.fileName, lenses);
         return lenses;
     }
-    traverseSymbols(symbols, filePath, lenses) {
+    traverseSymbols(symbols, filePath, lenses, parentName = '') {
         for (const symbol of symbols) {
+            let lookupName = symbol.name;
+            // Construct lookup name for methods (ClassName.MethodName)
+            if (symbol.kind === 'method' && parentName) {
+                lookupName = `${parentName}.${symbol.name}`;
+            }
             if (symbol.kind === 'function' || symbol.kind === 'method') {
-                this.createLensesForFunction(symbol, filePath, lenses);
+                this.createLensesForFunction(symbol, lookupName, filePath, lenses);
             }
             if (symbol.children) {
-                this.traverseSymbols(symbol.children, filePath, lenses);
+                // If this is a class, pass its name as parent for children
+                const nextParentName = symbol.kind === 'class' ? symbol.name : parentName;
+                this.traverseSymbols(symbol.children, filePath, lenses, nextParentName);
             }
         }
     }
-    createLensesForFunction(symbol, filePath, lenses) {
+    createLensesForFunction(symbol, lookupName, filePath, lenses) {
         const startPos = new vscode.Position(symbol.startLine - 1, 0);
         const endPos = new vscode.Position(symbol.startLine - 1, 0); // Lens sits on the definition line
         const range = new vscode.Range(startPos, endPos);
-        const callers = this.analysisService.getCallers(filePath, symbol.name);
-        const calls = this.analysisService.getCalls(filePath, symbol.name);
+        const callers = this.analysisService.getCallers(filePath, lookupName);
+        const calls = this.analysisService.getCalls(filePath, lookupName);
         // Callers Lens
         const callersCount = callers.length;
         const callersTitle = callersCount === 1 ? '1 caller' : `${callersCount} callers`;

@@ -6,6 +6,7 @@ import { LocalParser } from './analyzer/localParser';
 
 import { AnalysisService } from './services/analysisService';
 import { DependencyCodeLensProvider } from './providers/DependencyCodeLensProvider';
+import { FingerprintService } from './services/fingerprintService';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('ArchMind VS Code Extension is now active!');
@@ -13,6 +14,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize LocalParser
     const localParser = LocalParser.getInstance(context.extensionUri);
     localParser.initialize();
+
+    // Initialize FingerprintService
+    FingerprintService.getInstance(context);
 
     // Initialize AnalysisService
     const analysisService = AnalysisService.getInstance();

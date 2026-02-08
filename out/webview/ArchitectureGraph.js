@@ -86,8 +86,17 @@ const NODE_COLORS = {
     module: '#27ae60',
     default: '#6b7280',
 };
+// Status colors
+const STATUS_COLORS = {
+    modified: '#e67e22', // Orange for modified
+    added: '#2ecc71', // Green for added
+    deleted: '#e74c3c', // Red for deleted
+};
 // Get color based on node type/language
 function getNodeColor(node) {
+    if (node.status && node.status !== 'unchanged' && STATUS_COLORS[node.status]) {
+        return STATUS_COLORS[node.status];
+    }
     if (node.type === 'directory')
         return NODE_COLORS.directory;
     if (node.type === 'function')
@@ -153,16 +162,18 @@ function calculateMatchingNodeIds(nodes, filters) {
 // Create styled ReactFlow node from RawNode and position
 function createStyledNode(node, position, isMatching, isSelected) {
     const color = getNodeColor(node);
+    const isChanged = node.status && node.status !== 'unchanged';
     return {
         id: node.id,
         data: {
-            label: node.label,
+            label: node.label + (isChanged ? ` (${node.status})` : ''),
             type: node.type,
             language: node.language,
             extension: node.extension,
             filePath: node.filePath || node.id,
             lineNumber: node.lineNumber,
             endLineNumber: node.endLineNumber,
+            status: node.status, // Pass status to data
         },
         position,
         style: {
@@ -175,6 +186,7 @@ function createStyledNode(node, position, isMatching, isSelected) {
             borderRadius: node.type === 'directory' ? 8 : 4,
             opacity: isMatching ? 1 : 0.3,
             boxShadow: isSelected ? '0 0 10px var(--am-accent)' : undefined,
+            borderStyle: isChanged ? 'dashed' : 'solid', // Dashed border for changed files
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
     };

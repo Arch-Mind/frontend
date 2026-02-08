@@ -42,11 +42,14 @@ const api_1 = require("./api");
 const localParser_1 = require("./analyzer/localParser");
 const analysisService_1 = require("./services/analysisService");
 const DependencyCodeLensProvider_1 = require("./providers/DependencyCodeLensProvider");
+const fingerprintService_1 = require("./services/fingerprintService");
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
     // Initialize LocalParser
     const localParser = localParser_1.LocalParser.getInstance(context.extensionUri);
     localParser.initialize();
+    // Initialize FingerprintService
+    fingerprintService_1.FingerprintService.getInstance(context);
     // Initialize AnalysisService
     const analysisService = analysisService_1.AnalysisService.getInstance();
     // Register CodeLens Provider
