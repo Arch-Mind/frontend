@@ -1,5 +1,12 @@
 import React from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
+import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
+import { CompactThemeToggle } from './ThemeToggle';
+
+const ThemeKeyboardHandler: React.FC = () => {
+    useThemeKeyboard();
+    return null;
+};
 
 const Header: React.FC = () => (
     <header className="app-header">
@@ -10,17 +17,23 @@ const Header: React.FC = () => (
             </h1>
             <span className="header-subtitle">Architecture Intelligence</span>
         </div>
+        <div className="header-actions">
+            <CompactThemeToggle />
+        </div>
     </header>
 );
 
 const App: React.FC = () => {
     return (
-        <div className="app-container">
-            <Header />
-            <main className="app-main">
-                <ArchitectureGraph />
-            </main>
-        </div>
+        <ThemeProvider>
+            <ThemeKeyboardHandler />
+            <div className="app-container">
+                <Header />
+                <main className="app-main">
+                    <ArchitectureGraph />
+                </main>
+            </div>
+        </ThemeProvider>
     );
 };
 
