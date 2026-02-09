@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Node, Edge } from 'reactflow';
+import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
 
 export interface PDFExportOptions {
     orientation: 'portrait' | 'landscape';
@@ -111,7 +112,25 @@ export async function exportAsPDF(
         }
 
         // Save PDF
-        pdf.save(filename);
+        // Check if we're in VS Code webview context
+        if (typeof acquireVsCodeApi === 'function') {
+            const pdfBlob = pdf.output('blob');
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const vscode = acquireVsCodeApi();
+                vscode.postMessage({
+                    command: 'saveFile',
+                    data: reader.result as string,
+                    filename: filename,
+                    mimeType: 'application/pdf'
+                });
+            };
+            reader.onerror = () => { throw new Error('Failed to read PDF blob'); };
+            reader.readAsDataURL(pdfBlob);
+        } else {
+            // Fallback for non-VS Code contexts (browser)
+            pdf.save(filename);
+        }
     } catch (error) {
         throw new Error(`PDF export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -260,7 +279,26 @@ export async function exportCustomPDF(
         addNodeDetailsPage(pdf, nodes, edges);
     }
 
-    pdf.save(config.filename);
+    // Save PDF
+    // Check if we're in VS Code webview context
+    if (typeof acquireVsCodeApi === 'function') {
+        const pdfBlob = pdf.output('blob');
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const vscode = acquireVsCodeApi();
+            vscode.postMessage({
+                command: 'saveFile',
+                data: reader.result as string,
+                filename: config.filename,
+                mimeType: 'application/pdf'
+            });
+        };
+        reader.onerror = () => { throw new Error('Failed to read PDF blob'); };
+        reader.readAsDataURL(pdfBlob);
+    } else {
+        // Fallback for non-VS Code contexts (browser)
+        pdf.save(config.filename);
+    }
 }
 
 /**

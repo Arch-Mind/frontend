@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const react_1 = __importDefault(require("react"));
 const react_2 = require("@testing-library/react");
 require("@testing-library/jest-dom");
+const reactflow_1 = require("reactflow");
 const ClusterNode_1 = require("../ClusterNode");
 describe('ClusterNode', () => {
     const cluster = {
@@ -29,16 +30,21 @@ describe('ClusterNode', () => {
         isConnectable: false,
         dragHandle: undefined,
         dragging: false,
+        sourcePosition: undefined,
+        targetPosition: undefined,
+    };
+    const renderWithProvider = (component) => {
+        return (0, react_2.render)(react_1.default.createElement(reactflow_1.ReactFlowProvider, null, component));
     };
     it('renders cluster label and node count', () => {
-        (0, react_2.render)(react_1.default.createElement(ClusterNode_1.ClusterNode, { ...nodeProps }));
+        renderWithProvider(react_1.default.createElement(ClusterNode_1.ClusterNode, { ...nodeProps }));
         expect(react_2.screen.getByText('Cluster A')).toBeInTheDocument();
         expect(react_2.screen.getByText('5')).toBeInTheDocument();
     });
     it('calls onExpand when expand icon is clicked', () => {
-        (0, react_2.render)(react_1.default.createElement(ClusterNode_1.ClusterNode, { ...nodeProps }));
-        const icon = react_2.screen.getByText('📁');
-        react_2.fireEvent.click(icon);
+        renderWithProvider(react_1.default.createElement(ClusterNode_1.ClusterNode, { ...nodeProps }));
+        const button = react_2.screen.getByTitle('Expand cluster');
+        react_2.fireEvent.click(button);
         expect(onExpand).toHaveBeenCalled();
     });
 });

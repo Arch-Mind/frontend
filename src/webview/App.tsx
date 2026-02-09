@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
 import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
+import { initializeExportListener } from '../utils/exporters/vscodeExportHelper';
 
 const ThemeKeyboardHandler: React.FC = () => {
     useThemeKeyboard();
@@ -24,6 +25,11 @@ const Header: React.FC = () => (
 );
 
 const App: React.FC = () => {
+    // Initialize export listener for VS Code webview context
+    useEffect(() => {
+        initializeExportListener();
+    }, []);
+
     return (
         <ThemeProvider>
             <ThemeKeyboardHandler />

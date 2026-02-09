@@ -252,15 +252,28 @@ function generateEdgeList(edges, nodes) {
  * Download markdown file
  */
 function downloadMarkdown(content, filename) {
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Check if we're in VS Code webview context
+    if (typeof acquireVsCodeApi === 'function') {
+        const vscode = acquireVsCodeApi();
+        vscode.postMessage({
+            command: 'saveFile',
+            data: content,
+            filename: filename,
+            mimeType: 'text/markdown;charset=utf-8'
+        });
+    }
+    else {
+        // Fallback for non-VS Code contexts (browser)
+        const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
 }
 /**
  * Sanitize ID for Mermaid

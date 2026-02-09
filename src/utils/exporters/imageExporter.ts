@@ -1,5 +1,6 @@
 import html2canvas from 'html2canvas';
 import { Node, Edge } from 'reactflow';
+import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
 
 export interface ImageExportOptions {
     format: 'png' | 'jpeg' | 'webp';
@@ -153,21 +154,42 @@ function downloadCanvas(
         const mimeType = `image/${options.format}`;
 
         canvas.toBlob(
-            blob => {
+            async (blob) => {
                 if (!blob) {
                     reject(new Error('Failed to create blob'));
                     return;
                 }
 
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                resolve();
+                try {
+                    // Check if we're in VS Code webview context
+                    if (isVSCodeWebview()) {
+                        // Convert blob to data URL for VS Code
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                            try {
+                                await saveFileInVSCode(reader.result as string, filename, mimeType);
+                                resolve();
+                            } catch (error) {
+                                reject(error);
+                            }
+                        };
+                        reader.onerror = () => reject(new Error('Failed to read blob'));
+                        reader.readAsDataURL(blob);
+                    } else {
+                        // Fallback for non-VS Code contexts (browser)
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    }
+                } catch (error) {
+                    reject(error);
+                }
             },
             mimeType,
             options.quality
@@ -266,15 +288,27 @@ function escapeXML(text: string): string {
 }
 
 function downloadString(content: string, filename: string, mimeType: string): void {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Check if we're in VS Code webview context
+    if (typeof acquireVsCodeApi === 'function') {
+        const vscode = acquireVsCodeApi();
+        vscode.postMessage({
+            command: 'saveFile',
+            data: content,
+            filename: filename,
+            mimeType: mimeType
+        });
+    } else {
+        // Fallback for non-VS Code contexts (browser)
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
 }
 
 /**

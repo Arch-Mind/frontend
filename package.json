@@ -18,6 +18,10 @@
         "title": "ArchMind: Show Architecture"
       },
       {
+        "command": "archmind.showLocalAnalysis",
+        "title": "ArchMind: Show Local Analysis Graph"
+      },
+      {
         "command": "archmind.analyzeRepository",
         "title": "ArchMind: Analyze Repository (Backend)"
       },

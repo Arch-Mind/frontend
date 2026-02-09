@@ -39,18 +39,32 @@ function exportAsJSON(nodes, edges, rawData, source = 'local') {
 }
 /**
  * Download JSON data as a file
+ * In VS Code webview context, this sends a message to the extension to save the file
  */
 function downloadJSON(nodes, edges, filename = 'graph-export.json', rawData, source = 'local') {
     const jsonString = exportAsJSON(nodes, edges, rawData, source);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Check if we're in VS Code webview context
+    if (typeof acquireVsCodeApi === 'function') {
+        const vscode = acquireVsCodeApi();
+        vscode.postMessage({
+            command: 'saveFile',
+            data: jsonString,
+            filename: filename,
+            mimeType: 'application/json'
+        });
+    }
+    else {
+        // Fallback for non-VS Code contexts (browser)
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
 }
 /**
  * Parse imported JSON data

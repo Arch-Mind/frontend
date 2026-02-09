@@ -11,6 +11,7 @@ exports.exportAsSVG = exportAsSVG;
 exports.copyToClipboard = copyToClipboard;
 exports.estimateImageSize = estimateImageSize;
 const html2canvas_1 = __importDefault(require("html2canvas"));
+const vscodeExportHelper_1 = require("./vscodeExportHelper");
 exports.DEFAULT_IMAGE_OPTIONS = {
     format: 'png',
     quality: 0.95,
@@ -112,20 +113,44 @@ async function copyToClipboard(element) {
 function downloadCanvas(canvas, filename, options) {
     return new Promise((resolve, reject) => {
         const mimeType = `image/${options.format}`;
-        canvas.toBlob(blob => {
+        canvas.toBlob(async (blob) => {
             if (!blob) {
                 reject(new Error('Failed to create blob'));
                 return;
             }
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            resolve();
+            try {
+                // Check if we're in VS Code webview context
+                if ((0, vscodeExportHelper_1.isVSCodeWebview)()) {
+                    // Convert blob to data URL for VS Code
+                    const reader = new FileReader();
+                    reader.onloadend = async () => {
+                        try {
+                            await (0, vscodeExportHelper_1.saveFileInVSCode)(reader.result, filename, mimeType);
+                            resolve();
+                        }
+                        catch (error) {
+                            reject(error);
+                        }
+                    };
+                    reader.onerror = () => reject(new Error('Failed to read blob'));
+                    reader.readAsDataURL(blob);
+                }
+                else {
+                    // Fallback for non-VS Code contexts (browser)
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    resolve();
+                }
+            }
+            catch (error) {
+                reject(error);
+            }
         }, mimeType, options.quality);
     });
 }
@@ -200,15 +225,28 @@ function escapeXML(text) {
         .replace(/'/g, '&apos;');
 }
 function downloadString(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Check if we're in VS Code webview context
+    if (typeof acquireVsCodeApi === 'function') {
+        const vscode = acquireVsCodeApi();
+        vscode.postMessage({
+            command: 'saveFile',
+            data: content,
+            filename: filename,
+            mimeType: mimeType
+        });
+    }
+    else {
+        // Fallback for non-VS Code contexts (browser)
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
 }
 /**
  * Get estimated image size

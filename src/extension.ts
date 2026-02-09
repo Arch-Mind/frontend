@@ -79,6 +79,19 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Register local analysis command
+    let showLocalAnalysisCmd = vscode.commands.registerCommand('archmind.showLocalAnalysis', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+
+        // Force local analysis only - trigger initial parse if editor is active
+        if (vscode.window.activeTextEditor) {
+            parseAndSendLocalData(vscode.window.activeTextEditor.document, localParser);
+        } else if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            // No active editor, just show the panel and it will load local analysis
+            vscode.window.showInformationMessage('ArchMind: Local analysis view opened. Open a file to see its architecture.');
+        }
+    });
+
     // Register commands for CodeLens interactions
     vscode.commands.registerCommand('archmind.showCallers', (filePath: string, funcName: string, callers: any[]) => {
         // Show a quick pick or jump to location
@@ -180,6 +193,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         showArchitectureCmd,
+        showLocalAnalysisCmd,
         analyzeRepositoryCmd,
         refreshGraphCmd,
         checkBackendStatusCmd,
@@ -416,6 +430,9 @@ class ArchitecturePanel {
                         return;
                     case 'getImpactAnalysis':
                         await this._getImpactAnalysis(message.nodeId);
+                        return;
+                    case 'saveFile':
+                        await this._saveFile(message.data, message.filename, message.mimeType);
                         return;
                 }
             },
@@ -739,6 +756,85 @@ class ArchitecturePanel {
             command: 'error',
             message
         });
+    }
+
+    /**
+     * Save file to disk from webview
+     */
+    private async _saveFile(data: string, filename: string, mimeType: string): Promise<void> {
+        try {
+            // Show save dialog
+            const uri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(path.join(require('os').homedir(), 'Downloads', filename)),
+                filters: this._getFileFilters(filename)
+            });
+
+            if (!uri) {
+                // User cancelled
+                this._panel.webview.postMessage({
+                    command: 'fileSaveCancelled'
+                });
+                return;
+            }
+
+            // Convert base64 or plain text data to buffer
+            let buffer: Buffer;
+            if (data.startsWith('data:')) {
+                // It's a data URL (like from canvas)
+                const base64Data = data.split(',')[1];
+                buffer = Buffer.from(base64Data, 'base64');
+            } else {
+                // It's plain text (like JSON or SVG)
+                buffer = Buffer.from(data, 'utf8');
+            }
+
+            // Write file
+            await vscode.workspace.fs.writeFile(uri, buffer);
+
+            // Show success message
+            vscode.window.showInformationMessage(`Graph exported to ${uri.fsPath}`);
+
+            // Notify webview
+            this._panel.webview.postMessage({
+                command: 'fileSaveSuccess',
+                path: uri.fsPath
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            vscode.window.showErrorMessage(`Failed to save file: ${errorMessage}`);
+
+            this._panel.webview.postMessage({
+                command: 'fileSaveError',
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Get file filters for save dialog based on filename
+     */
+    private _getFileFilters(filename: string): { [name: string]: string[] } {
+        const ext = path.extname(filename).toLowerCase();
+        
+        switch (ext) {
+            case '.json':
+                return { 'JSON': ['json'] };
+            case '.png':
+                return { 'PNG Images': ['png'] };
+            case '.jpg':
+            case '.jpeg':
+                return { 'JPEG Images': ['jpg', 'jpeg'] };
+            case '.webp':
+                return { 'WebP Images': ['webp'] };
+            case '.svg':
+                return { 'SVG Images': ['svg'] };
+            case '.pdf':
+                return { 'PDF Documents': ['pdf'] };
+            case '.md':
+                return { 'Markdown': ['md'] };
+            default:
+                return { 'All Files': ['*'] };
+        }
     }
 
     public dispose() {

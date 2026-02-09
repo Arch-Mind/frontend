@@ -9,8 +9,11 @@ require("@testing-library/jest-dom");
 const RelationshipVisualizer_1 = require("../RelationshipVisualizer");
 describe('RelationshipVisualizer', () => {
     it('renders relationship visualizer panel', () => {
-        (0, react_2.render)(react_1.default.createElement(RelationshipVisualizer_1.RelationshipVisualizer, { selectedNodeId: "1", nodes: [], edges: [], onClose: jest.fn() }));
-        expect(react_2.screen.getByText(/relationship/i)).toBeInTheDocument();
+        // Mock nodes and edges to ensure content is rendered
+        const nodes = [{ id: '1', type: 'file' }];
+        (0, react_2.render)(react_1.default.createElement(RelationshipVisualizer_1.RelationshipVisualizer, { selectedNodeId: "1", nodes: nodes, edges: [], onClose: jest.fn() }));
+        // Look for the "Relationships" title specifically
+        expect(react_2.screen.getByText('Relationships')).toBeInTheDocument();
     });
 });
 //# sourceMappingURL=RelationshipVisualizer.test.js.map
