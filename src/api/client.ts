@@ -15,6 +15,7 @@ import {
     TransformedGraphData,
     TransformedNode,
     TransformedEdge,
+    ModuleBoundariesResponse,
 } from './types';
 
 /**
@@ -249,6 +250,17 @@ export class ArchMindApiClient {
         return this.request<PageRankResponse>(
             this.config.graphEngineUrl,
             `/api/pagerank/${encodeURIComponent(repoId)}`
+        );
+    }
+
+    /**
+     * Get module boundaries
+     * GET /api/graph/:repo_id/boundaries
+     */
+    public async getModuleBoundaries(repoId: string): Promise<ModuleBoundariesResponse> {
+        return this.request<ModuleBoundariesResponse>(
+            this.config.graphEngineUrl,
+            `/api/graph/${encodeURIComponent(repoId)}/boundaries`
         );
     }
 

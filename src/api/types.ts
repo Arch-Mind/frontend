@@ -150,6 +150,22 @@ export interface PageRankResponse {
     }[];
 }
 
+export interface ModuleBoundary {
+    id: string;
+    name: string;
+    type: string;
+    path: string | null;
+    layer: string | null;
+    file_count: number;
+    files: string[];
+}
+
+export interface ModuleBoundariesResponse {
+    repo_id: string;
+    total_boundaries: number;
+    boundaries: ModuleBoundary[];
+}
+
 /**
  * Graph Engine health check response
  */

@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
+import { ModuleBoundaryDiagram } from './ModuleBoundaryDiagram';
 import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
 import { initializeExportListener } from '../utils/exporters/vscodeExportHelper';
@@ -30,13 +31,29 @@ const App: React.FC = () => {
         initializeExportListener();
     }, []);
 
+    const [activeView, setActiveView] = useState<'graph' | 'boundaries'>('graph');
+
     return (
         <ThemeProvider>
             <ThemeKeyboardHandler />
             <div className="app-container">
                 <Header />
+                <div className="view-toggle">
+                    <button
+                        className={activeView === 'graph' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('graph')}
+                    >
+                        Graph
+                    </button>
+                    <button
+                        className={activeView === 'boundaries' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('boundaries')}
+                    >
+                        Boundaries
+                    </button>
+                </div>
                 <main className="app-main">
-                    <ArchitectureGraph />
+                    {activeView === 'graph' ? <ArchitectureGraph /> : <ModuleBoundaryDiagram />}
                 </main>
             </div>
         </ThemeProvider>

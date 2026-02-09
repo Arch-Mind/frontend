@@ -16,7 +16,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 // Import WebSocket client
-import { ArchMindWebSocketClient, JobUpdate } from '../api/client';
+import { ArchMindWebSocketClient, JobUpdate } from '../api/webviewSocket';
 
 // Layout algorithm imports
 import {

@@ -183,6 +183,230 @@ html, body, #root {
     justify-content: space-between;
 }
 
+.view-toggle {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--am-border);
+    background: var(--am-panel-bg);
+}
+
+.view-tab {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--am-fg);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.view-tab:hover {
+    background: var(--am-hover);
+}
+
+.view-tab.active {
+    background: var(--am-btn-bg);
+    color: var(--am-btn-fg);
+    border-color: var(--am-btn-bg);
+}
+
+.boundary-view {
+    padding: 16px;
+    height: 100%;
+    overflow: auto;
+}
+
+.boundary-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.boundary-title {
+    margin: 0;
+    font-size: 16px;
+}
+
+.boundary-subtitle {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--am-desc);
+}
+
+.boundary-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.boundary-refresh {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--am-border);
+    background: var(--am-btn-secondary-bg);
+    color: var(--am-btn-secondary-fg);
+    cursor: pointer;
+}
+
+.boundary-refresh:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.boundary-state {
+    margin: 12px 0;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--am-panel-bg);
+    color: var(--am-desc);
+}
+
+.boundary-error {
+    background: rgba(211, 47, 47, 0.12);
+    color: var(--am-error);
+}
+
+.boundary-summary {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.boundary-pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--am-badge-bg);
+    color: var(--am-badge-fg);
+    font-size: 11px;
+}
+
+.boundary-pill.muted {
+    background: var(--am-panel-bg);
+    color: var(--am-desc);
+}
+
+.boundary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.boundary-column {
+    background: var(--am-panel-bg);
+    border: 1px solid var(--am-border);
+    border-radius: 12px;
+    padding: 12px;
+    min-height: 200px;
+}
+
+.boundary-column-header h3 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.boundary-column-header p {
+    margin: 4px 0 12px;
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.boundary-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.boundary-card {
+    border: 1px solid var(--am-border);
+    border-radius: 10px;
+    padding: 10px;
+    background: var(--am-bg);
+}
+
+.boundary-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.boundary-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.boundary-path {
+    font-size: 11px;
+    color: var(--am-desc);
+    word-break: break-word;
+}
+
+.boundary-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.boundary-toggle {
+    border: none;
+    background: transparent;
+    color: var(--am-link);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.boundary-files {
+    margin: 8px 0 0;
+    padding-left: 16px;
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.boundary-more {
+    color: var(--am-desc);
+    font-style: italic;
+}
+
+.layer-pill {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.layer-presentation {
+    background: rgba(79, 195, 247, 0.2);
+    color: #0277bd;
+}
+
+.layer-business {
+    background: rgba(255, 167, 38, 0.2);
+    color: #ef6c00;
+}
+
+.layer-data {
+    background: rgba(76, 175, 80, 0.2);
+    color: #2e7d32;
+}
+
+.layer-infra {
+    background: rgba(156, 39, 176, 0.2);
+    color: #6a1b9a;
+}
+
+.layer-unknown {
+    background: rgba(120, 144, 156, 0.2);
+    color: #455a64;
+}
+
 .header-actions {
     display: flex;
     align-items: center;
