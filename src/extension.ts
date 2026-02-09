@@ -83,12 +83,19 @@ export function activate(context: vscode.ExtensionContext) {
     let showLocalAnalysisCmd = vscode.commands.registerCommand('archmind.showLocalAnalysis', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
 
-        // Force local analysis only - trigger initial parse if editor is active
+        // Force local analysis of the entire workspace
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            // Trigger local workspace analysis
+            if (ArchitecturePanel.currentPanel) {
+                await ArchitecturePanel.currentPanel.sendLocalArchitecture();
+            }
+        } else {
+            vscode.window.showWarningMessage('ArchMind: No workspace folder open. Please open a folder to analyze.');
+        }
+
+        // Also parse active file if available for detailed view
         if (vscode.window.activeTextEditor) {
             parseAndSendLocalData(vscode.window.activeTextEditor.document, localParser);
-        } else if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-            // No active editor, just show the panel and it will load local analysis
-            vscode.window.showInformationMessage('ArchMind: Local analysis view opened. Open a file to see its architecture.');
         }
     });
 
@@ -575,6 +582,13 @@ class ArchitecturePanel {
         } else {
             await this._sendLocalArchitecture();
         }
+    }
+
+    /**
+     * Send local file system architecture data to webview (public method)
+     */
+    public async sendLocalArchitecture() {
+        await this._sendLocalArchitecture();
     }
 
     /**
