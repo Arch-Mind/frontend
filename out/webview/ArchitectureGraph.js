@@ -876,48 +876,9 @@ const ArchitectureGraphInner = () => {
             });
         }
     }, [matchingNodeIds, nodes, reactFlowInstance]);
-    // Fullscreen toggle handler
+    // Fullscreen toggle handler (CSS-based for VS Code webview)
     const toggleFullscreen = (0, react_1.useCallback)(() => {
-        if (!graphContainerRef.current)
-            return;
-        if (!isFullscreen) {
-            // Enter fullscreen
-            if (graphContainerRef.current.requestFullscreen) {
-                graphContainerRef.current.requestFullscreen();
-            }
-            else if (graphContainerRef.current.webkitRequestFullscreen) {
-                graphContainerRef.current.webkitRequestFullscreen();
-            }
-            else if (graphContainerRef.current.msRequestFullscreen) {
-                graphContainerRef.current.msRequestFullscreen();
-            }
-        }
-        else {
-            // Exit fullscreen
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            }
-            else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-            }
-            else if (document.msExitFullscreen) {
-                document.msExitFullscreen();
-            }
-        }
-    }, [isFullscreen]);
-    // Handle fullscreen change events
-    (0, react_1.useEffect)(() => {
-        const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
-        };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('msfullscreenchange', handleFullscreenChange);
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('msfullscreenchange', handleFullscreenChange);
-        };
+        setIsFullscreen(prev => !prev);
     }, []);
     // Keyboard shortcuts
     (0, react_1.useEffect)(() => {
