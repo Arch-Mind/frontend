@@ -334,8 +334,8 @@ function calculateHierarchicalLayout(
     });
 
     const layoutedNodes: Node[] = [];
-    const horizontalSpacing = 220;
-    const verticalSpacing = 80;
+    const horizontalSpacing = 280; // Increased from 220 for better spacing
+    const verticalSpacing = 120;   // Increased from 80 for better vertical spacing
 
     nodesByDepth.forEach((depthNodes, depth) => {
         const totalWidth = depthNodes.length * horizontalSpacing;
@@ -355,6 +355,188 @@ function calculateHierarchicalLayout(
     });
 
     return { layoutedNodes, matchingNodeIds };
+}
+
+// By-File layout: Groups functions and classes under their parent files
+function calculateByFileLayout(
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null
+): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
+
+    // Group nodes by file
+    const fileNodes = nodes.filter(n => n.type === 'file');
+    const childNodesMap = new Map<string, RawNode[]>();
+    
+    // Find children (functions/classes) for each file
+    nodes.forEach(node => {
+        if (node.type === 'function' || node.type === 'class') {
+            // Extract file path from node ID (format: "path/file.ext::FunctionName")
+            const filePath = node.id.split('::')[0];
+            const children = childNodesMap.get(filePath) || [];
+            children.push(node);
+            childNodesMap.set(filePath, children);
+        }
+    });
+
+    const layoutedNodes: Node[] = [];
+    const horizontalSpacing = 280;
+    const verticalSpacing = 100;
+    const childHorizontalSpacing = 200;
+    const childVerticalSpacing = 80;
+
+    let currentX = 0;
+    let currentY = 0;
+    const filesPerRow = 4;
+
+    fileNodes.forEach((fileNode, fileIndex) => {
+        const isMatching = !hasActiveFilter || matchingNodeIds.has(fileNode.id);
+        const isSelected = selectedNodeId === fileNode.id;
+
+        // Position file node
+        const row = Math.floor(fileIndex / filesPerRow);
+        const col = fileIndex % filesPerRow;
+        const fileX = col * horizontalSpacing;
+        const fileY = row * verticalSpacing * 3;
+
+        layoutedNodes.push(createStyledNode(
+            fileNode,
+            { x: fileX, y: fileY },
+            isMatching,
+            isSelected
+        ));
+
+        // Position child nodes (functions/classes) below the file
+        const children = childNodesMap.get(fileNode.id) || [];
+        children.forEach((child, childIndex) => {
+            const isChildMatching = !hasActiveFilter || matchingNodeIds.has(child.id);
+            const isChildSelected = selectedNodeId === child.id;
+            
+            const childRow = Math.floor(childIndex / 2);
+            const childCol = childIndex % 2;
+            const childX = fileX - 100 + childCol * childHorizontalSpacing;
+            const childY = fileY + verticalSpacing + childRow * childVerticalSpacing;
+
+            layoutedNodes.push(createStyledNode(
+                child,
+                { x: childX, y: childY },
+                isChildMatching,
+                isChildSelected
+            ));
+        });
+    });
+
+    return { layoutedNodes, matchingNodeIds };
+}
+
+// By-Module layout: Groups files under their parent modules/directories
+function calculateByModuleLayout(
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null
+): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
+    const matchingNodeIds = calculateMatchingNodeIds(nodes, edges, filters);
+    const hasActiveFilter = filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern;
+
+    // Group nodes by module (directory/module type)
+    const moduleNodes = nodes.filter(n => n.type === 'module' || n.type === 'directory');
+    const fileNodes = nodes.filter(n => n.type === 'file');
+    
+    // Build module -> files mapping
+    const moduleFilesMap = new Map<string, RawNode[]>();
+    fileNodes.forEach(file => {
+        // Find parent module from file path
+        const pathParts = file.id.split('/');
+        const moduleName = pathParts.length > 1 ? pathParts[0] : 'root';
+        const files = moduleFilesMap.get(moduleName) || [];
+        files.push(file);
+        moduleFilesMap.set(moduleName, files);
+    });
+
+    const layoutedNodes: Node[] = [];
+    const moduleSpacing = 400;
+    const fileSpacing = 220;
+    const verticalSpacing = 100;
+
+    let currentX = 0;
+    
+    // Layout modules and their files
+    const allModules = [...new Set([...moduleNodes.map(m => m.id), ...Array.from(moduleFilesMap.keys())])];
+    
+    allModules.forEach((moduleName, moduleIndex) => {
+        const moduleX = moduleIndex * moduleSpacing;
+        
+        // Find or create module node
+        const moduleNode = moduleNodes.find(m => m.id === moduleName);
+        if (moduleNode) {
+            const isMatching = !hasActiveFilter || matchingNodeIds.has(moduleNode.id);
+            const isSelected = selectedNodeId === moduleNode.id;
+            layoutedNodes.push(createStyledNode(
+                moduleNode,
+                { x: moduleX, y: 0 },
+                isMatching,
+                isSelected
+            ));
+        }
+
+        // Layout files under this module
+        const files = moduleFilesMap.get(moduleName) || [];
+        files.forEach((file, fileIndex) => {
+            const isMatching = !hasActiveFilter || matchingNodeIds.has(file.id);
+            const isSelected = selectedNodeId === file.id;
+            
+            const fileY = verticalSpacing + fileIndex * verticalSpacing;
+            layoutedNodes.push(createStyledNode(
+                file,
+                { x: moduleX, y: fileY },
+                isMatching,
+                isSelected
+            ));
+        });
+    });
+
+    // Layout standalone functions/classes
+    const standaloneNodes = nodes.filter(n => 
+        (n.type === 'function' || n.type === 'class') && 
+        !fileNodes.some(f => n.id.startsWith(f.id))
+    );
+    standaloneNodes.forEach((node, index) => {
+        const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
+        const isSelected = selectedNodeId === node.id;
+        layoutedNodes.push(createStyledNode(
+            node,
+            { x: allModules.length * moduleSpacing, y: index * verticalSpacing },
+            isMatching,
+            isSelected
+        ));
+    });
+
+    return { layoutedNodes, matchingNodeIds };
+}
+
+// Dependency-Only layout: Shows only nodes with CALLS/IMPORTS relationships
+function calculateDependencyOnlyLayout(
+    nodes: RawNode[],
+    edges: RawEdge[],
+    filters: SearchFilters,
+    selectedNodeId: string | null
+): { layoutedNodes: Node[]; matchingNodeIds: Set<string> } {
+    // Filter to only show nodes that have CALLS or IMPORTS edges
+    const dependencyEdges = edges.filter(e => e.type === 'calls' || e.type === 'imports');
+    const connectedNodeIds = new Set<string>();
+    dependencyEdges.forEach(edge => {
+        connectedNodeIds.add(edge.source);
+        connectedNodeIds.add(edge.target);
+    });
+
+    const filteredNodes = nodes.filter(n => connectedNodeIds.has(n.id));
+    
+    // Use dagre layout for dependency graph
+    return calculateDagreLayout(filteredNodes, dependencyEdges, filters, selectedNodeId, 'TB');
 }
 
 // Dagre layout algorithm
@@ -452,11 +634,11 @@ async function calculateLayout(
             // Use ELK force layout for force-directed
             return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'force');
         case 'by-file':
+            return calculateByFileLayout(nodes, edges, filters, selectedNodeId);
         case 'by-module':
+            return calculateByModuleLayout(nodes, edges, filters, selectedNodeId);
         case 'dependency-only':
-            // These layouts use the hierarchical base with different filtering/grouping
-            // For now, fall through to hierarchical (can be enhanced later)
-            return calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId);
+            return calculateDependencyOnlyLayout(nodes, edges, filters, selectedNodeId);
         case 'hierarchical':
         default:
             return calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId);
@@ -987,6 +1169,10 @@ const ArchitectureGraphInner: React.FC = () => {
 
     // Export Menu state
     const [exportMenuVisible, setExportMenuVisible] = useState(false);
+
+    // Fullscreen state
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const graphContainerRef = useRef<HTMLDivElement>(null);
     const reactFlowWrapperRef = useRef<HTMLDivElement>(null);
 
     // ReactFlow instance for programmatic control
@@ -1155,6 +1341,11 @@ const ArchitectureGraphInner: React.FC = () => {
         }
     }, [matchingNodeIds, nodes, reactFlowInstance]);
 
+    // Fullscreen toggle handler (CSS-based for VS Code webview)
+    const toggleFullscreen = useCallback(() => {
+        setIsFullscreen(prev => !prev);
+    }, []);
+
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -1173,18 +1364,27 @@ const ArchitectureGraphInner: React.FC = () => {
                 e.preventDefault();
                 setExportMenuVisible(prev => !prev);
             }
-            // Escape to close search, context menu, layout panel, or export menu
+            // F11 to toggle fullscreen
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+            // Escape to close search, context menu, layout panel, export menu, or exit fullscreen
             if (e.key === 'Escape') {
-                setSearchVisible(false);
-                setContextMenuNode(null);
-                setLayoutPanelVisible(false);
-                setExportMenuVisible(false);
+                if (isFullscreen) {
+                    toggleFullscreen();
+                } else {
+                    setSearchVisible(false);
+                    setContextMenuNode(null);
+                    setLayoutPanelVisible(false);
+                    setExportMenuVisible(false);
+                }
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [toggleFullscreen, isFullscreen]);
 
     // Update graph when debounced filters, layout type, or selection change
     // ... (same as before)
@@ -1452,7 +1652,16 @@ const ArchitectureGraphInner: React.FC = () => {
     }
 
     return (
-        <div ref={reactFlowWrapperRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div 
+            ref={(el) => {
+                if (el) {
+                    (reactFlowWrapperRef as any).current = el;
+                    (graphContainerRef as any).current = el;
+                }
+            }} 
+            style={{ width: '100%', height: '100%', position: 'relative' }}
+            className={isFullscreen ? 'fullscreen-graph' : ''}
+        >
             <StatsDisplay stats={stats} source={dataSource} />
 
             {/* Search Panel */}
@@ -1508,6 +1717,15 @@ const ArchitectureGraphInner: React.FC = () => {
                     📥
                 </button>
             )}
+
+            {/* Fullscreen Toggle Button */}
+            <button
+                className="fullscreen-toggle-btn"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Exit Fullscreen (F11 or Esc)" : "Enter Fullscreen (F11)"}
+            >
+                {isFullscreen ? '🗗' : '⛶'}
+            </button>
 
             <ReactFlow
                 nodes={nodes}
