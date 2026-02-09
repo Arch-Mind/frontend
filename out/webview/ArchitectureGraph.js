@@ -318,6 +318,15 @@ async function calculateLayout(layoutType, nodes, edges, filters, selectedNodeId
             return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'layered');
         case 'elk-force':
             return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'force');
+        case 'force-directed':
+            // Use ELK force layout for force-directed
+            return calculateElkLayout(nodes, edges, filters, selectedNodeId, 'force');
+        case 'by-file':
+        case 'by-module':
+        case 'dependency-only':
+            // These layouts use the hierarchical base with different filtering/grouping
+            // For now, fall through to hierarchical (can be enhanced later)
+            return calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId);
         case 'hierarchical':
         default:
             return calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId);

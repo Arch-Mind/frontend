@@ -259,8 +259,8 @@ class ArchMindApiClient {
             this.getRepositoryMetrics(repoId).catch(() => null),
         ]);
         // Step 5: Transform to extension format
-        const repoName = this.extractRepoId(repoUrl);
-        return this.transformGraphData(graphData, metrics, repoName);
+        // Use jobId as repoId so refreshes work correctly
+        return this.transformGraphData(graphData, metrics, jobId);
     }
     /**
      * Fetch existing graph data without triggering new analysis

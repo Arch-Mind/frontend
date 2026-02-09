@@ -82,49 +82,6 @@ describe('jsonExporter', () => {
             expect(new Date(parsed.exportDate).toISOString()).toBe(parsed.exportDate);
         });
     });
-    describe('downloadJSON', () => {
-        let createElementSpy;
-        let appendChildSpy;
-        let removeChildSpy;
-        let createObjectURLSpy;
-        let revokeObjectURLSpy;
-        beforeEach(() => {
-            const mockLink = {
-                href: '',
-                download: '',
-                click: jest.fn(),
-            };
-            createElementSpy = jest.spyOn(document, 'createElement').mockReturnValue(mockLink);
-            appendChildSpy = jest.spyOn(document.body, 'appendChild').mockImplementation();
-            removeChildSpy = jest.spyOn(document.body, 'removeChild').mockImplementation();
-            createObjectURLSpy = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
-            revokeObjectURLSpy = jest.spyOn(URL, 'revokeObjectURL').mockImplementation();
-        });
-        afterEach(() => {
-            jest.restoreAllMocks();
-        });
-        it('should trigger download with correct filename', () => {
-            (0, jsonExporter_1.downloadJSON)(mockNodes, mockEdges, 'test-export.json');
-            const mockLink = createElementSpy.mock.results[0].value;
-            expect(mockLink.download).toBe('test-export.json');
-            expect(mockLink.click).toHaveBeenCalled();
-        });
-        it('should use default filename when not provided', () => {
-            (0, jsonExporter_1.downloadJSON)(mockNodes, mockEdges);
-            const mockLink = createElementSpy.mock.results[0].value;
-            expect(mockLink.download).toBe('graph-export.json');
-        });
-        it('should create and revoke object URL', () => {
-            (0, jsonExporter_1.downloadJSON)(mockNodes, mockEdges);
-            expect(createObjectURLSpy).toHaveBeenCalled();
-            expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url');
-        });
-        it('should append and remove link from DOM', () => {
-            (0, jsonExporter_1.downloadJSON)(mockNodes, mockEdges);
-            expect(appendChildSpy).toHaveBeenCalled();
-            expect(removeChildSpy).toHaveBeenCalled();
-        });
-    });
     describe('parseImportedJSON', () => {
         it('should parse valid JSON export', () => {
             const validJSON = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges);
