@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ApiRequestError = exports.ArchMindApiClient = void 0;
+exports.ArchMindWebSocketClient = exports.ApiRequestError = exports.ArchMindApiClient = void 0;
 exports.getApiClient = getApiClient;
 exports.resetApiClient = resetApiClient;
 const vscode = __importStar(require("vscode"));
@@ -555,6 +555,170 @@ class ApiRequestError extends Error {
     }
 }
 exports.ApiRequestError = ApiRequestError;
+/**
+ * WebSocket client for real-time updates
+ */
+class ArchMindWebSocketClient {
+    constructor(type, id, gatewayUrl = 'http://localhost:8080') {
+        this.ws = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 1000; // Start with 1 second
+        this.reconnectTimer = null;
+        this.listeners = new Map();
+        this.globalListeners = new Set();
+        this.isIntentionallyClosed = false;
+        this.type = type;
+        this.id = id;
+        // Convert http(s) to ws(s)
+        const wsProtocol = gatewayUrl.startsWith('https') ? 'wss' : 'ws';
+        const baseUrl = gatewayUrl.replace(/^https?:\/\//, '');
+        this.url = `${wsProtocol}://${baseUrl}/ws/${type}/${id}`;
+    }
+    /**
+     * Connect to WebSocket server
+     */
+    connect() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            return; // Already connected
+        }
+        this.isIntentionallyClosed = false;
+        try {
+            console.log(`🔌 Connecting to WebSocket: ${this.url}`);
+            this.ws = new WebSocket(this.url);
+            this.ws.onopen = () => {
+                console.log(`✅ WebSocket connected (${this.type}: ${this.id})`);
+                this.reconnectAttempts = 0;
+                this.reconnectDelay = 1000;
+            };
+            this.ws.onmessage = (event) => {
+                try {
+                    const update = JSON.parse(event.data);
+                    this.handleUpdate(update);
+                }
+                catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+            this.ws.onerror = (error) => {
+                console.error('⚠️  WebSocket error:', error);
+            };
+            this.ws.onclose = (event) => {
+                console.log(`🔌 WebSocket closed (${this.type}: ${this.id})`);
+                this.ws = null;
+                if (!this.isIntentionallyClosed) {
+                    this.scheduleReconnect();
+                }
+            };
+        }
+        catch (error) {
+            console.error('Failed to create WebSocket connection:', error);
+            this.scheduleReconnect();
+        }
+    }
+    /**
+     * Schedule reconnection attempt with exponential backoff
+     */
+    scheduleReconnect() {
+        if (this.isIntentionallyClosed || this.reconnectAttempts >= this.maxReconnectAttempts) {
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.error('❌ Max reconnection attempts reached');
+            }
+            return;
+        }
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+        }
+        this.reconnectAttempts++;
+        const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000);
+        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        this.reconnectTimer = setTimeout(() => {
+            this.connect();
+        }, delay);
+    }
+    /**
+     * Handle incoming update
+     */
+    handleUpdate(update) {
+        // Notify specific listeners
+        const specificKey = update.job_id || update.repo_id;
+        if (specificKey) {
+            const specificListeners = this.listeners.get(specificKey);
+            if (specificListeners) {
+                specificListeners.forEach(listener => {
+                    try {
+                        listener(update);
+                    }
+                    catch (error) {
+                        console.error('Error in WebSocket listener:', error);
+                    }
+                });
+            }
+        }
+        // Notify global listeners
+        this.globalListeners.forEach(listener => {
+            try {
+                listener(update);
+            }
+            catch (error) {
+                console.error('Error in global WebSocket listener:', error);
+            }
+        });
+    }
+    /**
+     * Subscribe to updates for a specific job or repo
+     */
+    subscribe(id, callback) {
+        if (!this.listeners.has(id)) {
+            this.listeners.set(id, new Set());
+        }
+        this.listeners.get(id).add(callback);
+        // Return unsubscribe function
+        return () => {
+            const listeners = this.listeners.get(id);
+            if (listeners) {
+                listeners.delete(callback);
+                if (listeners.size === 0) {
+                    this.listeners.delete(id);
+                }
+            }
+        };
+    }
+    /**
+     * Subscribe to all updates
+     */
+    subscribeAll(callback) {
+        this.globalListeners.add(callback);
+        // Return unsubscribe function
+        return () => {
+            this.globalListeners.delete(callback);
+        };
+    }
+    /**
+     * Disconnect WebSocket
+     */
+    disconnect() {
+        this.isIntentionallyClosed = true;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        this.listeners.clear();
+        this.globalListeners.clear();
+        console.log(`🔌 WebSocket disconnected (${this.type}: ${this.id})`);
+    }
+    /**
+     * Get connection status
+     */
+    isConnected() {
+        return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    }
+}
+exports.ArchMindWebSocketClient = ArchMindWebSocketClient;
 // Export singleton instance
 let apiClientInstance = null;
 function getApiClient() {

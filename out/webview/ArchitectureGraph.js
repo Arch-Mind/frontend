@@ -37,6 +37,8 @@ exports.NODE_COLORS = void 0;
 const react_1 = __importStar(require("react"));
 const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
+// Import WebSocket client
+const client_1 = require("../api/client");
 // Layout algorithm imports
 const layoutAlgorithms_1 = require("./layoutAlgorithms");
 // Clustering imports (#11)
@@ -735,6 +737,10 @@ const ArchitectureGraphInner = () => {
     const [isFullscreen, setIsFullscreen] = (0, react_1.useState)(false);
     const graphContainerRef = (0, react_1.useRef)(null);
     const reactFlowWrapperRef = (0, react_1.useRef)(null);
+    // WebSocket state
+    const wsClientRef = (0, react_1.useRef)(null);
+    const [wsConnected, setWsConnected] = (0, react_1.useState)(false);
+    const [repoId, setRepoId] = (0, react_1.useState)(null);
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     // Zoom & Pan controls (#20)
@@ -974,6 +980,11 @@ const ArchitectureGraphInner = () => {
                 const data = message.data;
                 setRawData(data);
                 setDataSource(data.source || 'local');
+                // Extract and store repo_id for WebSocket connection (support both naming conventions)
+                const extractedRepoId = data.repo_id || data.repoId;
+                if (extractedRepoId) {
+                    setRepoId(extractedRepoId);
+                }
                 const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
                 // Apply initial layout asynchronously
                 const initLayout = async () => {
@@ -1013,6 +1024,64 @@ const ArchitectureGraphInner = () => {
             window.removeEventListener('message', handleMessage);
         };
     }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
+    // WebSocket connection management
+    (0, react_1.useEffect)(() => {
+        if (!repoId)
+            return;
+        // Create WebSocket client for repo updates
+        const wsClient = new client_1.ArchMindWebSocketClient('repo', repoId, 'http://localhost:8080');
+        wsClientRef.current = wsClient;
+        // Handle WebSocket updates
+        const unsubscribe = wsClient.subscribeAll((update) => {
+            console.log('📡 WebSocket update received:', update);
+            if (update.type === 'graph_update') {
+                // Graph has been updated - refresh the data
+                vscode.postMessage({ command: 'requestArchitecture' });
+                // Show notification
+                vscode.postMessage({
+                    command: 'showNotification',
+                    message: `Architecture updated: ${update.changed_nodes?.length || 0} nodes changed`,
+                    type: 'info'
+                });
+            }
+            else if (update.type === 'progress') {
+                // Show loading message with progress
+                if (update.progress !== undefined) {
+                    setLoadingMessage(`Analyzing repository... ${update.progress}%`);
+                    if (update.progress > 0 && update.progress < 100) {
+                        setIsLoading(true);
+                    }
+                    else if (update.progress === 100) {
+                        setIsLoading(false);
+                    }
+                }
+            }
+            else if (update.type === 'status') {
+                if (update.status === 'COMPLETED') {
+                    setIsLoading(false);
+                    // Refresh graph data
+                    vscode.postMessage({ command: 'requestArchitecture' });
+                }
+                else if (update.status === 'FAILED') {
+                    setIsLoading(false);
+                    setErrorMessage(update.error || 'Analysis failed');
+                }
+            }
+            else if (update.type === 'error') {
+                setErrorMessage(update.error || 'Unknown error occurred');
+            }
+        });
+        // Connect WebSocket
+        wsClient.connect();
+        setWsConnected(true);
+        // Cleanup on unmount
+        return () => {
+            unsubscribe();
+            wsClient.disconnect();
+            wsClientRef.current = null;
+            setWsConnected(false);
+        };
+    }, [repoId, vscode]);
     // Memoize minimap node color function
     const minimapNodeColor = (0, react_1.useCallback)((node) => {
         if (node.data?.type === 'directory')

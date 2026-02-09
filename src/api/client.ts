@@ -677,6 +677,212 @@ export class ApiRequestError extends Error {
     }
 }
 
+/**
+ * WebSocket job update message types
+ */
+export interface JobUpdate {
+    type: 'progress' | 'status' | 'graph_update' | 'error';
+    job_id?: string;
+    repo_id?: string;
+    status?: string;
+    progress?: number;
+    message?: string;
+    error?: string;
+    changed_nodes?: string[];
+    changed_edges?: string[];
+    result_summary?: Record<string, any>;
+    timestamp: string;
+}
+
+/**
+ * WebSocket client for real-time updates
+ */
+export class ArchMindWebSocketClient {
+    private ws: WebSocket | null = null;
+    private reconnectAttempts = 0;
+    private maxReconnectAttempts = 5;
+    private reconnectDelay = 1000; // Start with 1 second
+    private reconnectTimer: NodeJS.Timeout | null = null;
+    private listeners: Map<string, Set<(update: JobUpdate) => void>> = new Map();
+    private globalListeners: Set<(update: JobUpdate) => void> = new Set();
+    private isIntentionallyClosed = false;
+    private url: string;
+    private type: 'job' | 'repo';
+    private id: string;
+
+    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'http://localhost:8080') {
+        this.type = type;
+        this.id = id;
+        
+        // Convert http(s) to ws(s)
+        const wsProtocol = gatewayUrl.startsWith('https') ? 'wss' : 'ws';
+        const baseUrl = gatewayUrl.replace(/^https?:\/\//, '');
+        this.url = `${wsProtocol}://${baseUrl}/ws/${type}/${id}`;
+    }
+
+    /**
+     * Connect to WebSocket server
+     */
+    public connect(): void {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            return; // Already connected
+        }
+
+        this.isIntentionallyClosed = false;
+
+        try {
+            console.log(`🔌 Connecting to WebSocket: ${this.url}`);
+            this.ws = new WebSocket(this.url);
+
+            this.ws.onopen = () => {
+                console.log(`✅ WebSocket connected (${this.type}: ${this.id})`);
+                this.reconnectAttempts = 0;
+                this.reconnectDelay = 1000;
+            };
+
+            this.ws.onmessage = (event) => {
+                try {
+                    const update: JobUpdate = JSON.parse(event.data);
+                    this.handleUpdate(update);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+
+            this.ws.onerror = (error) => {
+                console.error('⚠️  WebSocket error:', error);
+            };
+
+            this.ws.onclose = (event) => {
+                console.log(`🔌 WebSocket closed (${this.type}: ${this.id})`);
+                this.ws = null;
+
+                if (!this.isIntentionallyClosed) {
+                    this.scheduleReconnect();
+                }
+            };
+        } catch (error) {
+            console.error('Failed to create WebSocket connection:', error);
+            this.scheduleReconnect();
+        }
+    }
+
+    /**
+     * Schedule reconnection attempt with exponential backoff
+     */
+    private scheduleReconnect(): void {
+        if (this.isIntentionallyClosed || this.reconnectAttempts >= this.maxReconnectAttempts) {
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.error('❌ Max reconnection attempts reached');
+            }
+            return;
+        }
+
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+        }
+
+        this.reconnectAttempts++;
+        const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000);
+
+        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+        this.reconnectTimer = setTimeout(() => {
+            this.connect();
+        }, delay);
+    }
+
+    /**
+     * Handle incoming update
+     */
+    private handleUpdate(update: JobUpdate): void {
+        // Notify specific listeners
+        const specificKey = update.job_id || update.repo_id;
+        if (specificKey) {
+            const specificListeners = this.listeners.get(specificKey);
+            if (specificListeners) {
+                specificListeners.forEach(listener => {
+                    try {
+                        listener(update);
+                    } catch (error) {
+                        console.error('Error in WebSocket listener:', error);
+                    }
+                });
+            }
+        }
+
+        // Notify global listeners
+        this.globalListeners.forEach(listener => {
+            try {
+                listener(update);
+            } catch (error) {
+                console.error('Error in global WebSocket listener:', error);
+            }
+        });
+    }
+
+    /**
+     * Subscribe to updates for a specific job or repo
+     */
+    public subscribe(id: string, callback: (update: JobUpdate) => void): () => void {
+        if (!this.listeners.has(id)) {
+            this.listeners.set(id, new Set());
+        }
+        this.listeners.get(id)!.add(callback);
+
+        // Return unsubscribe function
+        return () => {
+            const listeners = this.listeners.get(id);
+            if (listeners) {
+                listeners.delete(callback);
+                if (listeners.size === 0) {
+                    this.listeners.delete(id);
+                }
+            }
+        };
+    }
+
+    /**
+     * Subscribe to all updates
+     */
+    public subscribeAll(callback: (update: JobUpdate) => void): () => void {
+        this.globalListeners.add(callback);
+
+        // Return unsubscribe function
+        return () => {
+            this.globalListeners.delete(callback);
+        };
+    }
+
+    /**
+     * Disconnect WebSocket
+     */
+    public disconnect(): void {
+        this.isIntentionallyClosed = true;
+        
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+
+        this.listeners.clear();
+        this.globalListeners.clear();
+        console.log(`🔌 WebSocket disconnected (${this.type}: ${this.id})`);
+    }
+
+    /**
+     * Get connection status
+     */
+    public isConnected(): boolean {
+        return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    }
+}
+
 // Export singleton instance
 let apiClientInstance: ArchMindApiClient | null = null;
 
