@@ -759,8 +759,10 @@ class ArchitecturePanel {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        const scriptPathOnDisk = vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'bundle.js');
-        const scriptUri = webview.asWebviewUri(scriptPathOnDisk);
+        const vendorsPath = vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'vendors.bundle.js');
+        const vendorsUri = webview.asWebviewUri(vendorsPath);
+        const mainPath = vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'main.bundle.js');
+        const mainUri = webview.asWebviewUri(mainPath);
 
         return `<!DOCTYPE html>
 			<html lang="en">
@@ -780,7 +782,8 @@ class ArchitecturePanel {
 			</head>
 			<body>
 				<div id="root"></div>
-				<script src="${scriptUri}"></script>
+				<script src="${vendorsUri}"></script>
+				<script src="${mainUri}"></script>
 			</body>
 			</html>`;
     }

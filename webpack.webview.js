@@ -4,7 +4,7 @@ module.exports = {
     entry: './src/webview/index.tsx',
     output: {
         path: path.resolve(__dirname, 'out/webview'),
-        filename: 'bundle.js',
+        filename: '[name].bundle.js',
     },
     resolve: {
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.css'],
