@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { ReactFlowProvider } from 'reactflow';
 import { ClusterNode } from '../ClusterNode';
 
 describe('ClusterNode', () => {
@@ -25,18 +26,24 @@ describe('ClusterNode', () => {
     isConnectable: false,
     dragHandle: undefined,
     dragging: false,
+    sourcePosition: undefined,
+    targetPosition: undefined,
+  };
+
+  const renderWithProvider = (component: React.ReactNode) => {
+    return render(<ReactFlowProvider>{component}</ReactFlowProvider>);
   };
 
   it('renders cluster label and node count', () => {
-    render(<ClusterNode {...nodeProps} />);
+    renderWithProvider(<ClusterNode {...nodeProps} />);
     expect(screen.getByText('Cluster A')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 
   it('calls onExpand when expand icon is clicked', () => {
-    render(<ClusterNode {...nodeProps} />);
-    const icon = screen.getByText('📁');
-    fireEvent.click(icon);
+    renderWithProvider(<ClusterNode {...nodeProps} />);
+    const button = screen.getByTitle('Expand cluster');
+    fireEvent.click(button);
     expect(onExpand).toHaveBeenCalled();
   });
 });

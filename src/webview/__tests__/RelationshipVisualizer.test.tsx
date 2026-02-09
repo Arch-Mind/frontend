@@ -5,9 +5,17 @@ import { RelationshipVisualizer } from '../RelationshipVisualizer';
 
 describe('RelationshipVisualizer', () => {
   it('renders relationship visualizer panel', () => {
+    // Mock nodes and edges to ensure content is rendered
+    const nodes = [{ id: '1', type: 'file' }];
     render(
-      <RelationshipVisualizer selectedNodeId="1" nodes={[]} edges={[]} onClose={jest.fn()} />
+      <RelationshipVisualizer
+        selectedNodeId="1"
+        nodes={nodes as any}
+        edges={[]}
+        onClose={jest.fn()}
+      />
     );
-    expect(screen.getByText(/relationship/i)).toBeInTheDocument();
+    // Look for the "Relationships" title specifically
+    expect(screen.getByText('Relationships')).toBeInTheDocument();
   });
 });
