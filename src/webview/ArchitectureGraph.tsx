@@ -1730,6 +1730,17 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode 
                         type: 'info',
                     });
                 }
+            } else if (update.type === 'graph_updated') {
+                const patch = update.result_summary?.graph_patch as GraphPatch | undefined;
+                if (patch) {
+                    setRawData((current) => (current ? applyGraphPatch(current, patch) : current));
+                }
+                const fileCount = patch?.changed_files?.length || update.changed_nodes?.length || 0;
+                vscode.postMessage({
+                    command: 'showNotification',
+                    message: `Architecture updated: ${fileCount} files changed`,
+                    type: 'info',
+                });
             } else if (update.type === 'progress') {
                 // Show loading message with progress
                 if (update.progress !== undefined) {

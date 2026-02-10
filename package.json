@@ -9,7 +9,20 @@
   "categories": [
     "Visualization"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:archmind.showArchitecture",
+    "onCommand:archmind.showLocalAnalysis",
+    "onCommand:archmind.analyzeRepository",
+    "onCommand:archmind.refreshGraph",
+    "onCommand:archmind.checkBackendStatus",
+    "onCommand:archmind.showBoundaryDiagram",
+    "onCommand:archmind.showDependencyDiagram",
+    "onCommand:archmind.showCommunicationDiagram",
+    "onCommand:archmind.toggleHeatmap",
+    "onCommand:archmind.analyzeLiveArchitecture",
+    "onCommand:archmind.configureWebhook",
+    "onCommand:archmind.showInBoundaryDiagram"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -32,6 +45,97 @@
       {
         "command": "archmind.checkBackendStatus",
         "title": "ArchMind: Check Backend Status"
+      },
+      {
+        "command": "archmind.showBoundaryDiagram",
+        "title": "ArchMind: Show Boundary Diagram"
+      },
+      {
+        "command": "archmind.showDependencyDiagram",
+        "title": "ArchMind: Show Dependency Diagram"
+      },
+      {
+        "command": "archmind.showCommunicationDiagram",
+        "title": "ArchMind: Show Service Communication Diagram"
+      },
+      {
+        "command": "archmind.toggleHeatmap",
+        "title": "ArchMind: Toggle Heatmap Overlay"
+      },
+      {
+        "command": "archmind.analyzeLiveArchitecture",
+        "title": "ArchMind: Analyze Live Architecture"
+      },
+      {
+        "command": "archmind.configureWebhook",
+        "title": "ArchMind: Configure GitHub Webhook"
+      },
+      {
+        "command": "archmind.showInBoundaryDiagram",
+        "title": "ArchMind: Show in Boundary Diagram"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "archmind.showInBoundaryDiagram",
+          "when": "resourceLangId == javascript || resourceLangId == typescript || resourceLangId == python || resourceLangId == rust || resourceLangId == go",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "archmind.showBoundaryDiagram"
+        },
+        {
+          "command": "archmind.showDependencyDiagram"
+        },
+        {
+          "command": "archmind.showCommunicationDiagram"
+        },
+        {
+          "command": "archmind.toggleHeatmap"
+        },
+        {
+          "command": "archmind.analyzeLiveArchitecture"
+        },
+        {
+          "command": "archmind.configureWebhook"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "archmind",
+          "title": "ArchMind",
+          "icon": "resources/archmind-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "archmind": [
+        {
+          "id": "archmind.views",
+          "name": "Diagrams"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "archmind.showBoundaryDiagram",
+        "key": "ctrl+alt+b",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "archmind.showDependencyDiagram",
+        "key": "ctrl+alt+d",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "archmind.showCommunicationDiagram",
+        "key": "ctrl+alt+c",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {
@@ -81,6 +185,11 @@
           "type": "number",
           "default": 60,
           "description": "Maximum number of job status polling attempts"
+        },
+        "archmind.webhookSecret": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub webhook secret for verifying payloads"
         }
       }
     }

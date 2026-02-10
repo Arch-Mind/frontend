@@ -47,6 +47,25 @@ const App: React.FC = () => {
         { value: 'author_count', label: 'Author Count' },
     ];
 
+    useEffect(() => {
+        const handler = (event: MessageEvent) => {
+            const message = event.data;
+            if (message?.command === 'switchView' && message.view) {
+                setActiveView(message.view);
+            }
+            if (message?.command === 'toggleHeatmap') {
+                setHeatmapMode((prev) => {
+                    const order: HeatmapMode[] = ['off', 'commit_count', 'last_modified', 'author_count'];
+                    const index = order.indexOf(prev);
+                    return order[(index + 1) % order.length];
+                });
+            }
+        };
+
+        window.addEventListener('message', handler);
+        return () => window.removeEventListener('message', handler);
+    }, []);
+
     return (
         <ThemeProvider>
             <ThemeKeyboardHandler />

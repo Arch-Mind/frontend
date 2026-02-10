@@ -107,6 +107,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
     const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
+    const [highlightBoundaryId, setHighlightBoundaryId] = useState<string | null>(null);
 
     const [filters, setFilters] = useState<FilterState>({
         physical: true,
@@ -129,13 +130,23 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
                     setRepoId(extractedRepoId);
                 }
             }
+            if (message?.command === 'revealBoundaryFile' && message.filePath && boundaryData) {
+                const normalized = normalizePath(message.filePath);
+                const match = boundaryData.boundaries.find(boundary =>
+                    boundary.files.some(file => normalizePath(file) === normalized)
+                );
+                if (match) {
+                    setHighlightBoundaryId(match.id);
+                }
+                setFilters(prev => ({ ...prev, showFiles: true }));
+            }
         };
 
         window.addEventListener('message', handler);
         vscode.postMessage({ command: 'requestArchitecture' });
 
         return () => window.removeEventListener('message', handler);
-    }, [vscode]);
+    }, [vscode, boundaryData]);
 
     useEffect(() => {
         if (!repoId) return;
@@ -219,6 +230,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
 
         const boundaryNodes: Node[] = filteredBoundaries.map(boundary => {
             const hottest = getBoundaryHeatmap(boundary, heatmapState);
+            const isHighlighted = highlightBoundaryId === boundary.id;
             return {
             id: `boundary:${boundary.id}`,
             type: 'boundaryNode',
@@ -234,6 +246,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
             style: {
                 width: 260,
                 height: 120,
+                    boxShadow: isHighlighted ? '0 0 12px rgba(59, 130, 246, 0.6)' : undefined,
             },
             };
         });
