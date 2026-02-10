@@ -17,6 +17,8 @@ import 'reactflow/dist/style.css';
 
 // Import WebSocket client
 import { ArchMindWebSocketClient, JobUpdate } from '../api/webviewSocket';
+import { ArchMindWebviewApiClient } from '../api/webviewClient';
+import { ContributionsResponse } from '../api/types';
 
 // Layout algorithm imports
 import {
@@ -59,6 +61,8 @@ import { RelationshipVisualizer } from './RelationshipVisualizer';
 
 // Export Modal imports
 import { ExportModal } from '../components/ExportModal';
+import { HeatmapLegend } from './HeatmapLegend';
+import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
 
 // Custom node types for ReactFlow
 const nodeTypes = {
@@ -103,6 +107,13 @@ interface RawEdge {
     source: string;
     target: string;
     type: string;
+}
+
+interface GraphPatch {
+    changed_files: string[];
+    removed_files: string[];
+    nodes: RawNode[];
+    edges: RawEdge[];
 }
 
 interface GraphStats {
@@ -316,6 +327,121 @@ function createStyledNode(
             borderStyle: isChanged ? 'dashed' : 'solid', // Dashed border for changed files
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
+    };
+}
+
+function getNodeColorFromData(data?: { type?: string; language?: string; status?: string }): string {
+    if (data?.status && data.status !== 'unchanged' && STATUS_COLORS[data.status]) {
+        return STATUS_COLORS[data.status];
+    }
+    if (data?.type === 'directory') return NODE_COLORS.directory;
+    if (data?.type === 'function') return NODE_COLORS.function;
+    if (data?.type === 'class') return NODE_COLORS.class;
+    if (data?.type === 'module') return NODE_COLORS.module;
+    if (data?.language) return NODE_COLORS[data.language] || NODE_COLORS.default;
+    return NODE_COLORS.default;
+}
+
+function getBaseNodeBackground(node: Node): string {
+    const color = getNodeColorFromData(node.data);
+    const type = node.data?.type;
+    return type === 'directory' ? `${color}20` : 'var(--am-panel-bg)';
+}
+
+function applyHeatmapToNode(node: Node, heatmap: HeatmapState, mode: HeatmapMode): Node {
+    if (node.type === 'clusterNode') {
+        return node;
+    }
+    if (!node.data) return node;
+
+    const filePath = node.data.filePath || node.id;
+    const entry = mode === 'off' ? undefined : heatmap.entries.get(normalizePath(filePath));
+    const background = entry ? entry.color : getBaseNodeBackground(node);
+
+    return {
+        ...node,
+        data: {
+            ...node.data,
+            heatmapTooltip: entry ? entry.tooltip : undefined,
+        },
+        style: {
+            ...node.style,
+            background,
+        },
+    };
+}
+
+function applyGraphPatch(current: ArchitectureData, patch: GraphPatch): ArchitectureData {
+    const removedFiles = new Set(
+        [...(patch.changed_files || []), ...(patch.removed_files || [])].map(normalizePath)
+    );
+
+    const nodesById = new Map(current.nodes.map((node) => [node.id, node]));
+    const edgesById = new Map(current.edges.map((edge) => [edge.id, edge]));
+
+    nodesById.forEach((node, id) => {
+        const fileKey = getNodeFileKey(node);
+        if (fileKey && removedFiles.has(fileKey)) {
+            nodesById.delete(id);
+        }
+    });
+
+    edgesById.forEach((edge, id) => {
+        if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) {
+            edgesById.delete(id);
+        }
+    });
+
+    patch.nodes?.forEach((node) => {
+        nodesById.set(node.id, node);
+    });
+
+    patch.edges?.forEach((edge) => {
+        edgesById.set(edge.id, edge);
+    });
+
+    const nodes = Array.from(nodesById.values());
+    const edges = Array.from(edgesById.values());
+
+    return {
+        ...current,
+        nodes,
+        edges,
+        stats: recalculateStats(nodes),
+    };
+}
+
+function getNodeFileKey(node: RawNode): string | null {
+    if (node.filePath) {
+        return normalizePath(node.filePath);
+    }
+    if (node.type === 'file') {
+        return normalizePath(node.id);
+    }
+    if (node.id.includes('::')) {
+        return normalizePath(node.id.split('::')[0]);
+    }
+    return null;
+}
+
+function recalculateStats(nodes: RawNode[]): GraphStats {
+    const files = nodes.filter((node) => node.type === 'file');
+    const directories = nodes.filter((node) => node.type === 'directory');
+    const functions = nodes.filter((node) => node.type === 'function');
+    const classes = nodes.filter((node) => node.type === 'class');
+
+    const filesByLanguage: Record<string, number> = {};
+    files.forEach((node) => {
+        if (!node.language) return;
+        filesByLanguage[node.language] = (filesByLanguage[node.language] || 0) + 1;
+    });
+
+    return {
+        totalFiles: files.length,
+        totalDirectories: directories.length,
+        totalFunctions: functions.length,
+        totalClasses: classes.length,
+        filesByLanguage,
     };
 }
 
@@ -973,6 +1099,12 @@ const NodeTooltip: React.FC<TooltipProps> = ({ node, position }) => {
                     <span className="tooltip-key">Type:</span>
                     <span className="tooltip-value">{data.type}</span>
                 </div>
+                {data.heatmapTooltip && (
+                    <div className="tooltip-row">
+                        <span className="tooltip-key">Heatmap:</span>
+                        <span className="tooltip-value">{data.heatmapTooltip}</span>
+                    </div>
+                )}
             </div>
             <div className="tooltip-hint">
                 Click to open • Right-click for actions
@@ -1100,10 +1232,16 @@ const LayoutPanel: React.FC<LayoutPanelProps> = ({
 };
 
 // Inner component that uses ReactFlow hooks
-const ArchitectureGraphInner: React.FC = () => {
+interface ArchitectureGraphProps {
+    heatmapMode: HeatmapMode;
+}
+
+const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode }) => {
     // VS Code API reference - memoized to call only once
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
+
+    const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
     const state = vscode.getState() as { filters?: SearchFilters; layoutType?: LayoutType } || {};
 
@@ -1115,6 +1253,12 @@ const ArchitectureGraphInner: React.FC = () => {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [dataSource, setDataSource] = useState<'local' | 'backend'>('local');
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
+    const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
+
+    const heatmapState = useMemo(
+        () => buildHeatmap(contributions?.contributions || [], heatmapMode),
+        [contributions, heatmapMode]
+    );
 
     // Search and filter state - initialized from persistence
     const [searchVisible, setSearchVisible] = useState(false);
@@ -1523,6 +1667,37 @@ const ArchitectureGraphInner: React.FC = () => {
         };
     }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
 
+    useEffect(() => {
+        if (!repoId || heatmapMode === 'off') {
+            setContributions(null);
+            return;
+        }
+
+        let active = true;
+        const load = async () => {
+            try {
+                const response = await apiClient.getContributions(repoId);
+                if (active) {
+                    setContributions(response);
+                }
+            } catch (error) {
+                if (active) {
+                    setContributions(null);
+                }
+            }
+        };
+
+        load();
+        return () => {
+            active = false;
+        };
+    }, [apiClient, repoId, heatmapMode]);
+
+    useEffect(() => {
+        if (!nodes.length) return;
+        setNodes((prevNodes) => prevNodes.map((node) => applyHeatmapToNode(node, heatmapState, heatmapMode)));
+    }, [heatmapMode, heatmapState, setNodes, nodes.length]);
+
     // WebSocket connection management
     useEffect(() => {
         if (!repoId) return;
@@ -1545,6 +1720,16 @@ const ArchitectureGraphInner: React.FC = () => {
                     message: `Architecture updated: ${update.changed_nodes?.length || 0} nodes changed`,
                     type: 'info'
                 });
+            } else if (update.type === 'graph_patch') {
+                const patch = update.result_summary?.graph_patch as GraphPatch | undefined;
+                if (patch) {
+                    setRawData((current) => (current ? applyGraphPatch(current, patch) : current));
+                    vscode.postMessage({
+                        command: 'showNotification',
+                        message: `Graph patch applied: ${patch.changed_files?.length || 0} files updated`,
+                        type: 'info',
+                    });
+                }
             } else if (update.type === 'progress') {
                 // Show loading message with progress
                 if (update.progress !== undefined) {
@@ -1737,6 +1922,15 @@ const ArchitectureGraphInner: React.FC = () => {
             className={isFullscreen ? 'fullscreen-graph' : ''}
         >
             <StatsDisplay stats={stats} source={dataSource} />
+            {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
+                <div className="heatmap-legend-floating">
+                    <HeatmapLegend
+                        mode={heatmapMode}
+                        minMetric={heatmapState.minMetric}
+                        maxMetric={heatmapState.maxMetric}
+                    />
+                </div>
+            )}
 
             {/* Search Panel */}
             <SearchPanel
@@ -1932,10 +2126,10 @@ const ArchitectureGraphInner: React.FC = () => {
 };
 
 // Wrapper component with ReactFlowProvider
-const ArchitectureGraph: React.FC = () => {
+const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({ heatmapMode }) => {
     return (
         <ReactFlowProvider>
-            <ArchitectureGraphInner />
+            <ArchitectureGraphInner heatmapMode={heatmapMode} />
         </ReactFlowProvider>
     );
 };

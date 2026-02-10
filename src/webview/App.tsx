@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
 import { ModuleBoundaryDiagram } from './ModuleBoundaryDiagram';
+import { BoundaryDiagram } from './BoundaryDiagram';
+import { DependencyDiagram } from './DependencyDiagram';
+import { CommunicationDiagram } from './CommunicationDiagram';
 import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
 import { initializeExportListener } from '../utils/exporters/vscodeExportHelper';
+import { HeatmapMode } from './heatmapUtils';
 
 const ThemeKeyboardHandler: React.FC = () => {
     useThemeKeyboard();
@@ -31,7 +35,17 @@ const App: React.FC = () => {
         initializeExportListener();
     }, []);
 
-    const [activeView, setActiveView] = useState<'graph' | 'boundaries'>('graph');
+    const [activeView, setActiveView] = useState<
+        'graph' | 'boundaries' | 'boundary-diagram' | 'dependency-diagram' | 'communication'
+    >('graph');
+    const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('off');
+
+    const heatmapOptions: { value: HeatmapMode; label: string }[] = [
+        { value: 'off', label: 'Off' },
+        { value: 'commit_count', label: 'Commit Count' },
+        { value: 'last_modified', label: 'Last Modified' },
+        { value: 'author_count', label: 'Author Count' },
+    ];
 
     return (
         <ThemeProvider>
@@ -51,9 +65,49 @@ const App: React.FC = () => {
                     >
                         Boundaries
                     </button>
+                    <button
+                        className={activeView === 'boundary-diagram' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('boundary-diagram')}
+                    >
+                        Boundary Diagram
+                    </button>
+                    <button
+                        className={activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('dependency-diagram')}
+                    >
+                        Dependency Diagram
+                    </button>
+                    <button
+                        className={activeView === 'communication' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('communication')}
+                    >
+                        Communication
+                    </button>
+                </div>
+                <div className="heatmap-toolbar">
+                    <span className="heatmap-label">Heatmap</span>
+                    <div className="heatmap-toggle">
+                        {heatmapOptions.map(option => (
+                            <button
+                                key={option.value}
+                                className={
+                                    heatmapMode === option.value
+                                        ? 'heatmap-pill active'
+                                        : 'heatmap-pill'
+                                }
+                                onClick={() => setHeatmapMode(option.value)}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 <main className="app-main">
-                    {activeView === 'graph' ? <ArchitectureGraph /> : <ModuleBoundaryDiagram />}
+                    {activeView === 'graph' && <ArchitectureGraph heatmapMode={heatmapMode} />}
+                    {activeView === 'boundaries' && <ModuleBoundaryDiagram heatmapMode={heatmapMode} />}
+                    {activeView === 'boundary-diagram' && <BoundaryDiagram heatmapMode={heatmapMode} />}
+                    {activeView === 'dependency-diagram' && <DependencyDiagram heatmapMode={heatmapMode} />}
+                    {activeView === 'communication' && <CommunicationDiagram heatmapMode={heatmapMode} />}
                 </main>
             </div>
         </ThemeProvider>

@@ -166,6 +166,91 @@ export interface ModuleBoundariesResponse {
     boundaries: ModuleBoundary[];
 }
 
+export interface DependencyRecord {
+    source_file: string;
+    source_language: string;
+    target: string;
+    target_type: string;
+    relationship: string;
+    relationship_properties: Record<string, unknown>;
+}
+
+export interface DependenciesResponse {
+    repo_id: string;
+    total_dependencies: number;
+    dependencies: DependencyRecord[];
+}
+
+export interface CommunicationEndpoint {
+    url: string;
+    method: string;
+    host: string | null;
+    callers: string[];
+    services: string[];
+}
+
+export interface CommunicationRpcService {
+    name: string;
+    callers: string[];
+}
+
+export interface CommunicationQueue {
+    topic: string;
+    publishers: string[];
+    consumers: string[];
+}
+
+export interface CommunicationComposeService {
+    name: string;
+    ports: string[];
+}
+
+export interface CommunicationResponse {
+    repo_id: string;
+    endpoints: CommunicationEndpoint[];
+    rpc_services: CommunicationRpcService[];
+    queues: CommunicationQueue[];
+    compose_services: CommunicationComposeService[];
+}
+
+export interface ContributionContributor {
+    email: string;
+    name: string;
+    commit_count: number;
+    lines_added: number;
+    lines_deleted: number;
+}
+
+export interface FileContribution {
+    file_path: string;
+    commit_count: number;
+    last_commit_date: string | null;
+    primary_author: string;
+    lines_changed_total: number;
+    contributors: ContributionContributor[];
+    contributor_count: number;
+    language?: string | null;
+}
+
+export interface ContributionsResponse {
+    repo_id: string;
+    total_files: number;
+    contributions: FileContribution[];
+}
+
+export interface ArchitectureInsight {
+    pattern_type: string;
+    confidence: number | null;
+    summary: string;
+    generated_at: string;
+}
+
+export interface ArchitectureInsightsResponse {
+    repo_id: string;
+    generated_at?: string;
+    insights: ArchitectureInsight[];
+}
+
 /**
  * Graph Engine health check response
  */

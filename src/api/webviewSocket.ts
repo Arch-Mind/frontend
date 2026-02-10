@@ -1,5 +1,5 @@
 export interface JobUpdate {
-    type: 'progress' | 'status' | 'graph_update' | 'error';
+    type: 'progress' | 'status' | 'graph_update' | 'graph_patch' | 'error';
     job_id?: string;
     repo_id?: string;
     status?: string;

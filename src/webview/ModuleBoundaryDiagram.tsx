@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArchMindWebviewApiClient } from '../api/webviewClient';
-import { ModuleBoundariesResponse, ModuleBoundary } from '../api/types';
+import { ContributionsResponse, ModuleBoundariesResponse, ModuleBoundary } from '../api/types';
+import { HeatmapLegend } from './HeatmapLegend';
+import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
 
 declare function acquireVsCodeApi(): {
     postMessage(message: unknown): void;
@@ -30,7 +32,23 @@ const layerStyles: Record<string, string> = {
     Unknown: 'layer-pill layer-unknown',
 };
 
-export const ModuleBoundaryDiagram: React.FC = () => {
+function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState) {
+    let hottest: { color: string; tooltip: string; metric: number } | null = null;
+    boundary.files.forEach((file) => {
+        const entry = heatmapState.entries.get(normalizePath(file));
+        if (!entry) return;
+        if (!hottest || entry.metric > hottest.metric) {
+            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
+        }
+    });
+    return hottest;
+}
+
+interface ModuleBoundaryDiagramProps {
+    heatmapMode: HeatmapMode;
+}
+
+export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ heatmapMode }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
@@ -39,6 +57,12 @@ export const ModuleBoundaryDiagram: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<ModuleBoundariesResponse | null>(null);
     const [expandedBoundaryId, setExpandedBoundaryId] = useState<string | null>(null);
+    const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
+
+    const heatmapState = useMemo<HeatmapState>(
+        () => buildHeatmap(contributions?.contributions || [], heatmapMode),
+        [contributions, heatmapMode]
+    );
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {
@@ -86,6 +110,32 @@ export const ModuleBoundaryDiagram: React.FC = () => {
         };
     }, [repoId]);
 
+    useEffect(() => {
+        if (!repoId || heatmapMode === 'off') {
+            setContributions(null);
+            return;
+        }
+
+        let active = true;
+        const load = async () => {
+            try {
+                const response = await apiClient.getContributions(repoId);
+                if (active) {
+                    setContributions(response);
+                }
+            } catch {
+                if (active) {
+                    setContributions(null);
+                }
+            }
+        };
+
+        load();
+        return () => {
+            active = false;
+        };
+    }, [apiClient, repoId, heatmapMode]);
+
     const groups = useMemo<BoundaryGroup[]>(() => {
         const boundaries = data?.boundaries || [];
         const grouped: Record<string, ModuleBoundary[]> = {};
@@ -126,6 +176,13 @@ export const ModuleBoundaryDiagram: React.FC = () => {
                     </button>
                 </div>
             </div>
+            {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
+                <HeatmapLegend
+                    mode={heatmapMode}
+                    minMetric={heatmapState.minMetric}
+                    maxMetric={heatmapState.maxMetric}
+                />
+            )}
 
             {isLoading && (
                 <div className="boundary-state">Loading boundaries...</div>
@@ -155,8 +212,14 @@ export const ModuleBoundaryDiagram: React.FC = () => {
                             {group.boundaries.map(boundary => {
                                 const isExpanded = expandedBoundaryId === boundary.id;
                                 const layerClass = layerStyles[boundary.layer || 'Unknown'] || layerStyles.Unknown;
+                                const heatmap = heatmapMode === 'off' ? null : getBoundaryHeatmap(boundary, heatmapState);
                                 return (
-                                    <div key={boundary.id} className="boundary-card">
+                                    <div
+                                        key={boundary.id}
+                                        className="boundary-card"
+                                        style={heatmap?.color ? { borderColor: heatmap.color } : undefined}
+                                        title={heatmap?.tooltip || ''}
+                                    >
                                         <div className="boundary-card-header">
                                             <div>
                                                 <div className="boundary-name">{boundary.name}</div>

@@ -1,4 +1,10 @@
-import { ModuleBoundariesResponse } from './types';
+import {
+    ArchitectureInsightsResponse,
+    CommunicationResponse,
+    ContributionsResponse,
+    DependenciesResponse,
+    ModuleBoundariesResponse,
+} from './types';
 
 interface WebviewApiClientConfig {
     graphEngineUrl: string;
@@ -57,6 +63,30 @@ export class ArchMindWebviewApiClient {
     public async getModuleBoundaries(repoId: string): Promise<ModuleBoundariesResponse> {
         return this.request<ModuleBoundariesResponse>(
             `/api/graph/${encodeURIComponent(repoId)}/boundaries`
+        );
+    }
+
+    public async getDependencies(repoId: string): Promise<DependenciesResponse> {
+        return this.request<DependenciesResponse>(
+            `/api/graph/${encodeURIComponent(repoId)}/dependencies`
+        );
+    }
+
+    public async getCommunication(repoId: string): Promise<CommunicationResponse> {
+        return this.request<CommunicationResponse>(
+            `/api/graph/${encodeURIComponent(repoId)}/communication`
+        );
+    }
+
+    public async getContributions(repoId: string): Promise<ContributionsResponse> {
+        return this.request<ContributionsResponse>(
+            `/api/graph/${encodeURIComponent(repoId)}/contributions`
+        );
+    }
+
+    public async getArchitectureInsights(repoId: string): Promise<ArchitectureInsightsResponse> {
+        return this.request<ArchitectureInsightsResponse>(
+            `/api/analyze/${encodeURIComponent(repoId)}/architecture`
         );
     }
 }

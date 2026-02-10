@@ -211,6 +211,259 @@ html, body, #root {
     border-color: var(--am-btn-bg);
 }
 
+.heatmap-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--am-border);
+    background: var(--am-bg);
+}
+
+.heatmap-label {
+    font-size: 12px;
+    color: var(--am-desc);
+}
+
+.heatmap-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.heatmap-pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--am-border);
+    background: var(--am-panel-bg);
+    color: var(--am-fg);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.heatmap-pill.active {
+    background: var(--am-btn-bg);
+    color: var(--am-btn-fg);
+    border-color: var(--am-btn-bg);
+}
+
+.diagram-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 16px;
+    gap: 12px;
+    position: relative;
+}
+
+.diagram-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.diagram-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.diagram-header p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--am-desc);
+}
+
+.diagram-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.diagram-filters label {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.diagram-pill {
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--am-border);
+    background: var(--am-panel-bg);
+    color: var(--am-fg);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.diagram-pill.active {
+    background: var(--am-btn-bg);
+    color: var(--am-btn-fg);
+    border-color: var(--am-btn-bg);
+}
+
+.diagram-state {
+    padding: 12px;
+    background: var(--am-panel-bg);
+    border-radius: 8px;
+    color: var(--am-desc);
+}
+
+.diagram-error {
+    background: rgba(211, 47, 47, 0.12);
+    color: var(--am-error);
+}
+
+.diagram-flow {
+    flex: 1;
+    min-height: 400px;
+    border: 1px solid var(--am-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--am-panel-bg);
+}
+
+.diagram-select {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--am-border);
+    background: var(--am-panel-bg);
+    color: var(--am-fg);
+    font-size: 11px;
+}
+
+.diagram-toggle {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.heatmap-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--am-panel-bg);
+    border: 1px solid var(--am-border);
+    font-size: 11px;
+}
+
+.heatmap-legend-floating {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 5;
+}
+
+.heatmap-legend-title {
+    font-weight: 600;
+}
+
+.heatmap-legend-scale {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.heatmap-legend-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.heatmap-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid var(--am-border);
+}
+
+.heatmap-node {
+    font-size: 11px;
+}
+
+.edge-details {
+    position: absolute;
+    right: 24px;
+    bottom: 24px;
+    background: var(--am-panel-bg);
+    border: 1px solid var(--am-border);
+    border-radius: 12px;
+    padding: 12px;
+    width: 260px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+    font-size: 11px;
+    color: var(--am-fg);
+}
+
+.edge-details-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.edge-details-header button {
+    background: transparent;
+    border: none;
+    color: var(--am-fg);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.boundary-diagram-node {
+    background: var(--am-bg);
+    border: 2px solid var(--am-border);
+    border-radius: 12px;
+    padding: 10px;
+    font-size: 11px;
+    color: var(--am-fg);
+    width: 100%;
+    height: 100%;
+}
+
+.boundary-node-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.boundary-node-path {
+    font-size: 10px;
+    color: var(--am-desc);
+    word-break: break-word;
+}
+
+.boundary-node-meta {
+    font-size: 10px;
+    color: var(--am-desc);
+    margin-top: 6px;
+}
+
+.boundary-layer-pill {
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--am-panel-bg);
+    border: 1px solid var(--am-border);
+    font-size: 9px;
+    text-transform: uppercase;
+}
+
+.boundary-file-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--am-accent);
+    opacity: 0.7;
+}
+
 .boundary-view {
     padding: 16px;
     height: 100%;
