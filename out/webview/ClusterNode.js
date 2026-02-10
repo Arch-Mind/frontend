@@ -1,7 +1,18 @@
 "use strict";
 /**
- * ClusterNode Component (Issue #11)
- * Displays a collapsed cluster with metrics and expand button
+ * ClusterNode Component
+ * ---------------------
+ * Displays a collapsed cluster node with summary metrics and an expand button.
+ * Used for grouping nodes in large graphs for better visualization and navigation.
+ *
+ * Features:
+ * - Shows cluster label and metrics (nodes, files, functions, classes)
+ * - Provides expand button to reveal cluster contents
+ * - Integrates with React Flow for graph rendering
+ *
+ * @component
+ * @param {NodeProps<ClusterNodeData>} props - Cluster data and expand handler
+ * @returns {JSX.Element}
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -11,8 +22,13 @@ exports.ClusterNode = ClusterNode;
 const react_1 = __importDefault(require("react"));
 const reactflow_1 = require("reactflow");
 function ClusterNode({ data }) {
+    // Destructure cluster data and expand handler
     const { cluster, onExpand } = data;
     const { label, metrics } = cluster;
+    /**
+     * Handles click on expand button to reveal cluster contents
+     * @param e - Mouse event
+     */
     const handleExpand = (e) => {
         e.stopPropagation();
         onExpand(cluster.id);

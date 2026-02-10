@@ -1,7 +1,18 @@
 "use strict";
 /**
- * Keyboard Navigation Hook (Issue #18)
- * Enable keyboard-only navigation: Arrow keys, Enter, Tab, shortcuts
+ * useKeyboardNavigation Hook
+ * -------------------------
+ * Enables keyboard-only navigation for graph nodes (arrow keys, enter, tab, shortcuts).
+ * Used to improve accessibility and efficiency for power users.
+ *
+ * Features:
+ * - Arrow keys to move between nodes
+ * - Enter to activate/select node
+ * - Tab to cycle through connected nodes
+ * - Keyboard shortcuts for search, help, zoom, and theme
+ *
+ * @param {KeyboardNavigationOptions} options - Node list, selection/activation handlers, and helpers
+ * @returns {object} Navigation state
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -44,7 +55,9 @@ function useKeyboardNavigation(options) {
     const { nodes, onNodeSelect, onNodeActivate, getCurrentNodeId, getConnectedNodes, onFocusSearch, onShowHelp, } = options;
     const isNavigating = (0, react_1.useRef)(false);
     /**
-     * Get next node in direction
+     * Returns the next node ID in the given direction (up, down, left, right)
+     * @param direction - Navigation direction
+     * @returns {string | null} Next node ID
      */
     const getNextNode = (0, react_1.useCallback)((direction) => {
         const currentId = getCurrentNodeId();
@@ -78,7 +91,8 @@ function useKeyboardNavigation(options) {
         }
     }, [nodes, getCurrentNodeId, getConnectedNodes]);
     /**
-     * Navigate with arrow keys
+     * Handles navigation with arrow keys
+     * @param direction - Navigation direction
      */
     const handleArrowKey = (0, react_1.useCallback)((direction) => {
         const nextNodeId = getNextNode(direction);
@@ -87,7 +101,8 @@ function useKeyboardNavigation(options) {
         }
     }, [getNextNode, onNodeSelect]);
     /**
-     * Tab navigation - cycle through connected nodes
+     * Handles tab navigation to cycle through connected nodes
+     * @param shiftKey - Whether shift is held (reverse direction)
      */
     const handleTab = (0, react_1.useCallback)((shiftKey) => {
         const currentId = getCurrentNodeId();
@@ -112,7 +127,8 @@ function useKeyboardNavigation(options) {
         onNodeSelect(connected[nextIndex]);
     }, [getCurrentNodeId, getConnectedNodes, nodes, onNodeSelect, handleArrowKey]);
     /**
-     * Main keyboard event handler
+     * Main keyboard event handler for navigation and shortcuts
+     * @effect
      */
     (0, react_1.useEffect)(() => {
         const handleKeyDown = (e) => {
@@ -175,6 +191,7 @@ function useKeyboardNavigation(options) {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [nodes, handleArrowKey, handleTab, getCurrentNodeId, onNodeActivate, onFocusSearch, onShowHelp, onNodeSelect]);
+    // Return navigation state (can be expanded for more features)
     return {
         isNavigating: isNavigating.current,
     };

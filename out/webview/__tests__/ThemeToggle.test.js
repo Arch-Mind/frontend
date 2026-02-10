@@ -3,14 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+// Unit tests for ThemeToggle component
 const react_1 = __importDefault(require("react"));
 const react_2 = require("@testing-library/react");
 require("@testing-library/jest-dom");
 const ThemeToggle_1 = require("../ThemeToggle");
 const ThemeContext_1 = require("../ThemeContext");
+// Test suite for ThemeToggle functionality
 describe('ThemeToggle', () => {
+    // Setup: Mock window.matchMedia for jsdom environment
     beforeAll(() => {
-        // Mock window.matchMedia for jsdom
         Object.defineProperty(window, 'matchMedia', {
             writable: true,
             value: jest.fn().mockImplementation(query => ({
@@ -25,6 +27,7 @@ describe('ThemeToggle', () => {
             })),
         });
     });
+    // Test: renders all theme option buttons (Auto, Light, Dark)
     it('renders all theme option buttons', () => {
         (0, react_2.render)(react_1.default.createElement(ThemeContext_1.ThemeProvider, null,
             react_1.default.createElement(ThemeToggle_1.ThemeToggle, null)));
@@ -34,6 +37,7 @@ describe('ThemeToggle', () => {
         expect(buttons.some(btn => btn.textContent?.includes('Light'))).toBe(true);
         expect(buttons.some(btn => btn.textContent?.includes('Dark'))).toBe(true);
     });
+    // Test: toggles theme when a theme button is clicked
     it('toggles theme when a theme button is clicked', () => {
         (0, react_2.render)(react_1.default.createElement(ThemeContext_1.ThemeProvider, null,
             react_1.default.createElement(ThemeToggle_1.ThemeToggle, null)));

@@ -1,7 +1,18 @@
 "use strict";
 /**
- * Enhanced SearchBar Component (Issue #23)
- * Search with results display, highlighting, and keyboard navigation
+ * SearchBar Component
+ * -------------------
+ * Provides a search input with results display, highlighting, and keyboard navigation.
+ * Used for searching and filtering nodes in the architecture graph.
+ *
+ * Features:
+ * - Displays search results with highlight for matches
+ * - Supports keyboard navigation and selection
+ * - Handles focus, scrolling, and closing
+ *
+ * @component
+ * @param {SearchBarProps} props - Props for search query, results, selection, and callbacks
+ * @returns {JSX.Element | null}
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -41,27 +52,39 @@ exports.SearchBar = void 0;
 const react_1 = __importStar(require("react"));
 const searchEngine_1 = require("./searchEngine");
 const SearchBar = ({ query, onQueryChange, results, selectedIndex, onSelectResult, onNavigateToResult, onClose, isOpen, placeholder = 'Search nodes... (/ or Ctrl+F)', }) => {
+    // Ref for the search input element
     const inputRef = (0, react_1.useRef)(null);
+    // Ref for the results container
     const resultsRef = (0, react_1.useRef)(null);
-    // Auto-focus input when opened
+    // Effect: Auto-focus input when search bar is opened
     (0, react_1.useEffect)(() => {
         if (isOpen && inputRef.current) {
             inputRef.current.focus();
         }
     }, [isOpen]);
-    // Scroll selected result into view
+    // Effect: Scroll selected result into view when selection changes
     (0, react_1.useEffect)(() => {
         if (resultsRef.current && selectedIndex >= 0) {
             const selectedElement = resultsRef.current.querySelector(`.search-result-item[data-index="${selectedIndex}"]`);
             selectedElement?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
     }, [selectedIndex]);
+    // Hide search bar if not open
     if (!isOpen) {
         return null;
     }
+    /**
+     * Handles input change event for search query
+     * @param e - Input change event
+     */
     const handleInputChange = (e) => {
         onQueryChange(e.target.value);
     };
+    /**
+     * Handles click on a search result
+     * @param result - The clicked search result
+     * @param index - Index of the result
+     */
     const handleResultClick = (result, index) => {
         onSelectResult(index);
         onNavigateToResult(result);
