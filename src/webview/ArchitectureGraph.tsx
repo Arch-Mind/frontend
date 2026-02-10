@@ -1328,6 +1328,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
     const wsClientRef = useRef<ArchMindWebSocketClient | null>(null);
     const [wsConnected, setWsConnected] = useState(false);
     const [repoId, setRepoId] = useState<string | null>(null);
+    const [backendUrl, setBackendUrl] = useState<string>('http://localhost:8080');
 
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
@@ -1643,6 +1644,10 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
                 initLayout();
             }
 
+            if (message.command === 'config' && message.data?.backendUrl) {
+                setBackendUrl(message.data.backendUrl);
+            }
+
             // Handle impact analysis response
             if (message.command === 'impactAnalysis') {
                 console.log('Impact analysis data:', message.data);
@@ -1662,6 +1667,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
 
         // Request data (using stable vscode instance)
         vscode.postMessage({ command: 'requestArchitecture' });
+        vscode.postMessage({ command: 'requestConfig' });
 
         return () => {
             window.removeEventListener('message', handleMessage);
@@ -1714,7 +1720,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
         if (!repoId) return;
 
         // Create WebSocket client for repo updates
-        const wsClient = new ArchMindWebSocketClient('repo', repoId, 'http://localhost:8080');
+        const wsClient = new ArchMindWebSocketClient('repo', repoId, backendUrl);
         wsClientRef.current = wsClient;
 
         // Handle WebSocket updates
@@ -1790,7 +1796,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
             wsClientRef.current = null;
             setWsConnected(false);
         };
-    }, [repoId, vscode]);
+    }, [repoId, backendUrl, vscode]);
 
     // Memoize minimap node color function
     const minimapNodeColor = useCallback((node: Node) => {
@@ -2136,6 +2142,8 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
                 rawData={rawData}
                 reactFlowWrapper={reactFlowWrapperRef.current}
                 source={rawData?.source || 'local'}
+                repoId={repoId}
+                backendUrl={backendUrl}
             />
 
 

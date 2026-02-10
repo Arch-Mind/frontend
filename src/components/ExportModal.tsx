@@ -35,9 +35,12 @@ export interface ExportModalProps {
     rawData?: any;
     reactFlowWrapper: HTMLElement | null;
     source?: 'local' | 'backend';
+    repoId?: string | null;
+    backendUrl?: string;
 }
 
 type ExportFormat = 'json' | 'png' | 'jpeg' | 'webp' | 'svg' | 'pdf' | 'markdown';
+type ServerExportFormat = 'mermaid' | 'plantuml' | 'json' | 'markdown';
 type ExportStatus = 'idle' | 'exporting' | 'success' | 'error';
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -48,10 +51,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     rawData,
     reactFlowWrapper,
     source = 'local',
+    repoId,
+    backendUrl,
 }) => {
     const [exportStatus, setExportStatus] = useState<ExportStatus>('idle');
     const [statusMessage, setStatusMessage] = useState('');
     const [selectedFormats, setSelectedFormats] = useState<Set<ExportFormat>>(new Set());
+    const [serverFormats, setServerFormats] = useState<Set<ServerExportFormat>>(
+        new Set(['mermaid', 'plantuml'])
+    );
+    const [includeLLMSummary, setIncludeLLMSummary] = useState(true);
+    const [includeHeatmap, setIncludeHeatmap] = useState(true);
     const [showAdvanced, setShowAdvanced] = useState(false);
 
     // Advanced options
@@ -69,6 +79,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     });
 
     const modalRef = useRef<HTMLDivElement>(null);
+
+    const downloadTextFile = (content: string, filename: string, mimeType: string) => {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    };
 
     // Close on escape
     useEffect(() => {
@@ -202,6 +222,92 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         setSelectedFormats(newSet);
     };
 
+    const toggleServerFormat = (format: ServerExportFormat) => {
+        const newSet = new Set(serverFormats);
+        if (newSet.has(format)) {
+            newSet.delete(format);
+        } else {
+            newSet.add(format);
+        }
+        setServerFormats(newSet);
+    };
+
+    const handleServerExport = async () => {
+        if (!backendUrl) {
+            setExportStatus('error');
+            setStatusMessage('Backend URL is not configured');
+            return;
+        }
+        if (!repoId) {
+            setExportStatus('error');
+            setStatusMessage('Repository ID is not available yet');
+            return;
+        }
+        if (serverFormats.size === 0 && !includeLLMSummary && !includeHeatmap) {
+            setExportStatus('error');
+            setStatusMessage('Select at least one server export');
+            return;
+        }
+
+        setExportStatus('exporting');
+        setStatusMessage('Generating server exports...');
+
+        try {
+            const response = await fetch(`${backendUrl}/api/export/${encodeURIComponent(repoId)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    formats: Array.from(serverFormats),
+                    include_llm_summary: includeLLMSummary,
+                    include_heatmap: includeHeatmap,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || response.statusText);
+            }
+
+            const payload = await response.json();
+            const exports = payload.exports || {};
+
+            if (exports.mermaid) {
+                downloadTextFile(exports.mermaid, `architecture-${repoId}.mmd`, 'text/plain');
+            }
+            if (exports.plantuml) {
+                downloadTextFile(exports.plantuml, `architecture-${repoId}.puml`, 'text/plain');
+            }
+            if (exports.markdown) {
+                downloadTextFile(exports.markdown, `architecture-${repoId}.md`, 'text/markdown');
+            }
+            if (exports.json) {
+                downloadTextFile(JSON.stringify(exports.json, null, 2), `architecture-${repoId}.json`, 'application/json');
+            }
+            if (exports.llm_summary) {
+                downloadTextFile(JSON.stringify(exports.llm_summary, null, 2), `architecture-summary-${repoId}.json`, 'application/json');
+            }
+            if (exports.heatmap) {
+                downloadTextFile(JSON.stringify(exports.heatmap, null, 2), `architecture-heatmap-${repoId}.json`, 'application/json');
+            }
+
+            setExportStatus('success');
+            setStatusMessage('Server exports generated');
+
+            setTimeout(() => {
+                setExportStatus('idle');
+                setStatusMessage('');
+            }, 2000);
+        } catch (error) {
+            setExportStatus('error');
+            setStatusMessage(`Server export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+            setTimeout(() => {
+                setExportStatus('idle');
+                setStatusMessage('');
+            }, 3000);
+        }
+    };
+
     const handleCopyToClipboard = async () => {
         if (!reactFlowWrapper) return;
 
@@ -313,6 +419,55 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                             disabled={exportStatus === 'exporting' || selectedFormats.size === 0}
                         >
                             Export {selectedFormats.size > 0 && `(${selectedFormats.size})`} Selected
+                        </button>
+                    </section>
+
+                    {/* Server Export Section */}
+                    <section className="export-section">
+                        <h3>Server Exports</h3>
+                        <p className="section-hint">Generate Mermaid/PlantUML/LLM artifacts from the backend.</p>
+
+                        <div className="format-checkboxes">
+                            {(['mermaid', 'plantuml', 'json', 'markdown'] as ServerExportFormat[]).map(format => (
+                                <label key={format} className="format-checkbox">
+                                    <input
+                                        type="checkbox"
+                                        checked={serverFormats.has(format)}
+                                        onChange={() => toggleServerFormat(format)}
+                                        disabled={exportStatus === 'exporting'}
+                                    />
+                                    <span>{format.toUpperCase()}</span>
+                                </label>
+                            ))}
+                        </div>
+
+                        <div className="format-checkboxes">
+                            <label className="format-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={includeLLMSummary}
+                                    onChange={(event) => setIncludeLLMSummary(event.target.checked)}
+                                    disabled={exportStatus === 'exporting'}
+                                />
+                                <span>LLM Summary</span>
+                            </label>
+                            <label className="format-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={includeHeatmap}
+                                    onChange={(event) => setIncludeHeatmap(event.target.checked)}
+                                    disabled={exportStatus === 'exporting'}
+                                />
+                                <span>Heatmap Data</span>
+                            </label>
+                        </div>
+
+                        <button
+                            className="bulk-export-btn"
+                            onClick={handleServerExport}
+                            disabled={exportStatus === 'exporting'}
+                        >
+                            Generate Server Exports
                         </button>
                     </section>
 
