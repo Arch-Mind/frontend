@@ -1,7 +1,18 @@
 "use strict";
 /**
- * Theme Toggle Component (Issue #22)
- * UI control for switching between light/dark/auto themes
+ * ThemeToggle Component
+ * ---------------------
+ * UI control for switching between light, dark, and auto themes.
+ * Used to let users toggle the application theme preference.
+ *
+ * Features:
+ * - Shows theme options (auto, light, dark) with icons
+ * - Displays current theme and system-following status
+ * - Supports compact and full modes
+ *
+ * @component
+ * @param {ThemeToggleProps} props - Position and label display options
+ * @returns {JSX.Element}
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -11,7 +22,12 @@ exports.CompactThemeToggle = exports.ThemeToggle = void 0;
 const react_1 = __importDefault(require("react"));
 const ThemeContext_1 = require("./ThemeContext");
 const ThemeToggle = ({ position = 'top-right', showLabel = true, }) => {
+    // Get theme state and setter from context
     const { theme, resolvedTheme, setTheme } = (0, ThemeContext_1.useTheme)();
+    /**
+     * Returns the icon for a given theme option
+     * @param themeOption - Theme value
+     */
     const getIcon = (themeOption) => {
         switch (themeOption) {
             case 'light':
@@ -22,6 +38,10 @@ const ThemeToggle = ({ position = 'top-right', showLabel = true, }) => {
                 return '🔄';
         }
     };
+    /**
+     * Returns the label for a given theme option
+     * @param themeOption - Theme value
+     */
     const getLabel = (themeOption) => {
         switch (themeOption) {
             case 'light':
@@ -32,12 +52,16 @@ const ThemeToggle = ({ position = 'top-right', showLabel = true, }) => {
                 return 'Auto';
         }
     };
+    /**
+     * Returns the tooltip for the current theme
+     */
     const getTooltip = () => {
         if (theme === 'auto') {
             return `Auto (Currently: ${resolvedTheme}) • Ctrl+Shift+T`;
         }
         return `${getLabel(theme)} Mode • Ctrl+Shift+T`;
     };
+    // Theme options to display
     const options = ['auto', 'light', 'dark'];
     return (react_1.default.createElement("div", { className: `theme-toggle theme-toggle-${position}`, title: getTooltip() },
         react_1.default.createElement("div", { className: "theme-toggle-label" }, showLabel && react_1.default.createElement("span", { className: "toggle-label-text" }, "Theme:")),
@@ -52,10 +76,18 @@ const ThemeToggle = ({ position = 'top-right', showLabel = true, }) => {
 };
 exports.ThemeToggle = ThemeToggle;
 /**
- * Compact theme toggle button (just icon)
+ * CompactThemeToggle Component
+ * ---------------------------
+ * Renders a compact button for toggling theme (icon only).
+ *
+ * @component
+ * @returns {JSX.Element}
  */
 const CompactThemeToggle = () => {
     const { theme, toggleTheme } = (0, ThemeContext_1.useTheme)();
+    /**
+     * Returns the icon for the current theme
+     */
     const getIcon = () => {
         switch (theme) {
             case 'light':

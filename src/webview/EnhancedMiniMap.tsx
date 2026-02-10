@@ -7,12 +7,15 @@ import React, { useMemo } from 'react';
 import { MiniMap as ReactFlowMiniMap } from 'reactflow';
 import { Node } from 'reactflow';
 
+/**
+ * Props for the EnhancedMiniMap component.
+ */
 export interface EnhancedMiniMapProps {
-    selectedNodeId?: string | null;
-    hoveredNodeId?: string | null;
-    nodeColors?: Record<string, string>;
-    position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-    onNodeClick?: (event: React.MouseEvent, node: Node) => void;
+    selectedNodeId?: string | null;  /** ID of the currently selected node to highlight */
+    hoveredNodeId?: string | null;   /** ID of the node currently under the mouse cursor */
+    nodeColors?: Record<string, string>; /** Custom color mapping for node types/languages */
+    position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; /** UI position of the minimap */
+    onNodeClick?: (event: React.MouseEvent, node: Node) => void; /** Callback when a minimap node is clicked */
 }
 
 // Default colors for node types (fallback)

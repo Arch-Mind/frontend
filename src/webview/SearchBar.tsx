@@ -1,6 +1,17 @@
 /**
- * Enhanced SearchBar Component (Issue #23)
- * Search with results display, highlighting, and keyboard navigation
+ * SearchBar Component
+ * -------------------
+ * Provides a search input with results display, highlighting, and keyboard navigation.
+ * Used for searching and filtering nodes in the architecture graph.
+ *
+ * Features:
+ * - Displays search results with highlight for matches
+ * - Supports keyboard navigation and selection
+ * - Handles focus, scrolling, and closing
+ *
+ * @component
+ * @param {SearchBarProps} props - Props for search query, results, selection, and callbacks
+ * @returns {JSX.Element | null}
  */
 
 import React, { useRef, useEffect } from 'react';
@@ -29,17 +40,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     isOpen,
     placeholder = 'Search nodes... (/ or Ctrl+F)',
 }) => {
+    // Ref for the search input element
     const inputRef = useRef<HTMLInputElement>(null);
+    // Ref for the results container
     const resultsRef = useRef<HTMLDivElement>(null);
 
-    // Auto-focus input when opened
+    // Effect: Auto-focus input when search bar is opened
     useEffect(() => {
         if (isOpen && inputRef.current) {
             inputRef.current.focus();
         }
     }, [isOpen]);
 
-    // Scroll selected result into view
+    // Effect: Scroll selected result into view when selection changes
     useEffect(() => {
         if (resultsRef.current && selectedIndex >= 0) {
             const selectedElement = resultsRef.current.querySelector(
@@ -49,14 +62,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
     }, [selectedIndex]);
 
+    // Hide search bar if not open
     if (!isOpen) {
         return null;
     }
 
+    /**
+     * Handles input change event for search query
+     * @param e - Input change event
+     */
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onQueryChange(e.target.value);
     };
 
+    /**
+     * Handles click on a search result
+     * @param result - The clicked search result
+     * @param index - Index of the result
+     */
     const handleResultClick = (result: SearchResult, index: number) => {
         onSelectResult(index);
         onNavigateToResult(result);

@@ -1,11 +1,14 @@
+// Unit tests for SearchBar component
+
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { SearchBar } from '../SearchBar';
 
+// Test suite for SearchBar functionality
 describe('SearchBar', () => {
+    // Setup: Mock scrollIntoView for jsdom environment
     beforeAll(() => {
-      // Mock scrollIntoView for jsdom
       window.HTMLElement.prototype.scrollIntoView = jest.fn();
     });
   const defaultProps = {
@@ -20,8 +23,9 @@ describe('SearchBar', () => {
     placeholder: 'Search nodes... (/ or Ctrl+F)',
   };
 
+  // Test: renders search input and handles input changes
   it('renders search input and handles input', () => {
-    // Use a wrapper to simulate controlled input
+    // Wrapper simulates controlled input for SearchBar
     function Wrapper() {
       const [query, setQuery] = React.useState('');
       return (
@@ -34,6 +38,7 @@ describe('SearchBar', () => {
     expect(input).toHaveValue('test');
   });
 
+  // Test: verifies navigation callback when result is clicked
   it('calls onNavigateToResult when a result is clicked', () => {
     const onNavigateToResult = jest.fn();
     const onSelectResult = jest.fn();
