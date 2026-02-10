@@ -1,3 +1,23 @@
+/**
+ * ArchitectureGraph Component
+ * ---------------------------
+ * Main component for the ArchMind frontend extension. Interacts with the backend to
+ * visualize codebase architecture using React Flow.
+ * 
+ * Integrated Features (Sprint 1):
+ * - Node Interaction & Navigation (#4, #8)
+ * - Node Clustering for Large Repositories (#10)
+ * - Intelligent Layout Algorithms (#11)
+ * - Impact Analysis Visualization (#15)
+ * - Full Keyboard Navigation & Accessibility (#18)
+ * - Enhanced Mini-Map & Smooth Transitions (#19)
+ * - Responsive Zoom and Pan Controls (#20)
+ * - Node Relationship Visualization (#21)
+ * - Dark Mode Support integration (#22)
+ * - Advanced Graph Search & Highlighting (#5, #23)
+ * 
+ * @component
+ */
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
     Background,
@@ -500,7 +520,7 @@ function calculateByFileLayout(
     // Group nodes by file
     const fileNodes = nodes.filter(n => n.type === 'file');
     const childNodesMap = new Map<string, RawNode[]>();
-    
+
     // Find children (functions/classes) for each file
     nodes.forEach(node => {
         if (node.type === 'function' || node.type === 'class') {
@@ -544,7 +564,7 @@ function calculateByFileLayout(
         children.forEach((child, childIndex) => {
             const isChildMatching = !hasActiveFilter || matchingNodeIds.has(child.id);
             const isChildSelected = selectedNodeId === child.id;
-            
+
             const childRow = Math.floor(childIndex / 2);
             const childCol = childIndex % 2;
             const childX = fileX - 100 + childCol * childHorizontalSpacing;
@@ -575,7 +595,7 @@ function calculateByModuleLayout(
     // Group nodes by module (directory/module type)
     const moduleNodes = nodes.filter(n => n.type === 'module' || n.type === 'directory');
     const fileNodes = nodes.filter(n => n.type === 'file');
-    
+
     // Build module -> files mapping
     const moduleFilesMap = new Map<string, RawNode[]>();
     fileNodes.forEach(file => {
@@ -593,13 +613,13 @@ function calculateByModuleLayout(
     const verticalSpacing = 100;
 
     let currentX = 0;
-    
+
     // Layout modules and their files
     const allModules = [...new Set([...moduleNodes.map(m => m.id), ...Array.from(moduleFilesMap.keys())])];
-    
+
     allModules.forEach((moduleName, moduleIndex) => {
         const moduleX = moduleIndex * moduleSpacing;
-        
+
         // Find or create module node
         const moduleNode = moduleNodes.find(m => m.id === moduleName);
         if (moduleNode) {
@@ -618,7 +638,7 @@ function calculateByModuleLayout(
         files.forEach((file, fileIndex) => {
             const isMatching = !hasActiveFilter || matchingNodeIds.has(file.id);
             const isSelected = selectedNodeId === file.id;
-            
+
             const fileY = verticalSpacing + fileIndex * verticalSpacing;
             layoutedNodes.push(createStyledNode(
                 file,
@@ -630,8 +650,8 @@ function calculateByModuleLayout(
     });
 
     // Layout standalone functions/classes
-    const standaloneNodes = nodes.filter(n => 
-        (n.type === 'function' || n.type === 'class') && 
+    const standaloneNodes = nodes.filter(n =>
+        (n.type === 'function' || n.type === 'class') &&
         !fileNodes.some(f => n.id.startsWith(f.id))
     );
     standaloneNodes.forEach((node, index) => {
@@ -664,7 +684,7 @@ function calculateDependencyOnlyLayout(
     });
 
     const filteredNodes = nodes.filter(n => connectedNodeIds.has(n.id));
-    
+
     // Use dagre layout for dependency graph
     return calculateDagreLayout(filteredNodes, dependencyEdges, filters, selectedNodeId, 'TB');
 }
@@ -1730,7 +1750,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
             if (update.type === 'graph_update') {
                 // Graph has been updated - refresh the data
                 vscode.postMessage({ command: 'requestArchitecture' });
-                
+
                 // Show notification
                 vscode.postMessage({
                     command: 'showNotification',
@@ -1942,13 +1962,13 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
     }
 
     return (
-        <div 
+        <div
             ref={(el) => {
                 if (el) {
                     (reactFlowWrapperRef as any).current = el;
                     (graphContainerRef as any).current = el;
                 }
-            }} 
+            }}
             style={{ width: '100%', height: '100%', position: 'relative' }}
             className={isFullscreen ? 'fullscreen-graph' : ''}
         >

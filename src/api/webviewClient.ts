@@ -11,14 +11,29 @@ interface WebviewApiClientConfig {
     timeout: number;
 }
 
+/**
+ * ArchMindWebviewApiClient
+ * ------------------------
+ * Client for interacting with the ArchMind Graph Engine API from the webview.
+ * Provides methods for fetching graph data, dependencies, and insights.
+ */
 export class ArchMindWebviewApiClient {
     private config: WebviewApiClientConfig;
     private abortController: AbortController | null = null;
 
+    /**
+     * @param graphEngineUrl - Base URL for the Graph Engine API
+     * @param timeout - Request timeout in milliseconds
+     */
     constructor(graphEngineUrl: string = 'http://localhost:8000', timeout: number = 30000) {
         this.config = { graphEngineUrl, timeout };
     }
 
+    /**
+     * Performs a generic HTTP request to the Graph Engine
+     * @param endpoint - API endpoint path
+     * @param options - Fetch options
+     */
     private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         this.abortController = new AbortController();
         const timeoutId = setTimeout(() => this.abortController?.abort(), this.config.timeout);
