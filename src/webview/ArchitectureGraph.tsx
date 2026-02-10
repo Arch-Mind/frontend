@@ -1234,9 +1234,10 @@ const LayoutPanel: React.FC<LayoutPanelProps> = ({
 // Inner component that uses ReactFlow hooks
 interface ArchitectureGraphProps {
     heatmapMode: HeatmapMode;
+    highlightNodeIds?: string[];
 }
 
-const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode }) => {
+const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
     // VS Code API reference - memoized to call only once
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
@@ -1698,6 +1699,16 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode 
         setNodes((prevNodes) => prevNodes.map((node) => applyHeatmapToNode(node, heatmapState, heatmapMode)));
     }, [heatmapMode, heatmapState, setNodes, nodes.length]);
 
+    useEffect(() => {
+        if (!highlightNodeIds.length) return;
+        setNodes((prevNodes) =>
+            prevNodes.map((node) => ({
+                ...node,
+                selected: highlightNodeIds.includes(node.id),
+            }))
+        );
+    }, [highlightNodeIds, setNodes]);
+
     // WebSocket connection management
     useEffect(() => {
         if (!repoId) return;
@@ -1736,11 +1747,14 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode 
                     setRawData((current) => (current ? applyGraphPatch(current, patch) : current));
                 }
                 const fileCount = patch?.changed_files?.length || update.changed_nodes?.length || 0;
+                const message = `Architecture updated: ${fileCount} files changed`;
                 vscode.postMessage({
-                    command: 'showNotification',
-                    message: `Architecture updated: ${fileCount} files changed`,
-                    type: 'info',
+                    command: 'graphUpdated',
+                    changedNodes: update.changed_nodes || patch?.nodes?.map((node) => node.id) || [],
+                    changedEdges: update.changed_edges || patch?.edges?.map((edge) => edge.id) || [],
+                    changedFiles: patch?.changed_files || [],
                 });
+                window.dispatchEvent(new CustomEvent('archmind:graphUpdated', { detail: { message } }));
             } else if (update.type === 'progress') {
                 // Show loading message with progress
                 if (update.progress !== undefined) {

@@ -251,6 +251,30 @@ export interface ArchitectureInsightsResponse {
     insights: ArchitectureInsight[];
 }
 
+export interface WebhookConfig {
+    id: number;
+    repo_id: number | string;
+    repo_url?: string;
+    url: string;
+    secret?: string | null;
+    events: string[];
+    active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface WebhookRequest {
+    repo_id?: string | number;
+    repo_url?: string;
+    url: string;
+    secret?: string;
+    events: string[];
+}
+
+export interface WebhookResponse {
+    webhooks: WebhookConfig[];
+}
+
 /**
  * Graph Engine health check response
  */

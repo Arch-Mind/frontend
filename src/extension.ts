@@ -538,6 +538,8 @@ class ArchitecturePanel {
         // Set the webview's initial html content
         this._update();
 
+        this._postConfigToWebview();
+
         // Listen for when the panel is disposed
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -545,6 +547,9 @@ class ArchitecturePanel {
         this._panel.webview.onDidReceiveMessage(
             async message => {
                 switch (message.command) {
+                    case 'requestConfig':
+                        this._postConfigToWebview();
+                        return;
                     case 'requestArchitecture':
                         await this._sendArchitecture();
                         return;
@@ -578,11 +583,49 @@ class ArchitecturePanel {
                     case 'saveFile':
                         await this._saveFile(message.data, message.filename, message.mimeType);
                         return;
+                    case 'graphUpdated':
+                        await this._handleGraphUpdated(message);
+                        return;
+                    case 'showNotification':
+                        vscode.window.showInformationMessage(message.message || 'ArchMind notification');
+                        return;
                 }
             },
             null,
             this._disposables
         );
+    }
+
+    private _postConfigToWebview() {
+        const config = vscode.workspace.getConfiguration('archmind');
+        this._panel.webview.postMessage({
+            command: 'config',
+            data: {
+                backendUrl: config.get<string>('backendUrl', 'http://localhost:8080'),
+                graphEngineUrl: config.get<string>('graphEngineUrl', 'http://localhost:8000'),
+            },
+        });
+    }
+
+    private async _handleGraphUpdated(message: { changedNodes?: string[]; changedEdges?: string[]; changedFiles?: string[]; }) {
+        const config = vscode.workspace.getConfiguration('archmind');
+        const enabled = config.get<boolean>('notifications.enabled', true);
+        if (!enabled) return;
+
+        const changedFilesCount = message.changedFiles?.length || message.changedNodes?.length || 0;
+        const result = await vscode.window.showInformationMessage(
+            `ArchMind: Architecture updated (${changedFilesCount} files changed)`,
+            'View Changes',
+            'Dismiss'
+        );
+
+        if (result === 'View Changes') {
+            ArchitecturePanel.createOrShow(this._extensionUri);
+            this._panel.webview.postMessage({
+                command: 'highlightNodes',
+                nodeIds: message.changedNodes || [],
+            });
+        }
     }
 
     public switchView(view: string) {

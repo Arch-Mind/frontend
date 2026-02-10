@@ -33,9 +33,10 @@ type FocusMode = 'off' | '1' | '2' | 'all';
 
 interface DependencyDiagramProps {
     heatmapMode: HeatmapMode;
+    highlightNodeIds?: string[];
 }
 
-export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMode }) => {
+export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
@@ -59,6 +60,11 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMod
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
         [contributions, heatmapMode]
+    );
+
+    const highlightSet = useMemo(
+        () => new Set(highlightNodeIds.map((id) => normalizePath(id.replace(/^file:/, '')))),
+        [highlightNodeIds]
     );
 
     useEffect(() => {
@@ -157,15 +163,28 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMod
             const targetId = `${record.target_type}:${record.target}`;
             const category = getDependencyCategory(record);
             const sourceHeatmap = heatmapState.entries.get(normalizePath(record.source_file));
+            const sourceHighlighted = highlightSet.has(normalizePath(record.source_file));
 
             if (!nodeMap.has(sourceId)) {
                 nodeMap.set(
                     sourceId,
-                    createNode(sourceId, record.source_file, 'File', sourceHeatmap?.color, sourceHeatmap?.tooltip)
+                    createNode(
+                        sourceId,
+                        record.source_file,
+                        'File',
+                        sourceHeatmap?.color,
+                        sourceHeatmap?.tooltip,
+                        sourceHighlighted
+                    )
                 );
             }
             if (!nodeMap.has(targetId)) {
-                nodeMap.set(targetId, createNode(targetId, record.target, record.target_type));
+                const targetHighlighted =
+                    targetId.startsWith('file:') && highlightSet.has(normalizePath(record.target));
+                nodeMap.set(
+                    targetId,
+                    createNode(targetId, record.target, record.target_type, undefined, undefined, targetHighlighted)
+                );
             }
 
             const key = `${sourceId}|${targetId}|${category}`;
@@ -215,7 +234,7 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMod
 
         setNodes(layoutedNodes);
         setEdges(edgeList);
-    }, [rawData, filteredRecords, focusMode, selectedNode, heatmapState]);
+    }, [rawData, filteredRecords, focusMode, selectedNode, heatmapState, highlightSet]);
 
     return (
         <div className="diagram-container">
@@ -314,7 +333,8 @@ function createNode(
     label: string,
     type: string,
     heatmapColor?: string,
-    heatmapTooltip?: string
+    heatmapTooltip?: string,
+    isHighlighted?: boolean
 ): Node {
     return {
         id,
@@ -325,7 +345,8 @@ function createNode(
             borderRadius: '8px',
             background: heatmapColor || '#0f172a',
             color: '#f8fafc',
-            border: '1px solid #334155',
+            border: isHighlighted ? '2px solid #f97316' : '1px solid #334155',
+            boxShadow: isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.6)' : undefined,
             fontSize: 11,
         },
         width: 180,

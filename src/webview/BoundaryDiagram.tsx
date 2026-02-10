@@ -44,9 +44,10 @@ interface BoundaryNodeData {
     summary?: string;
     heatmapColor?: string;
     heatmapTooltip?: string;
+    isHighlighted?: boolean;
 }
 
-function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState) {
+function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState): { color: string; tooltip: string; metric: number } | null {
     let hottest: { color: string; tooltip: string; metric: number } | null = null;
     boundary.files.forEach((file) => {
         const entry = heatmapState.entries.get(normalizePath(file));
@@ -60,12 +61,13 @@ function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState
 
 function BoundaryNode({ data }: { data: BoundaryNodeData }) {
     const color = boundaryColors[data.boundary.type] || defaultBoundaryColor;
+    const ring = data.isHighlighted ? '0 0 0 3px rgba(249, 115, 22, 0.75)' : undefined;
     return (
         <div
             className="boundary-diagram-node"
             style={{
                 borderColor: color,
-                boxShadow: data.heatmapColor ? `0 0 0 2px ${data.heatmapColor}` : undefined,
+                boxShadow: ring || (data.heatmapColor ? `0 0 0 2px ${data.heatmapColor}` : undefined),
             }}
             title={data.heatmapTooltip || data.summary || ''}
         >
@@ -81,11 +83,14 @@ function BoundaryNode({ data }: { data: BoundaryNodeData }) {
     );
 }
 
-function FileNode({ data }: { data?: { heatmapColor?: string; heatmapTooltip?: string } }) {
+function FileNode({ data }: { data?: { heatmapColor?: string; heatmapTooltip?: string; isHighlighted?: boolean } }) {
     return (
         <div
             className="boundary-file-dot"
-            style={{ backgroundColor: data?.heatmapColor || undefined }}
+            style={{
+                backgroundColor: data?.heatmapColor || undefined,
+                boxShadow: data?.isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.75)' : undefined,
+            }}
             title={data?.heatmapTooltip || ''}
         />
     );
@@ -93,9 +98,10 @@ function FileNode({ data }: { data?: { heatmapColor?: string; heatmapTooltip?: s
 
 interface BoundaryDiagramProps {
     heatmapMode: HeatmapMode;
+    highlightNodeIds?: string[];
 }
 
-export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode }) => {
+export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
@@ -119,6 +125,11 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
         [contributions, heatmapMode]
+    );
+
+    const highlightSet = useMemo(
+        () => new Set(highlightNodeIds.map((id) => normalizePath(id.replace(/^file:/, '')))),
+        [highlightNodeIds]
     );
 
     useEffect(() => {
@@ -230,7 +241,9 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
 
         const boundaryNodes: Node[] = filteredBoundaries.map(boundary => {
             const hottest = getBoundaryHeatmap(boundary, heatmapState);
-            const isHighlighted = highlightBoundaryId === boundary.id;
+            const isHighlighted =
+                highlightBoundaryId === boundary.id ||
+                boundary.files.some(file => highlightSet.has(normalizePath(file)));
             return {
             id: `boundary:${boundary.id}`,
             type: 'boundaryNode',
@@ -240,13 +253,14 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
                 summary: summaryByBoundary.get(boundary.name) || '',
                 heatmapColor: hottest?.color,
                 heatmapTooltip: hottest?.tooltip,
+                isHighlighted,
             },
             draggable: false,
             selectable: true,
             style: {
                 width: 260,
                 height: 120,
-                    boxShadow: isHighlighted ? '0 0 12px rgba(59, 130, 246, 0.6)' : undefined,
+                    boxShadow: isHighlighted ? '0 0 12px rgba(249, 115, 22, 0.6)' : undefined,
             },
             };
         });
@@ -261,6 +275,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
                     const row = Math.floor(index / columns);
                     const col = index % columns;
                     const entry = heatmapState.entries.get(normalizePath(file));
+                    const isHighlighted = highlightSet.has(normalizePath(file));
                     fileNodes.push({
                         id: `file:${boundary.id}:${index}`,
                         type: 'fileDot',
@@ -276,6 +291,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
                             file,
                             heatmapColor: entry?.color,
                             heatmapTooltip: entry?.tooltip,
+                            isHighlighted,
                         },
                     });
                 });
@@ -300,7 +316,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode })
         };
 
         applyLayout();
-    }, [boundaryData, filters, summaryByBoundary, heatmapState]);
+    }, [boundaryData, filters, summaryByBoundary, heatmapState, highlightBoundaryId, highlightSet]);
 
     return (
         <div className="diagram-container">

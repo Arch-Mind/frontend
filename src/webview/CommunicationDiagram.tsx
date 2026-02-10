@@ -37,9 +37,10 @@ interface EdgeDetails {
 
 interface CommunicationDiagramProps {
     heatmapMode: HeatmapMode;
+    highlightNodeIds?: string[];
 }
 
-export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heatmapMode }) => {
+export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
@@ -64,6 +65,11 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
         [contributions, heatmapMode]
+    );
+
+    const highlightSet = useMemo(
+        () => new Set(highlightNodeIds.map((id) => normalizePath(id.replace(/^file:/, '')))),
+        [highlightNodeIds]
     );
 
     useEffect(() => {
@@ -167,7 +173,11 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
                 endpoint.callers.forEach(caller => {
                     const fileId = `file:${caller}`;
                     const heatmap = heatmapState.entries.get(normalizePath(caller));
-                    nodeMap.set(fileId, createNode(fileId, caller, 'file', heatmap?.color, heatmap?.tooltip));
+                    const isHighlighted = highlightSet.has(normalizePath(caller));
+                    nodeMap.set(
+                        fileId,
+                        createNode(fileId, caller, 'file', heatmap?.color, heatmap?.tooltip, isHighlighted)
+                    );
 
                     edgeList.push(createEdge({
                         id: `${fileId}->${endpointId}`,
@@ -202,7 +212,11 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
                 service.callers.forEach(caller => {
                     const callerId = `file:${caller}`;
                     const heatmap = heatmapState.entries.get(normalizePath(caller));
-                    nodeMap.set(callerId, createNode(callerId, caller, 'file', heatmap?.color, heatmap?.tooltip));
+                    const isHighlighted = highlightSet.has(normalizePath(caller));
+                    nodeMap.set(
+                        callerId,
+                        createNode(callerId, caller, 'file', heatmap?.color, heatmap?.tooltip, isHighlighted)
+                    );
                     edgeList.push(createEdge({
                         id: `${callerId}->${rpcId}`,
                         source: callerId,
@@ -222,7 +236,11 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
                 queue.publishers.forEach(pub => {
                     const pubId = `file:${pub}`;
                     const heatmap = heatmapState.entries.get(normalizePath(pub));
-                    nodeMap.set(pubId, createNode(pubId, pub, 'file', heatmap?.color, heatmap?.tooltip));
+                    const isHighlighted = highlightSet.has(normalizePath(pub));
+                    nodeMap.set(
+                        pubId,
+                        createNode(pubId, pub, 'file', heatmap?.color, heatmap?.tooltip, isHighlighted)
+                    );
                     edgeList.push(createEdge({
                         id: `${pubId}->${queueId}`,
                         source: pubId,
@@ -236,7 +254,11 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
                 queue.consumers.forEach(con => {
                     const conId = `file:${con}`;
                     const heatmap = heatmapState.entries.get(normalizePath(con));
-                    nodeMap.set(conId, createNode(conId, con, 'file', heatmap?.color, heatmap?.tooltip));
+                    const isHighlighted = highlightSet.has(normalizePath(con));
+                    nodeMap.set(
+                        conId,
+                        createNode(conId, con, 'file', heatmap?.color, heatmap?.tooltip, isHighlighted)
+                    );
                     edgeList.push(createEdge({
                         id: `${queueId}->${conId}`,
                         source: queueId,
@@ -275,7 +297,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
         };
 
         applyLayout();
-    }, [data, filters, heatmapState, apiFlowMode, flowEntry]);
+    }, [data, filters, heatmapState, apiFlowMode, flowEntry, highlightSet]);
 
     return (
         <div className="diagram-container">
@@ -398,7 +420,8 @@ function createNode(
     label: string,
     type: string,
     heatmapColor?: string,
-    heatmapTooltip?: string
+    heatmapTooltip?: string,
+    isHighlighted?: boolean
 ): Node {
     const styles: Record<string, React.CSSProperties> = {
         endpoint: { background: '#0ea5e9', color: '#0f172a' },
@@ -422,7 +445,8 @@ function createNode(
         style: {
             padding: '8px 10px',
             borderRadius: '8px',
-            border: '1px solid #0f172a',
+            border: isHighlighted ? '2px solid #f97316' : '1px solid #0f172a',
+            boxShadow: isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.6)' : undefined,
             fontSize: 11,
             background: heatmapColor || baseStyle.background,
             color: baseStyle.color,

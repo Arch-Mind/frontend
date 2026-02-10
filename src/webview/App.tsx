@@ -4,10 +4,12 @@ import { ModuleBoundaryDiagram } from './ModuleBoundaryDiagram';
 import { BoundaryDiagram } from './BoundaryDiagram';
 import { DependencyDiagram } from './DependencyDiagram';
 import { CommunicationDiagram } from './CommunicationDiagram';
+import { WebhookSetup } from './WebhookSetup';
 import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
 import { initializeExportListener } from '../utils/exporters/vscodeExportHelper';
 import { HeatmapMode } from './heatmapUtils';
+import { NotificationHistory, NotificationEntry } from './NotificationHistory';
 
 const ThemeKeyboardHandler: React.FC = () => {
     useThemeKeyboard();
@@ -36,9 +38,12 @@ const App: React.FC = () => {
     }, []);
 
     const [activeView, setActiveView] = useState<
-        'graph' | 'boundaries' | 'boundary-diagram' | 'dependency-diagram' | 'communication'
+        'graph' | 'boundaries' | 'boundary-diagram' | 'dependency-diagram' | 'communication' | 'webhooks'
     >('graph');
     const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('off');
+    const [config, setConfig] = useState<{ backendUrl: string; graphEngineUrl: string } | null>(null);
+    const [highlightNodes, setHighlightNodes] = useState<string[]>([]);
+    const [history, setHistory] = useState<NotificationEntry[]>([]);
 
     const heatmapOptions: { value: HeatmapMode; label: string }[] = [
         { value: 'off', label: 'Off' },
@@ -60,10 +65,34 @@ const App: React.FC = () => {
                     return order[(index + 1) % order.length];
                 });
             }
+            if (message?.command === 'config' && message.data) {
+                setConfig(message.data);
+            }
+            if (message?.command === 'highlightNodes') {
+                setHighlightNodes(message.nodeIds || []);
+            }
         };
 
         window.addEventListener('message', handler);
         return () => window.removeEventListener('message', handler);
+    }, []);
+
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent).detail as { message: string } | undefined;
+            if (!detail?.message) return;
+            setHistory((prev) => [
+                {
+                    id: `${Date.now()}`,
+                    message: detail.message,
+                    timestamp: new Date().toLocaleTimeString(),
+                },
+                ...prev,
+            ].slice(0, 8));
+        };
+
+        window.addEventListener('archmind:graphUpdated', handler as EventListener);
+        return () => window.removeEventListener('archmind:graphUpdated', handler as EventListener);
     }, []);
 
     return (
@@ -102,6 +131,12 @@ const App: React.FC = () => {
                     >
                         Communication
                     </button>
+                    <button
+                        className={activeView === 'webhooks' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('webhooks')}
+                    >
+                        Webhooks
+                    </button>
                 </div>
                 <div className="heatmap-toolbar">
                     <span className="heatmap-label">Heatmap</span>
@@ -122,12 +157,26 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 <main className="app-main">
-                    {activeView === 'graph' && <ArchitectureGraph heatmapMode={heatmapMode} />}
-                    {activeView === 'boundaries' && <ModuleBoundaryDiagram heatmapMode={heatmapMode} />}
-                    {activeView === 'boundary-diagram' && <BoundaryDiagram heatmapMode={heatmapMode} />}
-                    {activeView === 'dependency-diagram' && <DependencyDiagram heatmapMode={heatmapMode} />}
-                    {activeView === 'communication' && <CommunicationDiagram heatmapMode={heatmapMode} />}
+                    {activeView === 'graph' && (
+                        <ArchitectureGraph heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                    )}
+                    {activeView === 'boundaries' && (
+                        <ModuleBoundaryDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                    )}
+                    {activeView === 'boundary-diagram' && (
+                        <BoundaryDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                    )}
+                    {activeView === 'dependency-diagram' && (
+                        <DependencyDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                    )}
+                    {activeView === 'communication' && (
+                        <CommunicationDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                    )}
+                    {activeView === 'webhooks' && (
+                        <WebhookSetup backendUrl={config?.backendUrl || 'http://localhost:8080'} />
+                    )}
                 </main>
+                <NotificationHistory entries={history} onClear={() => setHistory([])} />
             </div>
         </ThemeProvider>
     );

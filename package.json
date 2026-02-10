@@ -190,6 +190,11 @@
           "type": "string",
           "default": "",
           "description": "GitHub webhook secret for verifying payloads"
+        },
+        "archmind.notifications.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show ArchMind notifications for live updates"
         }
       }
     }

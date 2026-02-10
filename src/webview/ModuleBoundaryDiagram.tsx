@@ -32,7 +32,7 @@ const layerStyles: Record<string, string> = {
     Unknown: 'layer-pill layer-unknown',
 };
 
-function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState) {
+function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState): { color: string; tooltip: string; metric: number } | null {
     let hottest: { color: string; tooltip: string; metric: number } | null = null;
     boundary.files.forEach((file) => {
         const entry = heatmapState.entries.get(normalizePath(file));
@@ -46,9 +46,10 @@ function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState
 
 interface ModuleBoundaryDiagramProps {
     heatmapMode: HeatmapMode;
+    highlightNodeIds?: string[];
 }
 
-export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ heatmapMode }) => {
+export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
@@ -62,6 +63,11 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ he
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
         [contributions, heatmapMode]
+    );
+
+    const highlightSet = useMemo(
+        () => new Set(highlightNodeIds.map((id) => normalizePath(id.replace(/^file:/, '')))),
+        [highlightNodeIds]
     );
 
     useEffect(() => {
@@ -213,11 +219,15 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ he
                                 const isExpanded = expandedBoundaryId === boundary.id;
                                 const layerClass = layerStyles[boundary.layer || 'Unknown'] || layerStyles.Unknown;
                                 const heatmap = heatmapMode === 'off' ? null : getBoundaryHeatmap(boundary, heatmapState);
+                                const isHighlighted = boundary.files.some(file => highlightSet.has(normalizePath(file)));
                                 return (
                                     <div
                                         key={boundary.id}
                                         className="boundary-card"
-                                        style={heatmap?.color ? { borderColor: heatmap.color } : undefined}
+                                        style={{
+                                            borderColor: heatmap?.color,
+                                            boxShadow: isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.75)' : undefined,
+                                        }}
                                         title={heatmap?.tooltip || ''}
                                     >
                                         <div className="boundary-card-header">
