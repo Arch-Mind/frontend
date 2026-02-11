@@ -1,12 +1,15 @@
 "use strict";
 /**
- * Search Engine for Graph Nodes (Issue #23)
- * Advanced search with fuzzy matching, ranking, and highlighting
+ * searchEngine.ts (Issue #23)
+ * --------------------------
+ * Core search logic for graph nodes. Provides fuzzy search, ranking, highlighting, and filtering.
+ * Used by useSearch and search UI components.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.searchNodes = searchNodes;
 exports.highlightText = highlightText;
 exports.filterSearchResults = filterSearchResults;
+// Default search options for all queries
 const DEFAULT_OPTIONS = {
     caseSensitive: false,
     fuzzyMatch: true,
@@ -15,7 +18,8 @@ const DEFAULT_OPTIONS = {
     maxResults: 100,
 };
 /**
- * Calculate Levenshtein distance for fuzzy matching
+ * Calculate Levenshtein distance for fuzzy matching.
+ * Used to determine similarity between query and target strings.
  */
 function levenshteinDistance(str1, str2) {
     const len1 = str1.length;
@@ -39,7 +43,8 @@ function levenshteinDistance(str1, str2) {
     return matrix[len1][len2];
 }
 /**
- * Calculate fuzzy match score (0-1, higher is better)
+ * Calculate fuzzy match score (0-1, higher is better).
+ * Returns 1 for exact match, lower for less similar.
  */
 function fuzzyScore(query, target, options) {
     if (!options.fuzzyMatch) {
@@ -50,7 +55,8 @@ function fuzzyScore(query, target, options) {
     return 1 - (distance / maxLength);
 }
 /**
- * Find all match indices in a string
+ * Find all match indices in a string.
+ * Returns start/end indices for highlighting matches in UI.
  */
 function findMatchIndices(query, text, caseSensitive) {
     const indices = [];
@@ -67,7 +73,14 @@ function findMatchIndices(query, text, caseSensitive) {
     return indices;
 }
 /**
- * Search nodes with ranking and highlighting
+ * searchNodes
+ * ----------
+ * Main search function. Performs fuzzy search, ranks results, and highlights matches.
+ *
+ * @param nodes - Array of nodes to search
+ * @param query - Search query string
+ * @param options - Search options (case, fuzzy, fields, etc.)
+ * @returns Array of SearchResult objects
  */
 function searchNodes(nodes, query, options = {}) {
     if (!query.trim()) {
@@ -81,7 +94,7 @@ function searchNodes(nodes, query, options = {}) {
         const highlights = [];
         let totalScore = 0;
         let fieldCount = 0;
-        // Search in each field
+        // Search in each field (label, filePath, type, language, tags)
         if (opts.searchFields.includes('label')) {
             const text = opts.caseSensitive ? node.label : node.label.toLowerCase();
             const score = fuzzyScore(searchQuery, text, opts);
@@ -89,6 +102,7 @@ function searchNodes(nodes, query, options = {}) {
                 matchedFields.push('label');
                 totalScore += score * 2; // Label matches get higher weight
                 fieldCount++;
+                // Highlight matches in label
                 const indices = findMatchIndices(query, node.label, opts.caseSensitive);
                 if (indices.length > 0) {
                     highlights.push({
@@ -159,8 +173,10 @@ function searchNodes(nodes, query, options = {}) {
     return results.slice(0, opts.maxResults);
 }
 /**
- * Highlight search query in text
- * Returns JSX-like structure for rendering
+ * highlightText
+ * -------------
+ * Splits text into highlighted and non-highlighted parts for rendering search matches.
+ * Returns an array of objects with text and highlight flag.
  */
 function highlightText(text, indices) {
     if (indices.length === 0) {
@@ -195,7 +211,10 @@ function highlightText(text, indices) {
     return parts;
 }
 /**
- * Filter search results by additional criteria
+ * filterSearchResults
+ * -------------------
+ * Filters search results by type, minimum score, and max results.
+ * Used for advanced filtering in the search UI.
  */
 function filterSearchResults(results, filters) {
     let filtered = results;

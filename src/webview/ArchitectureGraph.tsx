@@ -1,3 +1,23 @@
+/**
+ * ArchitectureGraph Component
+ * ---------------------------
+ * Main component for the ArchMind frontend extension. Interacts with the backend to
+ * visualize codebase architecture using React Flow.
+ * 
+ * Integrated Features (Sprint 1):
+ * - Node Interaction & Navigation (#4, #8)
+ * - Node Clustering for Large Repositories (#10)
+ * - Intelligent Layout Algorithms (#11)
+ * - Impact Analysis Visualization (#15)
+ * - Full Keyboard Navigation & Accessibility (#18)
+ * - Enhanced Mini-Map & Smooth Transitions (#19)
+ * - Responsive Zoom and Pan Controls (#20)
+ * - Node Relationship Visualization (#21)
+ * - Dark Mode Support integration (#22)
+ * - Advanced Graph Search & Highlighting (#5, #23)
+ * 
+ * @component
+ */
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import ReactFlow, {
     Background,

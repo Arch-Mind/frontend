@@ -1,12 +1,14 @@
+// Unit tests for ThemeToggle component
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ThemeToggle } from '../ThemeToggle';
 import { ThemeProvider } from '../ThemeContext';
 
+// Test suite for ThemeToggle functionality
 describe('ThemeToggle', () => {
+    // Setup: Mock window.matchMedia for jsdom environment
     beforeAll(() => {
-      // Mock window.matchMedia for jsdom
       Object.defineProperty(window, 'matchMedia', {
         writable: true,
         value: jest.fn().mockImplementation(query => ({
@@ -21,6 +23,7 @@ describe('ThemeToggle', () => {
         })),
       });
     });
+  // Test: renders all theme option buttons (Auto, Light, Dark)
   it('renders all theme option buttons', () => {
     render(
       <ThemeProvider>
@@ -34,6 +37,7 @@ describe('ThemeToggle', () => {
     expect(buttons.some(btn => btn.textContent?.includes('Dark'))).toBe(true);
   });
 
+  // Test: toggles theme when a theme button is clicked
   it('toggles theme when a theme button is clicked', () => {
     render(
       <ThemeProvider>

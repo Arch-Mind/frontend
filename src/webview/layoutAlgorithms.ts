@@ -1,7 +1,9 @@
 /**
- * Layout algorithms for the architecture graph
- * Supports: Hierarchical (built-in), Dagre, ELK, and specialized layouts
- * Enhanced for Issue #12
+ * layoutAlgorithms.ts
+ * -------------------
+ * Provides multiple layout algorithms for the architecture graph visualization.
+ * Supports: Hierarchical, Dagre, ELK, by-file, by-module, dependency-only, and force-directed layouts.
+ * Enhanced for Issue #12.
  */
 import dagre from 'dagre';
 import ELK, { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js';
@@ -44,8 +46,15 @@ const NODE_WIDTH = 180;
 const NODE_HEIGHT = 40;
 
 /**
- * Dagre layout algorithm
- * Supports top-bottom (TB) and left-right (LR) directions
+ * dagreLayout
+ * -----------
+ * Uses dagre.js to compute node positions for directed graphs.
+ * Supports top-bottom (TB) and left-right (LR) directions.
+ *
+ * @param nodes - Array of nodes
+ * @param edges - Array of edges
+ * @param direction - 'TB' (top-bottom) or 'LR' (left-right)
+ * @returns LayoutResult with node positions
  */
 export function dagreLayout(
     nodes: LayoutNode[],
@@ -101,8 +110,15 @@ export function dagreLayout(
 }
 
 /**
- * ELK layout algorithm
- * Supports layered and force-directed layouts
+ * elkLayout
+ * ---------
+ * Uses ELK.js for advanced graph layouts (layered or force-directed).
+ * Returns a promise with node positions.
+ *
+ * @param nodes - Array of nodes
+ * @param edges - Array of edges
+ * @param algorithm - 'layered' or 'force'
+ * @returns Promise<LayoutResult>
  */
 const elk = new ELK();
 
@@ -152,8 +168,10 @@ export async function elkLayout(
 }
 
 /**
- * Get layout algorithm info for display
- * Enhanced with new layout types (Issue #12)
+ * LAYOUT_OPTIONS
+ * --------------
+ * List of available layout algorithms for UI selection.
+ * Each option includes value, label, and description.
  */
 export const LAYOUT_OPTIONS: { value: LayoutType; label: string; description: string }[] = [
     {
@@ -199,8 +217,14 @@ export const LAYOUT_OPTIONS: { value: LayoutType; label: string; description: st
 ];
 
 /**
- * By-File Layout (Issue #12)
- * Groups functions/classes under their parent files
+ * byFileLayout
+ * ------------
+ * Groups functions/classes under their parent files for a tree-like layout.
+ * Used for visualizing file/function hierarchy.
+ *
+ * @param nodes - Array of nodes
+ * @param edges - Array of edges
+ * @returns LayoutResult
  */
 export function byFileLayout(
     nodes: LayoutNode[],
@@ -249,8 +273,13 @@ export function byFileLayout(
 }
 
 /**
- * By-Module Layout (Issue #12)
- * Groups files under modules/directories
+ * byModuleLayout
+ * --------------
+ * Groups files under modules/directories for a modular hierarchy view.
+ *
+ * @param nodes - Array of nodes
+ * @param edges - Array of edges
+ * @returns LayoutResult
  */
 export function byModuleLayout(
     nodes: LayoutNode[],
@@ -322,8 +351,13 @@ export function byModuleLayout(
 }
 
 /**
- * Dependency-Only Layout (Issue #12)
- * Shows only CALLS/IMPORTS edges, hides hierarchy
+ * dependencyOnlyLayout
+ * --------------------
+ * Shows only CALLS/IMPORTS edges, hides hierarchy. Useful for dependency analysis.
+ *
+ * @param nodes - Array of nodes
+ * @param edges - Array of edges
+ * @returns LayoutResult
  */
 export function dependencyOnlyLayout(
     nodes: LayoutNode[],
@@ -342,8 +376,14 @@ export function dependencyOnlyLayout(
 }
 
 /**
- * Force-Directed Layout (Issue #12)
- * Physics-based layout with node repulsion and edge attraction
+ * forceDirectedLayout
+ * -------------------
+ * Physics-based layout with node repulsion and edge attraction. Simulates a force-directed graph.
+ *
+ * @param nodes - Array of nodes
+ * @param edges - Array of edges
+ * @param iterations - Number of simulation steps
+ * @returns LayoutResult
  */
 export function forceDirectedLayout(
     nodes: LayoutNode[],
