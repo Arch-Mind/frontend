@@ -206,6 +206,13 @@ class ArchMindApiClient {
     async getPageRank(repoId) {
         return this.request(this.config.graphEngineUrl, `/api/pagerank/${encodeURIComponent(repoId)}`);
     }
+    /**
+     * Get module boundaries
+     * GET /api/graph/:repo_id/boundaries
+     */
+    async getModuleBoundaries(repoId) {
+        return this.request(this.config.graphEngineUrl, `/api/graph/${encodeURIComponent(repoId)}/boundaries`);
+    }
     // =========================================================================
     // High-level Operations
     // =========================================================================

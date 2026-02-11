@@ -34,13 +34,23 @@ type FocusMode = 'off' | '1' | '2' | 'all';
 interface DependencyDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
+    repoId?: string | null;
+    graphEngineUrl?: string;
 }
 
-export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
+export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
+    heatmapMode,
+    highlightNodeIds = [],
+    repoId: initialRepoId = null,
+    graphEngineUrl,
+}) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
-    const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
+    const apiClient = useMemo(
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        [graphEngineUrl]
+    );
 
-    const [repoId, setRepoId] = useState<string | null>(null);
+    const [repoId, setRepoId] = useState<string | null>(initialRepoId);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [rawData, setRawData] = useState<DependenciesResponse | null>(null);
@@ -73,7 +83,7 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMod
             if (message?.command === 'architectureData') {
                 const extractedRepoId = message.data?.repo_id || message.data?.repoId;
                 if (extractedRepoId) {
-                    setRepoId(extractedRepoId);
+                    setRepoId(String(extractedRepoId));
                 }
             }
         };
@@ -83,6 +93,12 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMod
 
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
+
+    useEffect(() => {
+        if (initialRepoId) {
+            setRepoId(initialRepoId);
+        }
+    }, [initialRepoId]);
 
     useEffect(() => {
         if (!repoId) return;
@@ -300,8 +316,16 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMod
 
             {isLoading && <div className="diagram-state">Loading dependencies...</div>}
             {error && <div className="diagram-state diagram-error">{error}</div>}
+            {!isLoading && !error && !repoId && (
+                <div className="diagram-state">
+                    Backend repository context is not available. Run backend analysis first.
+                </div>
+            )}
+            {!isLoading && !error && !!repoId && rawData && filteredRecords.length === 0 && (
+                <div className="diagram-state">No dependency records matched the current filters.</div>
+            )}
 
-            {!isLoading && !error && (
+            {!isLoading && !error && !!repoId && (
                 <ReactFlowProvider>
                     <div className="diagram-flow">
                         <ReactFlow

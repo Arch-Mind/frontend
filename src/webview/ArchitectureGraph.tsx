@@ -86,28 +86,9 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
-// Types matching the backend analyzer
-// Types matching the backend analyzer
-interface RawNode {
-    id: string;
-    label: string;
-    type: 'file' | 'directory' | 'function' | 'class' | 'module';
-    parentId?: string;
-    extension?: string;
-    language?: string;
-    depth: number;
-    filePath?: string;
-    lineNumber?: number;
-    endLineNumber?: number;
-    status?: 'unchanged' | 'modified' | 'added' | 'deleted';
-}
-
-interface RawEdge {
-    id: string;
-    source: string;
-    target: string;
-    type: string;
-}
+// Graph types
+import { RawNode, RawEdge } from './graphTypes';
+import { reconstructHierarchy } from './hierarchyUtils';
 
 interface GraphPatch {
     changed_files: string[];
@@ -464,24 +445,51 @@ function calculateHierarchicalLayout(
     });
 
     const layoutedNodes: Node[] = [];
-    const horizontalSpacing = 280; // Increased from 220 for better spacing
-    const verticalSpacing = 120;   // Increased from 80 for better vertical spacing
+    const horizontalSpacing = 240;
+    const depthSpacing = 140;
+    const rowSpacing = 90;
 
-    nodesByDepth.forEach((depthNodes, depth) => {
-        const totalWidth = depthNodes.length * horizontalSpacing;
+    const sortedDepths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
+    let currentY = 0;
+
+    sortedDepths.forEach((depth) => {
+        const depthNodes = nodesByDepth.get(depth) || [];
+        if (!depthNodes.length) {
+            return;
+        }
+
+        const sortedNodes = [...depthNodes].sort((a, b) => {
+            if (a.type !== b.type) {
+                return a.type.localeCompare(b.type);
+            }
+            return a.id.localeCompare(b.id);
+        });
+
+        const columns = Math.min(12, Math.max(4, Math.ceil(Math.sqrt(sortedNodes.length))));
+        const rows = Math.ceil(sortedNodes.length / columns);
+        const totalWidth = Math.max(columns * horizontalSpacing, horizontalSpacing);
         const startX = -totalWidth / 2;
 
-        depthNodes.forEach((node, index) => {
+        sortedNodes.forEach((node, index) => {
+            const row = Math.floor(index / columns);
+            const col = index % columns;
             const isMatching = !hasActiveFilter || matchingNodeIds.has(node.id);
             const isSelected = selectedNodeId === node.id;
 
-            layoutedNodes.push(createStyledNode(
-                node,
-                { x: startX + index * horizontalSpacing, y: depth * verticalSpacing },
-                isMatching,
-                isSelected
-            ));
+            layoutedNodes.push(
+                createStyledNode(
+                    node,
+                    {
+                        x: startX + col * horizontalSpacing,
+                        y: currentY + row * rowSpacing,
+                    },
+                    isMatching,
+                    isSelected
+                )
+            );
         });
+
+        currentY += rows * rowSpacing + depthSpacing;
     });
 
     return { layoutedNodes, matchingNodeIds };
@@ -500,7 +508,7 @@ function calculateByFileLayout(
     // Group nodes by file
     const fileNodes = nodes.filter(n => n.type === 'file');
     const childNodesMap = new Map<string, RawNode[]>();
-    
+
     // Find children (functions/classes) for each file
     nodes.forEach(node => {
         if (node.type === 'function' || node.type === 'class') {
@@ -544,7 +552,7 @@ function calculateByFileLayout(
         children.forEach((child, childIndex) => {
             const isChildMatching = !hasActiveFilter || matchingNodeIds.has(child.id);
             const isChildSelected = selectedNodeId === child.id;
-            
+
             const childRow = Math.floor(childIndex / 2);
             const childCol = childIndex % 2;
             const childX = fileX - 100 + childCol * childHorizontalSpacing;
@@ -575,7 +583,7 @@ function calculateByModuleLayout(
     // Group nodes by module (directory/module type)
     const moduleNodes = nodes.filter(n => n.type === 'module' || n.type === 'directory');
     const fileNodes = nodes.filter(n => n.type === 'file');
-    
+
     // Build module -> files mapping
     const moduleFilesMap = new Map<string, RawNode[]>();
     fileNodes.forEach(file => {
@@ -593,13 +601,13 @@ function calculateByModuleLayout(
     const verticalSpacing = 100;
 
     let currentX = 0;
-    
+
     // Layout modules and their files
     const allModules = [...new Set([...moduleNodes.map(m => m.id), ...Array.from(moduleFilesMap.keys())])];
-    
+
     allModules.forEach((moduleName, moduleIndex) => {
         const moduleX = moduleIndex * moduleSpacing;
-        
+
         // Find or create module node
         const moduleNode = moduleNodes.find(m => m.id === moduleName);
         if (moduleNode) {
@@ -618,7 +626,7 @@ function calculateByModuleLayout(
         files.forEach((file, fileIndex) => {
             const isMatching = !hasActiveFilter || matchingNodeIds.has(file.id);
             const isSelected = selectedNodeId === file.id;
-            
+
             const fileY = verticalSpacing + fileIndex * verticalSpacing;
             layoutedNodes.push(createStyledNode(
                 file,
@@ -630,8 +638,8 @@ function calculateByModuleLayout(
     });
 
     // Layout standalone functions/classes
-    const standaloneNodes = nodes.filter(n => 
-        (n.type === 'function' || n.type === 'class') && 
+    const standaloneNodes = nodes.filter(n =>
+        (n.type === 'function' || n.type === 'class') &&
         !fileNodes.some(f => n.id.startsWith(f.id))
     );
     standaloneNodes.forEach((node, index) => {
@@ -664,7 +672,7 @@ function calculateDependencyOnlyLayout(
     });
 
     const filteredNodes = nodes.filter(n => connectedNodeIds.has(n.id));
-    
+
     // Use dagre layout for dependency graph
     return calculateDagreLayout(filteredNodes, dependencyEdges, filters, selectedNodeId, 'TB');
 }
@@ -1235,14 +1243,24 @@ const LayoutPanel: React.FC<LayoutPanelProps> = ({
 interface ArchitectureGraphProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
+    repoId?: string | null;
+    graphEngineUrl?: string;
 }
 
-const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
+const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
+    heatmapMode,
+    highlightNodeIds = [],
+    repoId: initialRepoId = null,
+    graphEngineUrl,
+}) => {
     // VS Code API reference - memoized to call only once
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
 
-    const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
+    const apiClient = useMemo(
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        [graphEngineUrl]
+    );
 
     const state = vscode.getState() as { filters?: SearchFilters; layoutType?: LayoutType } || {};
 
@@ -1292,7 +1310,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
     const [localOutlineVisible, setLocalOutlineVisible] = useState<boolean>(true);
 
     // Layout state - initialized from persistence
-    const [layoutType, setLayoutType] = useState<LayoutType>(state.layoutType || 'hierarchical');
+    const [layoutType, setLayoutType] = useState<LayoutType>(state.layoutType || 'dagre-lr');
     const [layoutPanelVisible, setLayoutPanelVisible] = useState(false);
     const [isLayouting, setIsLayouting] = useState(false);
 
@@ -1327,11 +1345,17 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
     // WebSocket state
     const wsClientRef = useRef<ArchMindWebSocketClient | null>(null);
     const [wsConnected, setWsConnected] = useState(false);
-    const [repoId, setRepoId] = useState<string | null>(null);
+    const [repoId, setRepoId] = useState<string | null>(initialRepoId);
     const [backendUrl, setBackendUrl] = useState<string>('http://localhost:8080');
 
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
+
+    useEffect(() => {
+        if (initialRepoId) {
+            setRepoId(initialRepoId);
+        }
+    }, [initialRepoId]);
 
     // Zoom & Pan controls (#20)
     const zoomPan = useZoomPan({ minZoom: 0.1, maxZoom: 4.0 });
@@ -1618,17 +1642,34 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
 
                 const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
 
+                // Preprocess nodes if coming from backend to ensure hierarchy/depth exists
+                // This fixes the issue where repo analysis looks unstructured compared to local analysis
+                let processedNodes = rawNodes;
+                let processedEdges = rawEdges;
+
+                if (data.source === 'backend') {
+                    const hasDepth = rawNodes.some(n => n.depth > 0);
+                    const hasDirectories = rawNodes.some(n => n.type === 'directory');
+
+                    if (!hasDepth || !hasDirectories) {
+                        const { nodes: newNodes, edges: newEdges } = reconstructHierarchy(rawNodes, rawEdges);
+                        processedNodes = newNodes;
+                        processedEdges = newEdges;
+                    }
+                }
+
+                let formattedEdges: Edge[] = []; // Declare outside
                 // Apply initial layout asynchronously
                 const initLayout = async () => {
                     try {
                         const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(
                             layoutType,
-                            rawNodes,
-                            rawEdges,
+                            processedNodes,
+                            processedEdges,
                             debouncedFilters,
                             selectedNode
                         );
-                        const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
+                        formattedEdges = formatEdges(processedEdges, selectedNode, newMatchingIds);
 
                         setNodes(layoutedNodes);
                         setEdges(formattedEdges);
@@ -1730,7 +1771,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
             if (update.type === 'graph_update') {
                 // Graph has been updated - refresh the data
                 vscode.postMessage({ command: 'requestArchitecture' });
-                
+
                 // Show notification
                 vscode.postMessage({
                     command: 'showNotification',
@@ -1942,13 +1983,13 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
     }
 
     return (
-        <div 
+        <div
             ref={(el) => {
                 if (el) {
                     (reactFlowWrapperRef as any).current = el;
                     (graphContainerRef as any).current = el;
                 }
-            }} 
+            }}
             style={{ width: '100%', height: '100%', position: 'relative' }}
             className={isFullscreen ? 'fullscreen-graph' : ''}
         >
@@ -2159,10 +2200,20 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
 };
 
 // Wrapper component with ReactFlowProvider
-const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({ heatmapMode }) => {
+const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
+    heatmapMode,
+    highlightNodeIds,
+    repoId,
+    graphEngineUrl,
+}) => {
     return (
         <ReactFlowProvider>
-            <ArchitectureGraphInner heatmapMode={heatmapMode} />
+            <ArchitectureGraphInner
+                heatmapMode={heatmapMode}
+                highlightNodeIds={highlightNodeIds}
+                repoId={repoId}
+                graphEngineUrl={graphEngineUrl}
+            />
         </ReactFlowProvider>
     );
 };

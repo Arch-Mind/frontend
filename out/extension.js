@@ -201,6 +201,79 @@ function activate(context) {
     let checkBackendStatusCmd = vscode.commands.registerCommand('archmind.checkBackendStatus', async () => {
         await checkBackendHealth();
     });
+    // Register diagram commands
+    let showBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showBoundaryDiagram', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'boundaries' });
+        }
+    });
+    let showDependencyDiagramCmd = vscode.commands.registerCommand('archmind.showDependencyDiagram', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'dependency-diagram' });
+        }
+    });
+    let showCommunicationDiagramCmd = vscode.commands.registerCommand('archmind.showCommunicationDiagram', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'communication' });
+        }
+    });
+    let toggleHeatmapCmd = vscode.commands.registerCommand('archmind.toggleHeatmap', async () => {
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ type: 'toggleHeatmap' });
+            vscode.window.showInformationMessage('Heatmap overlay toggled');
+        }
+        else {
+            vscode.window.showInformationMessage('No architecture panel is open. Run "ArchMind: Show Architecture" first.');
+        }
+    });
+    let analyzeLiveArchitectureCmd = vscode.commands.registerCommand('archmind.analyzeLiveArchitecture', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Analyzing live architecture...",
+                cancellable: false
+            }, async () => {
+                await analysisService.analyze(rootPath);
+                vscode.window.showInformationMessage('Live architecture analysis complete');
+            });
+        }
+        else {
+            vscode.window.showWarningMessage('No workspace folder open');
+        }
+    });
+    let configureWebhookCmd = vscode.commands.registerCommand('archmind.configureWebhook', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'webhooks' });
+        }
+    });
+    let showInBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showInBoundaryDiagram', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            ArchitecturePanel.createOrShow(context.extensionUri);
+            if (ArchitecturePanel.currentPanel) {
+                const filePath = editor.document.uri.fsPath;
+                ArchitecturePanel.currentPanel.postMessage({
+                    command: 'switchView',
+                    view: 'boundaries',
+                    filePath,
+                });
+                ArchitecturePanel.currentPanel.postMessage({
+                    command: 'highlightNodes',
+                    nodeIds: [filePath],
+                });
+                ArchitecturePanel.currentPanel.postMessage({
+                    command: 'revealBoundaryFile',
+                    filePath,
+                });
+            }
+        }
+    });
     // Listen for configuration changes
     let configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('archmind')) {
@@ -208,7 +281,7 @@ function activate(context) {
             vscode.window.showInformationMessage('ArchMind configuration updated.');
         }
     });
-    context.subscriptions.push(showArchitectureCmd, showLocalAnalysisCmd, analyzeRepositoryCmd, refreshGraphCmd, checkBackendStatusCmd, configChangeListener, onActiveEditorChanged, onDocumentChanged);
+    context.subscriptions.push(showArchitectureCmd, showLocalAnalysisCmd, analyzeRepositoryCmd, refreshGraphCmd, checkBackendStatusCmd, showBoundaryDiagramCmd, showDependencyDiagramCmd, showCommunicationDiagramCmd, toggleHeatmapCmd, analyzeLiveArchitectureCmd, configureWebhookCmd, showInBoundaryDiagramCmd, configChangeListener, onActiveEditorChanged, onDocumentChanged);
 }
 async function parseAndSendLocalData(document, parser) {
     if (document.uri.scheme !== 'file')
@@ -382,6 +455,9 @@ class ArchitecturePanel {
                 case 'refreshGraph':
                     await this.refresh();
                     return;
+                case 'requestConfig':
+                    this._sendConfig();
+                    return;
                 case 'openFile':
                     await this._openFile(message.filePath, message.lineNumber);
                     return;
@@ -405,6 +481,12 @@ class ArchitecturePanel {
                     return;
             }
         }, null, this._disposables);
+    }
+    /**
+     * Send a message to the webview
+     */
+    postMessage(message) {
+        this._panel.webview.postMessage(message);
     }
     /**
      * Opens a file in the editor and optionally navigates to a specific line
@@ -518,6 +600,12 @@ class ArchitecturePanel {
     async _sendArchitecture() {
         const config = vscode.workspace.getConfiguration('archmind');
         const useBackend = config.get('useBackendAnalysis', false);
+        // If a backend repository has been analyzed in this panel session, prefer it
+        // so all views (graph/boundary/dependency/communication) share the same dataset.
+        if (this._lastRepoId) {
+            await this._sendBackendArchitecture();
+            return;
+        }
         if (useBackend) {
             await this._sendBackendArchitecture();
         }
@@ -692,6 +780,19 @@ class ArchitecturePanel {
         this._panel.webview.postMessage({
             command: 'error',
             message
+        });
+    }
+    /**
+     * Send runtime configuration to the webview
+     */
+    _sendConfig() {
+        const config = vscode.workspace.getConfiguration('archmind');
+        this._panel.webview.postMessage({
+            command: 'config',
+            data: {
+                backendUrl: config.get('backendUrl', 'http://localhost:8080'),
+                graphEngineUrl: config.get('graphEngineUrl', 'http://localhost:8000'),
+            },
         });
     }
     /**

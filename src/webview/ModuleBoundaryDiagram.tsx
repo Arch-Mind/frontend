@@ -47,13 +47,23 @@ function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState
 interface ModuleBoundaryDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
+    repoId?: string | null;
+    graphEngineUrl?: string;
 }
 
-export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
+export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
+    heatmapMode,
+    highlightNodeIds = [],
+    repoId: initialRepoId = null,
+    graphEngineUrl,
+}) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
-    const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
+    const apiClient = useMemo(
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        [graphEngineUrl]
+    );
 
-    const [repoId, setRepoId] = useState<string | null>(null);
+    const [repoId, setRepoId] = useState<string | null>(initialRepoId);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<ModuleBoundariesResponse | null>(null);
@@ -76,7 +86,7 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ he
             if (message?.command === 'architectureData') {
                 const extractedRepoId = message.data?.repo_id || message.data?.repoId;
                 if (extractedRepoId) {
-                    setRepoId(extractedRepoId);
+                    setRepoId(String(extractedRepoId));
                 }
             }
         };
@@ -86,6 +96,12 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ he
 
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
+
+    useEffect(() => {
+        if (initialRepoId) {
+            setRepoId(initialRepoId);
+        }
+    }, [initialRepoId]);
 
     const loadBoundaries = async () => {
         if (!repoId) return;
@@ -196,11 +212,17 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ he
             {error && (
                 <div className="boundary-state boundary-error">{error}</div>
             )}
-            {!isLoading && !error && totalBoundaries === 0 && (
+            {!isLoading && !error && !repoId && (
+                <div className="boundary-state">
+                    Backend repository context is not available. Run backend analysis first.
+                </div>
+            )}
+
+            {!isLoading && !error && !!repoId && totalBoundaries === 0 && (
                 <div className="boundary-state">No boundaries available yet.</div>
             )}
 
-            {!isLoading && !error && totalBoundaries > 0 && (
+            {!isLoading && !error && !!repoId && totalBoundaries > 0 && (
                 <div className="boundary-summary">
                     <span className="boundary-pill">{totalBoundaries} boundaries</span>
                     {repoId && <span className="boundary-pill muted">Repo: {repoId}</span>}

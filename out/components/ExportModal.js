@@ -39,10 +39,13 @@ const jsonExporter_1 = require("../utils/exporters/jsonExporter");
 const imageExporter_1 = require("../utils/exporters/imageExporter");
 const pdfExporter_1 = require("../utils/exporters/pdfExporter");
 const markdownExporter_1 = require("../utils/exporters/markdownExporter");
-const ExportModal = ({ isOpen, onClose, nodes, edges, rawData, reactFlowWrapper, source = 'local', }) => {
+const ExportModal = ({ isOpen, onClose, nodes, edges, rawData, reactFlowWrapper, source = 'local', repoId, backendUrl, }) => {
     const [exportStatus, setExportStatus] = (0, react_1.useState)('idle');
     const [statusMessage, setStatusMessage] = (0, react_1.useState)('');
     const [selectedFormats, setSelectedFormats] = (0, react_1.useState)(new Set());
+    const [serverFormats, setServerFormats] = (0, react_1.useState)(new Set(['mermaid', 'plantuml']));
+    const [includeLLMSummary, setIncludeLLMSummary] = (0, react_1.useState)(true);
+    const [includeHeatmap, setIncludeHeatmap] = (0, react_1.useState)(true);
     const [showAdvanced, setShowAdvanced] = (0, react_1.useState)(false);
     // Advanced options
     const [imageOptions, setImageOptions] = (0, react_1.useState)({
@@ -58,6 +61,15 @@ const ExportModal = ({ isOpen, onClose, nodes, edges, rawData, reactFlowWrapper,
         includeStats: true,
     });
     const modalRef = (0, react_1.useRef)(null);
+    const downloadTextFile = (content, filename, mimeType) => {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    };
     // Close on escape
     (0, react_1.useEffect)(() => {
         const handleEscape = (e) => {
@@ -175,6 +187,84 @@ const ExportModal = ({ isOpen, onClose, nodes, edges, rawData, reactFlowWrapper,
         }
         setSelectedFormats(newSet);
     };
+    const toggleServerFormat = (format) => {
+        const newSet = new Set(serverFormats);
+        if (newSet.has(format)) {
+            newSet.delete(format);
+        }
+        else {
+            newSet.add(format);
+        }
+        setServerFormats(newSet);
+    };
+    const handleServerExport = async () => {
+        if (!backendUrl) {
+            setExportStatus('error');
+            setStatusMessage('Backend URL is not configured');
+            return;
+        }
+        if (!repoId) {
+            setExportStatus('error');
+            setStatusMessage('Repository ID is not available yet');
+            return;
+        }
+        if (serverFormats.size === 0 && !includeLLMSummary && !includeHeatmap) {
+            setExportStatus('error');
+            setStatusMessage('Select at least one server export');
+            return;
+        }
+        setExportStatus('exporting');
+        setStatusMessage('Generating server exports...');
+        try {
+            const response = await fetch(`${backendUrl}/api/export/${encodeURIComponent(repoId)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    formats: Array.from(serverFormats),
+                    include_llm_summary: includeLLMSummary,
+                    include_heatmap: includeHeatmap,
+                }),
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || response.statusText);
+            }
+            const payload = await response.json();
+            const exports = payload.exports || {};
+            if (exports.mermaid) {
+                downloadTextFile(exports.mermaid, `architecture-${repoId}.mmd`, 'text/plain');
+            }
+            if (exports.plantuml) {
+                downloadTextFile(exports.plantuml, `architecture-${repoId}.puml`, 'text/plain');
+            }
+            if (exports.markdown) {
+                downloadTextFile(exports.markdown, `architecture-${repoId}.md`, 'text/markdown');
+            }
+            if (exports.json) {
+                downloadTextFile(JSON.stringify(exports.json, null, 2), `architecture-${repoId}.json`, 'application/json');
+            }
+            if (exports.llm_summary) {
+                downloadTextFile(JSON.stringify(exports.llm_summary, null, 2), `architecture-summary-${repoId}.json`, 'application/json');
+            }
+            if (exports.heatmap) {
+                downloadTextFile(JSON.stringify(exports.heatmap, null, 2), `architecture-heatmap-${repoId}.json`, 'application/json');
+            }
+            setExportStatus('success');
+            setStatusMessage('Server exports generated');
+            setTimeout(() => {
+                setExportStatus('idle');
+                setStatusMessage('');
+            }, 2000);
+        }
+        catch (error) {
+            setExportStatus('error');
+            setStatusMessage(`Server export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setTimeout(() => {
+                setExportStatus('idle');
+                setStatusMessage('');
+            }, 3000);
+        }
+    };
     const handleCopyToClipboard = async () => {
         if (!reactFlowWrapper)
             return;
@@ -227,6 +317,20 @@ const ExportModal = ({ isOpen, onClose, nodes, edges, rawData, reactFlowWrapper,
                         "Export ",
                         selectedFormats.size > 0 && `(${selectedFormats.size})`,
                         " Selected")),
+                react_1.default.createElement("section", { className: "export-section" },
+                    react_1.default.createElement("h3", null, "Server Exports"),
+                    react_1.default.createElement("p", { className: "section-hint" }, "Generate Mermaid/PlantUML/LLM artifacts from the backend."),
+                    react_1.default.createElement("div", { className: "format-checkboxes" }, ['mermaid', 'plantuml', 'json', 'markdown'].map(format => (react_1.default.createElement("label", { key: format, className: "format-checkbox" },
+                        react_1.default.createElement("input", { type: "checkbox", checked: serverFormats.has(format), onChange: () => toggleServerFormat(format), disabled: exportStatus === 'exporting' }),
+                        react_1.default.createElement("span", null, format.toUpperCase()))))),
+                    react_1.default.createElement("div", { className: "format-checkboxes" },
+                        react_1.default.createElement("label", { className: "format-checkbox" },
+                            react_1.default.createElement("input", { type: "checkbox", checked: includeLLMSummary, onChange: (event) => setIncludeLLMSummary(event.target.checked), disabled: exportStatus === 'exporting' }),
+                            react_1.default.createElement("span", null, "LLM Summary")),
+                        react_1.default.createElement("label", { className: "format-checkbox" },
+                            react_1.default.createElement("input", { type: "checkbox", checked: includeHeatmap, onChange: (event) => setIncludeHeatmap(event.target.checked), disabled: exportStatus === 'exporting' }),
+                            react_1.default.createElement("span", null, "Heatmap Data"))),
+                    react_1.default.createElement("button", { className: "bulk-export-btn", onClick: handleServerExport, disabled: exportStatus === 'exporting' }, "Generate Server Exports")),
                 react_1.default.createElement("section", { className: "export-section" },
                     react_1.default.createElement("button", { className: "toggle-advanced", onClick: () => setShowAdvanced(!showAdvanced) },
                         showAdvanced ? '▼' : '▶',

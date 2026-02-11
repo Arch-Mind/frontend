@@ -38,13 +38,23 @@ interface EdgeDetails {
 interface CommunicationDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
+    repoId?: string | null;
+    graphEngineUrl?: string;
 }
 
-export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
+export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
+    heatmapMode,
+    highlightNodeIds = [],
+    repoId: initialRepoId = null,
+    graphEngineUrl,
+}) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
-    const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
+    const apiClient = useMemo(
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        [graphEngineUrl]
+    );
 
-    const [repoId, setRepoId] = useState<string | null>(null);
+    const [repoId, setRepoId] = useState<string | null>(initialRepoId);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<CommunicationResponse | null>(null);
@@ -78,7 +88,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
             if (message?.command === 'architectureData') {
                 const extractedRepoId = message.data?.repo_id || message.data?.repoId;
                 if (extractedRepoId) {
-                    setRepoId(extractedRepoId);
+                    setRepoId(String(extractedRepoId));
                 }
             }
         };
@@ -88,6 +98,12 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
 
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
+
+    useEffect(() => {
+        if (initialRepoId) {
+            setRepoId(initialRepoId);
+        }
+    }, [initialRepoId]);
 
     useEffect(() => {
         if (!repoId) return;
@@ -286,14 +302,19 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
         const layoutEdges = filteredEdges.map(edge => ({ id: edge.id, source: edge.source, target: edge.target }));
 
         const applyLayout = async () => {
-            const { nodes: positions } = await elkLayout(layoutNodes, layoutEdges, 'force');
-            const layoutedNodes = filteredNodes.map(node => ({
-                ...node,
-                position: positions.get(node.id) || { x: 0, y: 0 },
-            }));
+            try {
+                const { nodes: positions } = await elkLayout(layoutNodes, layoutEdges, 'force');
+                const layoutedNodes = filteredNodes.map(node => ({
+                    ...node,
+                    position: positions.get(node.id) || { x: 0, y: 0 },
+                }));
 
-            setNodes(layoutedNodes);
-            setEdges(filteredEdges);
+                setNodes(layoutedNodes);
+                setEdges(filteredEdges);
+            } catch (err) {
+                console.error('Layout failed:', err);
+                setError('Failed to calculate layout for communication diagram');
+            }
         };
 
         applyLayout();
@@ -375,8 +396,22 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
 
             {isLoading && <div className="diagram-state">Loading communication data...</div>}
             {error && <div className="diagram-state diagram-error">{error}</div>}
+            {!isLoading && !error && !repoId && (
+                <div className="diagram-state">
+                    Backend repository context is not available. Run backend analysis first.
+                </div>
+            )}
+            {!isLoading && !error && !!repoId && data &&
+                data.endpoints.length === 0 &&
+                data.rpc_services.length === 0 &&
+                data.queues.length === 0 &&
+                data.compose_services.length === 0 && (
+                    <div className="diagram-state">
+                        No communication signals were detected for this repository.
+                    </div>
+                )}
 
-            {!isLoading && !error && (
+            {!isLoading && !error && !!repoId && (
                 <ReactFlowProvider>
                     <div className="diagram-flow">
                         <ReactFlow

@@ -99,13 +99,23 @@ function FileNode({ data }: { data?: { heatmapColor?: string; heatmapTooltip?: s
 interface BoundaryDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
+    repoId?: string | null;
+    graphEngineUrl?: string;
 }
 
-export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
+export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
+    heatmapMode,
+    highlightNodeIds = [],
+    repoId: initialRepoId = null,
+    graphEngineUrl,
+}) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
-    const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
+    const apiClient = useMemo(
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        [graphEngineUrl]
+    );
 
-    const [repoId, setRepoId] = useState<string | null>(null);
+    const [repoId, setRepoId] = useState<string | null>(initialRepoId);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [boundaryData, setBoundaryData] = useState<ModuleBoundariesResponse | null>(null);
@@ -138,7 +148,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, h
             if (message?.command === 'architectureData') {
                 const extractedRepoId = message.data?.repo_id || message.data?.repoId;
                 if (extractedRepoId) {
-                    setRepoId(extractedRepoId);
+                    setRepoId(String(extractedRepoId));
                 }
             }
             if (message?.command === 'revealBoundaryFile' && message.filePath && boundaryData) {
@@ -158,6 +168,12 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, h
 
         return () => window.removeEventListener('message', handler);
     }, [vscode, boundaryData]);
+
+    useEffect(() => {
+        if (initialRepoId) {
+            setRepoId(initialRepoId);
+        }
+    }, [initialRepoId]);
 
     useEffect(() => {
         if (!repoId) return;
@@ -245,23 +261,23 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, h
                 highlightBoundaryId === boundary.id ||
                 boundary.files.some(file => highlightSet.has(normalizePath(file)));
             return {
-            id: `boundary:${boundary.id}`,
-            type: 'boundaryNode',
-            position: { x: 0, y: 0 },
-            data: {
-                boundary,
-                summary: summaryByBoundary.get(boundary.name) || '',
-                heatmapColor: hottest?.color,
-                heatmapTooltip: hottest?.tooltip,
-                isHighlighted,
-            },
-            draggable: false,
-            selectable: true,
-            style: {
-                width: 260,
-                height: 120,
+                id: `boundary:${boundary.id}`,
+                type: 'boundaryNode',
+                position: { x: 0, y: 0 },
+                data: {
+                    boundary,
+                    summary: summaryByBoundary.get(boundary.name) || '',
+                    heatmapColor: hottest?.color,
+                    heatmapTooltip: hottest?.tooltip,
+                    isHighlighted,
+                },
+                draggable: false,
+                selectable: true,
+                style: {
+                    width: 260,
+                    height: 120,
                     boxShadow: isHighlighted ? '0 0 12px rgba(249, 115, 22, 0.6)' : undefined,
-            },
+                },
             };
         });
 
@@ -305,14 +321,19 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, h
         }));
 
         const applyLayout = async () => {
-            const { nodes: positions } = await elkLayout(layoutNodes, [], 'layered');
-            const layoutedBoundaries = boundaryNodes.map(node => {
-                const pos = positions.get(node.id) || { x: 0, y: 0 };
-                return { ...node, position: pos };
-            });
+            try {
+                const { nodes: positions } = await elkLayout(layoutNodes, [], 'layered');
+                const layoutedBoundaries = boundaryNodes.map(node => {
+                    const pos = positions.get(node.id) || { x: 0, y: 0 };
+                    return { ...node, position: pos };
+                });
 
-            setNodes([...layoutedBoundaries, ...fileNodes]);
-            setEdges([]);
+                setNodes([...layoutedBoundaries, ...fileNodes]);
+                setEdges([]);
+            } catch (err) {
+                console.error('Layout failed:', err);
+                setError('Failed to calculate layout for boundary diagram.');
+            }
         };
 
         applyLayout();
@@ -370,22 +391,36 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({ heatmapMode, h
 
             {isLoading && <div className="diagram-state">Loading boundaries...</div>}
             {error && <div className="diagram-state diagram-error">{error}</div>}
-
-            {!isLoading && !error && (
-                <ReactFlowProvider>
-                    <div className="diagram-flow">
-                        <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
-                            nodeTypes={boundaryNodeTypes}
-                            fitView
-                            fitViewOptions={{ padding: 0.2 }}
-                        >
-                            <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
-                        </ReactFlow>
+            {
+                !isLoading && !error && !repoId && (
+                    <div className="diagram-state">
+                        Backend repository context is not available. Run backend analysis first.
                     </div>
-                </ReactFlowProvider>
-            )}
+                )
+            }
+            {
+                !isLoading && !error && !!repoId && boundaryData && boundaryData.boundaries.length === 0 && (
+                    <div className="diagram-state">No boundaries were returned for this repository.</div>
+                )
+            }
+
+            {
+                !isLoading && !error && !!repoId && (
+                    <ReactFlowProvider>
+                        <div className="diagram-flow">
+                            <ReactFlow
+                                nodes={nodes}
+                                edges={edges}
+                                nodeTypes={boundaryNodeTypes}
+                                fitView
+                                fitViewOptions={{ padding: 0.2 }}
+                            >
+                                <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
+                            </ReactFlow>
+                        </div>
+                    </ReactFlowProvider>
+                )
+            }
         </div>
     );
 };

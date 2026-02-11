@@ -11,6 +11,24 @@ import { initializeExportListener } from '../utils/exporters/vscodeExportHelper'
 import { HeatmapMode } from './heatmapUtils';
 import { NotificationHistory, NotificationEntry } from './NotificationHistory';
 
+type AppView = 'graph' | 'boundaries' | 'boundary-diagram' | 'dependency-diagram' | 'communication' | 'webhooks';
+
+function normalizeView(view: string): AppView | null {
+    switch (view) {
+        case 'graph':
+        case 'boundaries':
+        case 'boundary-diagram':
+        case 'dependency-diagram':
+        case 'communication':
+        case 'webhooks':
+            return view;
+        case 'dependencies':
+            return 'dependency-diagram';
+        default:
+            return null;
+    }
+}
+
 const ThemeKeyboardHandler: React.FC = () => {
     useThemeKeyboard();
     return null;
@@ -37,11 +55,10 @@ const App: React.FC = () => {
         initializeExportListener();
     }, []);
 
-    const [activeView, setActiveView] = useState<
-        'graph' | 'boundaries' | 'boundary-diagram' | 'dependency-diagram' | 'communication' | 'webhooks'
-    >('graph');
+    const [activeView, setActiveView] = useState<AppView>('graph');
     const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('off');
     const [config, setConfig] = useState<{ backendUrl: string; graphEngineUrl: string } | null>(null);
+    const [repoId, setRepoId] = useState<string | null>(null);
     const [highlightNodes, setHighlightNodes] = useState<string[]>([]);
     const [history, setHistory] = useState<NotificationEntry[]>([]);
 
@@ -55,10 +72,17 @@ const App: React.FC = () => {
     useEffect(() => {
         const handler = (event: MessageEvent) => {
             const message = event.data;
-            if (message?.command === 'switchView' && message.view) {
-                setActiveView(message.view);
+            const incomingView = message?.view;
+            if ((message?.command === 'switchView' || message?.type === 'showView') && incomingView) {
+                const normalized = normalizeView(incomingView);
+                if (normalized) {
+                    setActiveView(normalized);
+                }
+                if (message?.filePath) {
+                    setHighlightNodes([message.filePath]);
+                }
             }
-            if (message?.command === 'toggleHeatmap') {
+            if (message?.command === 'toggleHeatmap' || message?.type === 'toggleHeatmap') {
                 setHeatmapMode((prev) => {
                     const order: HeatmapMode[] = ['off', 'commit_count', 'last_modified', 'author_count'];
                     const index = order.indexOf(prev);
@@ -67,6 +91,12 @@ const App: React.FC = () => {
             }
             if (message?.command === 'config' && message.data) {
                 setConfig(message.data);
+            }
+            if (message?.command === 'architectureData' && message.data) {
+                const extractedRepoId = message.data.repo_id || message.data.repoId;
+                if (extractedRepoId) {
+                    setRepoId(String(extractedRepoId));
+                }
             }
             if (message?.command === 'highlightNodes') {
                 setHighlightNodes(message.nodeIds || []);
@@ -158,19 +188,44 @@ const App: React.FC = () => {
                 </div>
                 <main className="app-main">
                     {activeView === 'graph' && (
-                        <ArchitectureGraph heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                        <ArchitectureGraph
+                            heatmapMode={heatmapMode}
+                            highlightNodeIds={highlightNodes}
+                            repoId={repoId}
+                            graphEngineUrl={config?.graphEngineUrl}
+                        />
                     )}
                     {activeView === 'boundaries' && (
-                        <ModuleBoundaryDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                        <ModuleBoundaryDiagram
+                            heatmapMode={heatmapMode}
+                            highlightNodeIds={highlightNodes}
+                            repoId={repoId}
+                            graphEngineUrl={config?.graphEngineUrl}
+                        />
                     )}
                     {activeView === 'boundary-diagram' && (
-                        <BoundaryDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                        <BoundaryDiagram
+                            heatmapMode={heatmapMode}
+                            highlightNodeIds={highlightNodes}
+                            repoId={repoId}
+                            graphEngineUrl={config?.graphEngineUrl}
+                        />
                     )}
                     {activeView === 'dependency-diagram' && (
-                        <DependencyDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                        <DependencyDiagram
+                            heatmapMode={heatmapMode}
+                            highlightNodeIds={highlightNodes}
+                            repoId={repoId}
+                            graphEngineUrl={config?.graphEngineUrl}
+                        />
                     )}
                     {activeView === 'communication' && (
-                        <CommunicationDiagram heatmapMode={heatmapMode} highlightNodeIds={highlightNodes} />
+                        <CommunicationDiagram
+                            heatmapMode={heatmapMode}
+                            highlightNodeIds={highlightNodes}
+                            repoId={repoId}
+                            graphEngineUrl={config?.graphEngineUrl}
+                        />
                     )}
                     {activeView === 'webhooks' && (
                         <WebhookSetup backendUrl={config?.backendUrl || 'http://localhost:8080'} />
