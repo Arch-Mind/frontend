@@ -33,6 +33,7 @@ export interface AnalyzeRequest {
  */
 export interface AnalyzeResponse {
     job_id: string;
+    repo_id?: string;
     status: JobStatus;
     message: string;
     created_at: string;

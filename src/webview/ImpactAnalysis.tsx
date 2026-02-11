@@ -169,7 +169,7 @@ export function useImpactAnalysis(
         try {
             // Call backend API
             const response = await fetch(
-                `http://localhost:8000/api/impact/${encodeURIComponent(targetNodeId)}?depth=${depth}`
+                `https://graph-engine-production-90f5.up.railway.app/api/impact/${encodeURIComponent(targetNodeId)}?depth=${depth}`
             );
 
             if (!response.ok) {
@@ -208,3 +208,4 @@ export function useImpactAnalysis(
 
     return { data, isLoading, error, fetchImpact };
 }
+

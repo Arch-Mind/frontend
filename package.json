@@ -143,12 +143,12 @@
       "properties": {
         "archmind.backendUrl": {
           "type": "string",
-          "default": "http://localhost:8080",
+          "default": "https://go-api-gateway-production-2173.up.railway.app",
           "description": "URL of the ArchMind API Gateway (Go backend)"
         },
         "archmind.graphEngineUrl": {
           "type": "string",
-          "default": "http://localhost:8000",
+          "default": "https://graph-engine-production-90f5.up.railway.app",
           "description": "URL of the ArchMind Graph Engine (Python backend)"
         },
         "archmind.authToken": {

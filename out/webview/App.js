@@ -166,7 +166,7 @@ const App = () => {
                 activeView === 'boundary-diagram' && (react_1.default.createElement(BoundaryDiagram_1.BoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
                 activeView === 'dependency-diagram' && (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
                 activeView === 'communication' && (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
-                activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'http://localhost:8080' }))),
+                activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app' }))),
             react_1.default.createElement(NotificationHistory_1.NotificationHistory, { entries: history, onClear: () => setHistory([]) }))));
 };
 exports.default = App;

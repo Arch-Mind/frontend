@@ -127,7 +127,7 @@ function useImpactAnalysis(nodeId, depth = 3) {
         setError(null);
         try {
             // Call backend API
-            const response = await fetch(`http://localhost:8000/api/impact/${encodeURIComponent(targetNodeId)}?depth=${depth}`);
+            const response = await fetch(`https://graph-engine-production-90f5.up.railway.app/api/impact/${encodeURIComponent(targetNodeId)}?depth=${depth}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }

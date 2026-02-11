@@ -25,7 +25,7 @@ export class ArchMindWebviewApiClient {
      * @param graphEngineUrl - Base URL for the Graph Engine API
      * @param timeout - Request timeout in milliseconds
      */
-    constructor(graphEngineUrl: string = 'http://localhost:8000', timeout: number = 30000) {
+    constructor(graphEngineUrl: string = 'https://graph-engine-production-90f5.up.railway.app', timeout: number = 30000) {
         this.config = { graphEngineUrl, timeout };
     }
 
@@ -105,3 +105,4 @@ export class ArchMindWebviewApiClient {
         );
     }
 }
+

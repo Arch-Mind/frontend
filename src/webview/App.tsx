@@ -228,7 +228,7 @@ const App: React.FC = () => {
                         />
                     )}
                     {activeView === 'webhooks' && (
-                        <WebhookSetup backendUrl={config?.backendUrl || 'http://localhost:8080'} />
+                        <WebhookSetup backendUrl={config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app'} />
                     )}
                 </main>
                 <NotificationHistory entries={history} onClear={() => setHistory([])} />
@@ -238,3 +238,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

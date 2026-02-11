@@ -34,6 +34,26 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NODE_COLORS = void 0;
+/**
+ * ArchitectureGraph Component
+ * ---------------------------
+ * Main component for the ArchMind frontend extension. Interacts with the backend to
+ * visualize codebase architecture using React Flow.
+ *
+ * Integrated Features (Sprint 1):
+ * - Node Interaction & Navigation (#4, #8)
+ * - Node Clustering for Large Repositories (#10)
+ * - Intelligent Layout Algorithms (#11)
+ * - Impact Analysis Visualization (#15)
+ * - Full Keyboard Navigation & Accessibility (#18)
+ * - Enhanced Mini-Map & Smooth Transitions (#19)
+ * - Responsive Zoom and Pan Controls (#20)
+ * - Node Relationship Visualization (#21)
+ * - Dark Mode Support integration (#22)
+ * - Advanced Graph Search & Highlighting (#5, #23)
+ *
+ * @component
+ */
 const react_1 = __importStar(require("react"));
 const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
@@ -809,7 +829,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     // VS Code API reference - memoized to call only once
     const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
     const vscodeRef = (0, react_1.useRef)(vscode); // Keep ref for backward compatibility in callbacks
-    const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'), [graphEngineUrl]);
+    const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
     const state = vscode.getState() || {};
     const [nodes, setNodes, onNodesChange] = (0, reactflow_1.useNodesState)([]);
     const [edges, setEdges, onEdgesChange] = (0, reactflow_1.useEdgesState)([]);
@@ -874,7 +894,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const wsClientRef = (0, react_1.useRef)(null);
     const [wsConnected, setWsConnected] = (0, react_1.useState)(false);
     const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
-    const [backendUrl, setBackendUrl] = (0, react_1.useState)('http://localhost:8080');
+    const [backendUrl, setBackendUrl] = (0, react_1.useState)('https://go-api-gateway-production-2173.up.railway.app');
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     (0, react_1.useEffect)(() => {

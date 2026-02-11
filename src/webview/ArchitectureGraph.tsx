@@ -1278,7 +1278,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
 
     const apiClient = useMemo(
-        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
         [graphEngineUrl]
     );
 
@@ -1366,7 +1366,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     const wsClientRef = useRef<ArchMindWebSocketClient | null>(null);
     const [wsConnected, setWsConnected] = useState(false);
     const [repoId, setRepoId] = useState<string | null>(initialRepoId);
-    const [backendUrl, setBackendUrl] = useState<string>('http://localhost:8080');
+    const [backendUrl, setBackendUrl] = useState<string>('https://go-api-gateway-production-2173.up.railway.app');
 
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
@@ -2239,3 +2239,4 @@ const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
 };
 
 export default ArchitectureGraph;
+

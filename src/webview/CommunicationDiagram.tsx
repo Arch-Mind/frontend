@@ -50,7 +50,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
 }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(
-        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
         [graphEngineUrl]
     );
 
@@ -561,3 +561,4 @@ function collectReachableNodes(entryId: string, edges: Edge[]): Set<string> {
 
     return visited;
 }
+

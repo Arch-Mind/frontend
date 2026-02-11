@@ -86,7 +86,7 @@ function FileNode({ data }) {
 }
 const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, }) => {
     const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
-    const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'), [graphEngineUrl]);
+    const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
     const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
     const [isLoading, setIsLoading] = (0, react_1.useState)(false);
     const [error, setError] = (0, react_1.useState)(null);

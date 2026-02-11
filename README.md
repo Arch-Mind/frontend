@@ -74,8 +74,8 @@ Configure in VS Code Settings (`Ctrl+,`):
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `archmind.backendUrl` | `http://localhost:8080` | URL of the ArchMind API Gateway |
-| `archmind.graphEngineUrl` | `http://localhost:8000` | URL of the Graph Engine service |
+| `archmind.backendUrl` | `https://go-api-gateway-production-2173.up.railway.app` | URL of the ArchMind API Gateway |
+| `archmind.graphEngineUrl` | `https://graph-engine-production-90f5.up.railway.app` | URL of the Graph Engine service |
 | `archmind.authToken` | `` | GitHub OAuth token (if required) |
 | `archmind.requestTimeout` | `30000` | HTTP request timeout in ms |
 | `archmind.useBackendAnalysis` | `false` | Use backend API by default |
@@ -341,3 +341,4 @@ This project is part of the ArchMind platform.
 
 - [ArchMind Backend](../backend/) - API Gateway, Ingestion Worker, and Graph Engine
 - [API Documentation](../backend/docs/API_DOCUMENTATION.md)
+

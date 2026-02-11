@@ -36,8 +36,8 @@ export class ArchMindApiClient {
     private loadConfig(): ApiClientConfig {
         const config = vscode.workspace.getConfiguration('archmind');
         return {
-            gatewayUrl: config.get<string>('backendUrl', 'http://localhost:8080'),
-            graphEngineUrl: config.get<string>('graphEngineUrl', 'http://localhost:8000'),
+            gatewayUrl: config.get<string>('backendUrl', 'https://go-api-gateway-production-2173.up.railway.app'),
+            graphEngineUrl: config.get<string>('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app'),
             authToken: config.get<string>('authToken', ''),
             timeout: config.get<number>('requestTimeout', 30000),
         };
@@ -331,16 +331,13 @@ export class ArchMindApiClient {
         });
 
         const jobId = analyzeResponse.job_id;
+        const repoId = analyzeResponse.repo_id || jobId;
         
         // Step 2: Poll for completion
         const completedJob = await this.pollJobUntilComplete(
             jobId,
             (job) => onProgress?.(`Job status: ${job.status}`, job)
         );
-
-        // Step 3: Use job_id as repo_id for Graph Engine queries
-        // The Ingestion Worker stores data with job_id as the identifier
-        const repoId = jobId;
 
         // Step 4: Fetch graph and metrics
         onProgress?.('Fetching graph data...');
@@ -350,8 +347,7 @@ export class ArchMindApiClient {
         ]);
 
         // Step 5: Transform to extension format
-        // Use jobId as repoId so refreshes work correctly
-        return this.transformGraphData(graphData, metrics, jobId);
+        return this.transformGraphData(graphData, metrics, repoId);
     }
 
     /**
@@ -722,7 +718,7 @@ export class ArchMindWebSocketClient {
     private type: 'job' | 'repo';
     private id: string;
 
-    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'http://localhost:8080') {
+    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'https://go-api-gateway-production-2173.up.railway.app') {
         this.type = type;
         this.id = id;
         
@@ -911,3 +907,4 @@ export function resetApiClient(): void {
     }
     apiClientInstance = null;
 }
+

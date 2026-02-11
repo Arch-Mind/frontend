@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ArchMindWebSocketClient = void 0;
 class ArchMindWebSocketClient {
-    constructor(type, id, gatewayUrl = 'http://localhost:8080') {
+    constructor(type, id, gatewayUrl = 'https://go-api-gateway-production-2173.up.railway.app') {
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;

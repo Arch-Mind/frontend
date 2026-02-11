@@ -46,7 +46,7 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
 }) => {
     const vscode = useMemo(() => acquireVsCodeApi(), []);
     const apiClient = useMemo(
-        () => new ArchMindWebviewApiClient(graphEngineUrl || 'http://localhost:8000'),
+        () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
         [graphEngineUrl]
     );
 
@@ -423,3 +423,4 @@ function applyFocusMode(
 
     return records.filter(record => visited.has(record.source_file) || visited.has(record.target));
 }
+

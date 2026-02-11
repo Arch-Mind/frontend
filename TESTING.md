@@ -40,16 +40,16 @@ In the Extension Development Host window, open Settings (`Ctrl+,`) and search fo
 
 | Setting | Value |
 |---------|-------|
-| Backend URL | `http://localhost:8080` |
-| Graph Engine URL | `http://localhost:8000` |
+| Backend URL | `https://go-api-gateway-production-2173.up.railway.app` |
+| Graph Engine URL | `https://graph-engine-production-90f5.up.railway.app` |
 | Use Backend Analysis | `true` |
 
 **Or** add to `.vscode/settings.json`:
 
 ```json
 {
-  "archmind.backendUrl": "http://localhost:8080",
-  "archmind.graphEngineUrl": "http://localhost:8000",
+  "archmind.backendUrl": "https://go-api-gateway-production-2173.up.railway.app",
+  "archmind.graphEngineUrl": "https://graph-engine-production-90f5.up.railway.app",
   "archmind.useBackendAnalysis": true,
   "archmind.requestTimeout": 30000,
   "archmind.pollInterval": 2000,
@@ -102,7 +102,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and try these commands:
 ### "Backend services are not healthy"
 - Check API Gateway is running on port 8080
 - Check Graph Engine is running on port 8000
-- Verify with: `curl http://localhost:8080/health`
+- Verify with: `curl https://go-api-gateway-production-2173.up.railway.app/health`
 
 ### "Request timed out"
 - The Ingestion Worker may be slow processing large repos
@@ -118,7 +118,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and try these commands:
 - Check browser console in webview (Help > Toggle Developer Tools)
 - Verify Graph Engine returns data: 
   ```
-  curl "http://localhost:8000/api/graph/{job_id}?limit=10"
+  curl "https://graph-engine-production-90f5.up.railway.app/api/graph/{job_id}?limit=10"
   ```
 
 ### PostgreSQL connection failed
@@ -139,12 +139,12 @@ docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 ### Check API Gateway Health
 ```powershell
-curl http://localhost:8080/health
+curl https://go-api-gateway-production-2173.up.railway.app/health
 ```
 
 ### Check Graph Engine Health
 ```powershell
-curl http://localhost:8000/health
+curl https://graph-engine-production-90f5.up.railway.app/health
 ```
 
 ### Check Neo4j Data
@@ -181,3 +181,4 @@ psql -U postgres -d "arch-mind" -c "SELECT job_id, status, created_at FROM analy
 ---
 
 *Last updated: February 2, 2026*
+

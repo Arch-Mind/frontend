@@ -52,8 +52,8 @@ class ArchMindApiClient {
     loadConfig() {
         const config = vscode.workspace.getConfiguration('archmind');
         return {
-            gatewayUrl: config.get('backendUrl', 'http://localhost:8080'),
-            graphEngineUrl: config.get('graphEngineUrl', 'http://localhost:8000'),
+            gatewayUrl: config.get('backendUrl', 'https://go-api-gateway-production-2173.up.railway.app'),
+            graphEngineUrl: config.get('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app'),
             authToken: config.get('authToken', ''),
             timeout: config.get('requestTimeout', 30000),
         };
@@ -254,11 +254,9 @@ class ArchMindApiClient {
             branch,
         });
         const jobId = analyzeResponse.job_id;
+        const repoId = analyzeResponse.repo_id || jobId;
         // Step 2: Poll for completion
         const completedJob = await this.pollJobUntilComplete(jobId, (job) => onProgress?.(`Job status: ${job.status}`, job));
-        // Step 3: Use job_id as repo_id for Graph Engine queries
-        // The Ingestion Worker stores data with job_id as the identifier
-        const repoId = jobId;
         // Step 4: Fetch graph and metrics
         onProgress?.('Fetching graph data...');
         const [graphData, metrics] = await Promise.all([
@@ -266,8 +264,7 @@ class ArchMindApiClient {
             this.getRepositoryMetrics(repoId).catch(() => null),
         ]);
         // Step 5: Transform to extension format
-        // Use jobId as repoId so refreshes work correctly
-        return this.transformGraphData(graphData, metrics, jobId);
+        return this.transformGraphData(graphData, metrics, repoId);
     }
     /**
      * Fetch existing graph data without triggering new analysis
@@ -566,7 +563,7 @@ exports.ApiRequestError = ApiRequestError;
  * WebSocket client for real-time updates
  */
 class ArchMindWebSocketClient {
-    constructor(type, id, gatewayUrl = 'http://localhost:8080') {
+    constructor(type, id, gatewayUrl = 'https://go-api-gateway-production-2173.up.railway.app') {
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
