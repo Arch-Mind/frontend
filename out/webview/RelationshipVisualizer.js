@@ -3,8 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.RelationshipVisualizer = RelationshipVisualizer;
 const react_1 = __importDefault(require("react"));
-function RelationshipVisualizer({ selectedNodeId, nodes, edges, onClose }) {
+/**
+ * Component to visualize the immediate relationships (parent, children, siblings)
+ * of a selected node. Used for Issue #21 and Epic 3.
+ *
+ * @param props - The component props
+ * @returns A JSX element containing the relationship summary
+ */
+function RelationshipVisualizer({ selectedNodeId, nodes, edges, onNodeClick, onClose }) {
     // Compute relationships
     const selectedNode = nodes.find(n => n.id === selectedNodeId);
     const parent = selectedNode && selectedNode.parentId ? nodes.find(n => n.id === selectedNode.parentId) : undefined;
@@ -36,5 +44,4 @@ function RelationshipVisualizer({ selectedNodeId, nodes, edges, onClose }) {
         totalRelationships === 0 && (react_1.default.createElement("div", { className: "no-relationships" },
             react_1.default.createElement("span", { className: "no-rel-text" }, "No relationships found")))));
 }
-exports.default = RelationshipVisualizer;
 //# sourceMappingURL=RelationshipVisualizer.js.map

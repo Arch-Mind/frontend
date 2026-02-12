@@ -9,6 +9,7 @@ exports.exportDetailedPDF = exportDetailedPDF;
 exports.exportCustomPDF = exportCustomPDF;
 exports.estimatePDFSize = estimatePDFSize;
 const jspdf_1 = __importDefault(require("jspdf"));
+const vscode_api_1 = require("../../webview/vscode-api");
 const html2canvas_1 = __importDefault(require("html2canvas"));
 exports.DEFAULT_PDF_OPTIONS = {
     orientation: 'landscape',
@@ -88,17 +89,22 @@ async function exportAsPDF(element, nodes, edges, filename = 'graph.pdf', option
         }
         // Save PDF
         // Check if we're in VS Code webview context
-        if (typeof acquireVsCodeApi === 'function') {
+        if (typeof window !== 'undefined') {
             const pdfBlob = pdf.output('blob');
             const reader = new FileReader();
             reader.onloadend = () => {
-                const vscode = acquireVsCodeApi();
-                vscode.postMessage({
-                    command: 'saveFile',
-                    data: reader.result,
-                    filename: filename,
-                    mimeType: 'application/pdf'
-                });
+                const vscode = (0, vscode_api_1.getVsCodeApi)();
+                if (vscode) {
+                    vscode.postMessage({
+                        command: 'saveFile',
+                        data: reader.result,
+                        filename: filename,
+                        mimeType: 'application/pdf'
+                    });
+                }
+                else {
+                    pdf.save(filename);
+                }
             };
             reader.onerror = () => { throw new Error('Failed to read PDF blob'); };
             reader.readAsDataURL(pdfBlob);
@@ -219,11 +225,11 @@ async function exportCustomPDF(element, nodes, edges, config) {
     }
     // Save PDF
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
+    const vscode = (0, vscode_api_1.getVsCodeApi)();
+    if (vscode) {
         const pdfBlob = pdf.output('blob');
         const reader = new FileReader();
         reader.onloadend = () => {
-            const vscode = acquireVsCodeApi();
             vscode.postMessage({
                 command: 'saveFile',
                 data: reader.result,

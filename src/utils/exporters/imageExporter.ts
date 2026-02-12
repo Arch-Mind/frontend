@@ -1,4 +1,5 @@
 import html2canvas from 'html2canvas';
+import { getVsCodeApi } from '../../webview/vscode-api';
 import { Node, Edge } from 'reactflow';
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
 
@@ -289,8 +290,8 @@ function escapeXML(text: string): string {
 
 function downloadString(content: string, filename: string, mimeType: string): void {
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+    const vscode = getVsCodeApi();
+    if (vscode) {
         vscode.postMessage({
             command: 'saveFile',
             data: content,

@@ -34,11 +34,33 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NODE_COLORS = void 0;
+/**
+ * ArchitectureGraph Component
+ * ---------------------------
+ * Main component for the ArchMind frontend extension. Interacts with the backend to
+ * visualize codebase architecture using React Flow.
+ *
+ * Integrated Features (Sprint 1):
+ * - Node Interaction & Navigation (#4, #8)
+ * - Node Clustering for Large Repositories (#10)
+ * - Intelligent Layout Algorithms (#11)
+ * - Impact Analysis Visualization (#15)
+ * - Full Keyboard Navigation & Accessibility (#18)
+ * - Enhanced Mini-Map & Smooth Transitions (#19)
+ * - Responsive Zoom and Pan Controls (#20)
+ * - Node Relationship Visualization (#21)
+ * - Dark Mode Support integration (#22)
+ * - Advanced Graph Search & Highlighting (#5, #23)
+ *
+ * @component
+ */
 const react_1 = __importStar(require("react"));
+const vscode_api_1 = require("./vscode-api");
 const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
 // Import WebSocket client
-const client_1 = require("../api/client");
+const webviewSocket_1 = require("../api/webviewSocket");
+const webviewClient_1 = require("../api/webviewClient");
 // Layout algorithm imports
 const layoutAlgorithms_1 = require("./layoutAlgorithms");
 // Clustering imports (#11)
@@ -58,6 +80,8 @@ const ZoomControls_1 = require("./ZoomControls");
 const RelationshipVisualizer_1 = require("./RelationshipVisualizer");
 // Export Modal imports
 const ExportModal_1 = require("../components/ExportModal");
+const HeatmapLegend_1 = require("./HeatmapLegend");
+const heatmapUtils_1 = require("./heatmapUtils");
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode_1.ClusterNode,
@@ -234,6 +258,109 @@ function createStyledNode(node, position, isMatching, isSelected) {
             borderStyle: isChanged ? 'dashed' : 'solid', // Dashed border for changed files
         },
         className: isMatching ? 'matching-node' : 'dimmed-node',
+    };
+}
+function getNodeColorFromData(data) {
+    if (data?.status && data.status !== 'unchanged' && STATUS_COLORS[data.status]) {
+        return STATUS_COLORS[data.status];
+    }
+    if (data?.type === 'directory')
+        return exports.NODE_COLORS.directory;
+    if (data?.type === 'function')
+        return exports.NODE_COLORS.function;
+    if (data?.type === 'class')
+        return exports.NODE_COLORS.class;
+    if (data?.type === 'module')
+        return exports.NODE_COLORS.module;
+    if (data?.language)
+        return exports.NODE_COLORS[data.language] || exports.NODE_COLORS.default;
+    return exports.NODE_COLORS.default;
+}
+function getBaseNodeBackground(node) {
+    const color = getNodeColorFromData(node.data);
+    const type = node.data?.type;
+    return type === 'directory' ? `${color}20` : 'var(--am-panel-bg)';
+}
+function applyHeatmapToNode(node, heatmap, mode) {
+    if (node.type === 'clusterNode') {
+        return node;
+    }
+    if (!node.data)
+        return node;
+    const filePath = node.data.filePath || node.id;
+    const entry = mode === 'off' ? undefined : heatmap.entries.get((0, heatmapUtils_1.normalizePath)(filePath));
+    const background = entry ? entry.color : getBaseNodeBackground(node);
+    return {
+        ...node,
+        data: {
+            ...node.data,
+            heatmapTooltip: entry ? entry.tooltip : undefined,
+        },
+        style: {
+            ...node.style,
+            background,
+        },
+    };
+}
+function applyGraphPatch(current, patch) {
+    const removedFiles = new Set([...(patch.changed_files || []), ...(patch.removed_files || [])].map(heatmapUtils_1.normalizePath));
+    const nodesById = new Map(current.nodes.map((node) => [node.id, node]));
+    const edgesById = new Map(current.edges.map((edge) => [edge.id, edge]));
+    nodesById.forEach((node, id) => {
+        const fileKey = getNodeFileKey(node);
+        if (fileKey && removedFiles.has(fileKey)) {
+            nodesById.delete(id);
+        }
+    });
+    edgesById.forEach((edge, id) => {
+        if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) {
+            edgesById.delete(id);
+        }
+    });
+    patch.nodes?.forEach((node) => {
+        nodesById.set(node.id, node);
+    });
+    patch.edges?.forEach((edge) => {
+        edgesById.set(edge.id, edge);
+    });
+    const nodes = Array.from(nodesById.values());
+    const edges = Array.from(edgesById.values());
+    return {
+        ...current,
+        nodes,
+        edges,
+        stats: recalculateStats(nodes),
+    };
+}
+function getNodeFileKey(node) {
+    if (node.filePath) {
+        return (0, heatmapUtils_1.normalizePath)(node.filePath);
+    }
+    if (node.type === 'file') {
+        return (0, heatmapUtils_1.normalizePath)(node.id);
+    }
+    if (node.id.includes('::')) {
+        return (0, heatmapUtils_1.normalizePath)(node.id.split('::')[0]);
+    }
+    return null;
+}
+function recalculateStats(nodes) {
+    const files = nodes.filter((node) => node.type === 'file');
+    const directories = nodes.filter((node) => node.type === 'directory');
+    const functions = nodes.filter((node) => node.type === 'function');
+    const classes = nodes.filter((node) => node.type === 'class');
+    const filesByLanguage = {};
+    files.forEach((node) => {
+        if (!node.language)
+            return;
+        filesByLanguage[node.language] = (filesByLanguage[node.language] || 0) + 1;
+    });
+    return {
+        totalFiles: files.length,
+        totalDirectories: directories.length,
+        totalFunctions: functions.length,
+        totalClasses: classes.length,
+        filesByLanguage,
     };
 }
 // Hierarchical layout algorithm (original built-in)
@@ -624,7 +751,10 @@ const NodeTooltip = ({ node, position }) => {
                 react_1.default.createElement("span", { className: "tooltip-value" }, data.language))),
             react_1.default.createElement("div", { className: "tooltip-row" },
                 react_1.default.createElement("span", { className: "tooltip-key" }, "Type:"),
-                react_1.default.createElement("span", { className: "tooltip-value" }, data.type))),
+                react_1.default.createElement("span", { className: "tooltip-value" }, data.type)),
+            data.heatmapTooltip && (react_1.default.createElement("div", { className: "tooltip-row" },
+                react_1.default.createElement("span", { className: "tooltip-key" }, "Heatmap:"),
+                react_1.default.createElement("span", { className: "tooltip-value" }, data.heatmapTooltip)))),
         react_1.default.createElement("div", { className: "tooltip-hint" }, "Click to open \u2022 Right-click for actions")));
 };
 const ContextMenu = ({ node, position, onAction, onClose }) => {
@@ -674,11 +804,11 @@ const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, on
             react_1.default.createElement("kbd", null, "L"),
             " to toggle layout panel")));
 };
-// Inner component that uses ReactFlow hooks
-const ArchitectureGraphInner = () => {
+const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [] }) => {
     // VS Code API reference - memoized to call only once
-    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+    const vscode = (0, react_1.useMemo)(() => (0, vscode_api_1.getVsCodeApi)(), []);
     const vscodeRef = (0, react_1.useRef)(vscode); // Keep ref for backward compatibility in callbacks
+    const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(), []);
     const state = vscode.getState() || {};
     const [nodes, setNodes, onNodesChange] = (0, reactflow_1.useNodesState)([]);
     const [edges, setEdges, onEdgesChange] = (0, reactflow_1.useEdgesState)([]);
@@ -688,6 +818,8 @@ const ArchitectureGraphInner = () => {
     const [errorMessage, setErrorMessage] = (0, react_1.useState)(null);
     const [dataSource, setDataSource] = (0, react_1.useState)('local');
     const [selectedNode, setSelectedNode] = (0, react_1.useState)(null);
+    const [contributions, setContributions] = (0, react_1.useState)(null);
+    const heatmapState = (0, react_1.useMemo)(() => (0, heatmapUtils_1.buildHeatmap)(contributions?.contributions || [], heatmapMode), [contributions, heatmapMode]);
     // Search and filter state - initialized from persistence
     const [searchVisible, setSearchVisible] = (0, react_1.useState)(false);
     const [filters, setFilters] = (0, react_1.useState)(state.filters || {
@@ -741,6 +873,7 @@ const ArchitectureGraphInner = () => {
     const wsClientRef = (0, react_1.useRef)(null);
     const [wsConnected, setWsConnected] = (0, react_1.useState)(false);
     const [repoId, setRepoId] = (0, react_1.useState)(null);
+    const [backendUrl, setBackendUrl] = (0, react_1.useState)('http://localhost:8080');
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     // Zoom & Pan controls (#20)
@@ -972,7 +1105,8 @@ const ArchitectureGraphInner = () => {
             // Handle no data state
             if (message.command === 'noData') {
                 setIsLoading(false);
-                setErrorMessage(message.message || 'No data available');
+                setErrorMessage(null);
+                setNodes([]);
                 return;
             }
             if (message.command === 'architectureData') {
@@ -1004,6 +1138,9 @@ const ArchitectureGraphInner = () => {
                 };
                 initLayout();
             }
+            if (message.command === 'config' && message.data?.backendUrl) {
+                setBackendUrl(message.data.backendUrl);
+            }
             // Handle impact analysis response
             if (message.command === 'impactAnalysis') {
                 console.log('Impact analysis data:', message.data);
@@ -1020,16 +1157,54 @@ const ArchitectureGraphInner = () => {
         window.addEventListener('message', handleMessage);
         // Request data (using stable vscode instance)
         vscode.postMessage({ command: 'requestArchitecture' });
+        vscode.postMessage({ command: 'requestConfig' });
         return () => {
             window.removeEventListener('message', handleMessage);
         };
     }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
+    (0, react_1.useEffect)(() => {
+        if (!repoId || heatmapMode === 'off') {
+            setContributions(null);
+            return;
+        }
+        let active = true;
+        const load = async () => {
+            try {
+                const response = await apiClient.getContributions(repoId);
+                if (active) {
+                    setContributions(response);
+                }
+            }
+            catch (error) {
+                if (active) {
+                    setContributions(null);
+                }
+            }
+        };
+        load();
+        return () => {
+            active = false;
+        };
+    }, [apiClient, repoId, heatmapMode]);
+    (0, react_1.useEffect)(() => {
+        if (!nodes.length)
+            return;
+        setNodes((prevNodes) => prevNodes.map((node) => applyHeatmapToNode(node, heatmapState, heatmapMode)));
+    }, [heatmapMode, heatmapState, setNodes, nodes.length]);
+    (0, react_1.useEffect)(() => {
+        if (!highlightNodeIds.length)
+            return;
+        setNodes((prevNodes) => prevNodes.map((node) => ({
+            ...node,
+            selected: highlightNodeIds.includes(node.id),
+        })));
+    }, [highlightNodeIds, setNodes]);
     // WebSocket connection management
     (0, react_1.useEffect)(() => {
         if (!repoId)
             return;
         // Create WebSocket client for repo updates
-        const wsClient = new client_1.ArchMindWebSocketClient('repo', repoId, 'http://localhost:8080');
+        const wsClient = new webviewSocket_1.ArchMindWebSocketClient('repo', repoId, backendUrl);
         wsClientRef.current = wsClient;
         // Handle WebSocket updates
         const unsubscribe = wsClient.subscribeAll((update) => {
@@ -1043,6 +1218,32 @@ const ArchitectureGraphInner = () => {
                     message: `Architecture updated: ${update.changed_nodes?.length || 0} nodes changed`,
                     type: 'info'
                 });
+            }
+            else if (update.type === 'graph_patch') {
+                const patch = update.result_summary?.graph_patch;
+                if (patch) {
+                    setRawData((current) => (current ? applyGraphPatch(current, patch) : current));
+                    vscode.postMessage({
+                        command: 'showNotification',
+                        message: `Graph patch applied: ${patch.changed_files?.length || 0} files updated`,
+                        type: 'info',
+                    });
+                }
+            }
+            else if (update.type === 'graph_updated') {
+                const patch = update.result_summary?.graph_patch;
+                if (patch) {
+                    setRawData((current) => (current ? applyGraphPatch(current, patch) : current));
+                }
+                const fileCount = patch?.changed_files?.length || update.changed_nodes?.length || 0;
+                const message = `Architecture updated: ${fileCount} files changed`;
+                vscode.postMessage({
+                    command: 'graphUpdated',
+                    changedNodes: update.changed_nodes || patch?.nodes?.map((node) => node.id) || [],
+                    changedEdges: update.changed_edges || patch?.edges?.map((edge) => edge.id) || [],
+                    changedFiles: patch?.changed_files || [],
+                });
+                window.dispatchEvent(new CustomEvent('archmind:graphUpdated', { detail: { message } }));
             }
             else if (update.type === 'progress') {
                 // Show loading message with progress
@@ -1081,7 +1282,7 @@ const ArchitectureGraphInner = () => {
             wsClientRef.current = null;
             setWsConnected(false);
         };
-    }, [repoId, vscode]);
+    }, [repoId, backendUrl, vscode]);
     // Memoize minimap node color function
     const minimapNodeColor = (0, react_1.useCallback)((node) => {
         if (node.data?.type === 'directory')
@@ -1192,6 +1393,15 @@ const ArchitectureGraphInner = () => {
             return [];
         return Object.keys(stats.filesByLanguage).sort();
     }, [stats]);
+    // Show empty state
+    if (!isLoading && !errorMessage && nodes.length === 0) {
+        return (react_1.default.createElement("div", { className: "loading-container" },
+            react_1.default.createElement("div", { style: { fontSize: '48px', marginBottom: '16px' } }, "\uD83C\uDFD7\uFE0F"),
+            react_1.default.createElement("h3", { style: { margin: 0, fontSize: '18px' } }, "No Architecture Data"),
+            react_1.default.createElement("p", { style: { opacity: 0.8, maxWidth: '400px', textAlign: 'center' } }, "Run analysis to visualize the codebase."),
+            react_1.default.createElement("div", { className: "error-actions" },
+                react_1.default.createElement("button", { className: "backend-button", onClick: handleAnalyzeWithBackend }, "Analyze Repository"))));
+    }
     // Show error state
     if (errorMessage) {
         return (react_1.default.createElement("div", { className: "error-container" },
@@ -1214,6 +1424,8 @@ const ArchitectureGraphInner = () => {
             }
         }, style: { width: '100%', height: '100%', position: 'relative' }, className: isFullscreen ? 'fullscreen-graph' : '' },
         react_1.default.createElement(StatsDisplay, { stats: stats, source: dataSource }),
+        heatmapMode !== 'off' && (react_1.default.createElement("div", { className: "heatmap-legend-floating" },
+            react_1.default.createElement(HeatmapLegend_1.HeatmapLegend, { mode: heatmapMode, minMetric: heatmapState.minMetric, maxMetric: heatmapState.maxMetric }))),
         react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size > 0 ? matchingNodeIds.size : (filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false), availableLanguages: availableLanguages }),
         !searchVisible && (react_1.default.createElement("button", { className: "search-toggle-btn", onClick: () => setSearchVisible(true), title: "Search & Filter (Ctrl+F)" }, "\uD83D\uDD0D")),
         react_1.default.createElement(LayoutPanel, { currentLayout: layoutType, onLayoutChange: setLayoutType, isLayouting: isLayouting, isVisible: layoutPanelVisible, onClose: () => setLayoutPanelVisible(false) }),
@@ -1250,13 +1462,13 @@ const ArchitectureGraphInner = () => {
                 }
             }, onClose: () => setRelationshipVisible(false) })),
         keyboardHelpVisible && (react_1.default.createElement(KeyboardNavigation_1.KeyboardHelp, { onClose: () => setKeyboardHelpVisible(false) })),
-        react_1.default.createElement(ExportModal_1.ExportModal, { isOpen: exportMenuVisible, onClose: () => setExportMenuVisible(false), nodes: nodes, edges: edges, rawData: rawData, reactFlowWrapper: reactFlowWrapperRef.current, source: rawData?.source || 'local' }),
+        react_1.default.createElement(ExportModal_1.ExportModal, { isOpen: exportMenuVisible, onClose: () => setExportMenuVisible(false), nodes: nodes, edges: edges, rawData: rawData, reactFlowWrapper: reactFlowWrapperRef.current, source: rawData?.source || 'local', repoId: repoId, backendUrl: backendUrl }),
         react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider
-const ArchitectureGraph = () => {
+const ArchitectureGraph = ({ heatmapMode }) => {
     return (react_1.default.createElement(reactflow_1.ReactFlowProvider, null,
-        react_1.default.createElement(ArchitectureGraphInner, null)));
+        react_1.default.createElement(ArchitectureGraphInner, { heatmapMode: heatmapMode })));
 };
 exports.default = ArchitectureGraph;
 //# sourceMappingURL=ArchitectureGraph.js.map

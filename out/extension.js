@@ -43,6 +43,32 @@ const localParser_1 = require("./analyzer/localParser");
 const analysisService_1 = require("./services/analysisService");
 const DependencyCodeLensProvider_1 = require("./providers/DependencyCodeLensProvider");
 const fingerprintService_1 = require("./services/fingerprintService");
+class ArchMindViewsProvider {
+    constructor() {
+        this._onDidChangeTreeData = new vscode.EventEmitter();
+        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+    }
+    getTreeItem(element) {
+        return element;
+    }
+    getChildren() {
+        return Promise.resolve([
+            new ArchMindViewItem('Boundary Diagram', 'archmind.showBoundaryDiagram'),
+            new ArchMindViewItem('Dependency Diagram', 'archmind.showDependencyDiagram'),
+            new ArchMindViewItem('Communication Diagram', 'archmind.showCommunicationDiagram'),
+            new ArchMindViewItem('Toggle Heatmap', 'archmind.toggleHeatmap'),
+            new ArchMindViewItem('Analyze Live Architecture', 'archmind.analyzeLiveArchitecture'),
+            new ArchMindViewItem('Configure Webhook', 'archmind.configureWebhook'),
+        ]);
+    }
+}
+class ArchMindViewItem extends vscode.TreeItem {
+    constructor(label, commandId) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.command = { command: commandId, title: label };
+        this.contextValue = 'archmindViewItem';
+    }
+}
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
     // Initialize LocalParser
@@ -99,6 +125,40 @@ function activate(context) {
         if (vscode.window.activeTextEditor) {
             parseAndSendLocalData(vscode.window.activeTextEditor.document, localParser);
         }
+    });
+    let showBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showBoundaryDiagram', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        ArchitecturePanel.currentPanel?.switchView('boundary-diagram');
+    });
+    let showDependencyDiagramCmd = vscode.commands.registerCommand('archmind.showDependencyDiagram', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        ArchitecturePanel.currentPanel?.switchView('dependency-diagram');
+    });
+    let showCommunicationDiagramCmd = vscode.commands.registerCommand('archmind.showCommunicationDiagram', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        ArchitecturePanel.currentPanel?.switchView('communication');
+    });
+    let toggleHeatmapCmd = vscode.commands.registerCommand('archmind.toggleHeatmap', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        ArchitecturePanel.currentPanel?.toggleHeatmap();
+    });
+    let analyzeLiveArchitectureCmd = vscode.commands.registerCommand('archmind.analyzeLiveArchitecture', async () => {
+        await ArchitecturePanel.analyzeWithBackend(context.extensionUri);
+        vscode.window.showInformationMessage('Live architecture analysis triggered.');
+    });
+    let configureWebhookCmd = vscode.commands.registerCommand('archmind.configureWebhook', async () => {
+        await configureWebhookSetup();
+    });
+    let showInBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showInBoundaryDiagram', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showWarningMessage('No active editor to reveal in boundary diagram.');
+            return;
+        }
+        const filePath = editor.document.uri.fsPath;
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        ArchitecturePanel.currentPanel?.switchView('boundary-diagram');
+        ArchitecturePanel.currentPanel?.revealBoundaryFile(filePath);
     });
     // Register local analysis command
     let showLocalAnalysisCmd = vscode.commands.registerCommand('archmind.showLocalAnalysis', async () => {
@@ -208,7 +268,7 @@ function activate(context) {
             vscode.window.showInformationMessage('ArchMind configuration updated.');
         }
     });
-    context.subscriptions.push(showArchitectureCmd, showLocalAnalysisCmd, analyzeRepositoryCmd, refreshGraphCmd, checkBackendStatusCmd, configChangeListener, onActiveEditorChanged, onDocumentChanged);
+    context.subscriptions.push(vscode.window.registerTreeDataProvider('archmind.views', new ArchMindViewsProvider()), showArchitectureCmd, showLocalAnalysisCmd, analyzeRepositoryCmd, analyzeLiveArchitectureCmd, refreshGraphCmd, checkBackendStatusCmd, showBoundaryDiagramCmd, showDependencyDiagramCmd, showCommunicationDiagramCmd, toggleHeatmapCmd, configureWebhookCmd, showInBoundaryDiagramCmd, configChangeListener, onActiveEditorChanged, onDocumentChanged);
 }
 async function parseAndSendLocalData(document, parser) {
     if (document.uri.scheme !== 'file')
@@ -329,6 +389,59 @@ async function getRepositoryUrl() {
     }
     return repoUrl || undefined;
 }
+async function configureWebhookSetup() {
+    const config = vscode.workspace.getConfiguration('archmind');
+    const backendUrl = config.get('backendUrl', 'http://localhost:8080');
+    const webhookSecret = config.get('webhookSecret', '');
+    const choices = [
+        { label: 'Copy Webhook URL', description: `${backendUrl}/webhooks/github` },
+        { label: 'Copy Webhook Secret', description: webhookSecret ? 'Use configured secret' : 'No secret configured' },
+        { label: 'Open GitHub Webhook Settings', description: 'Open repository webhook settings in browser' },
+        { label: 'Set Webhook Secret', description: 'Update archmind.webhookSecret setting' },
+    ];
+    const selection = await vscode.window.showQuickPick(choices, {
+        placeHolder: 'Configure GitHub webhook for ArchMind',
+    });
+    if (!selection)
+        return;
+    if (selection.label === 'Copy Webhook URL') {
+        await vscode.env.clipboard.writeText(`${backendUrl}/webhooks/github`);
+        vscode.window.showInformationMessage('Webhook URL copied to clipboard.');
+        return;
+    }
+    if (selection.label === 'Copy Webhook Secret') {
+        if (!webhookSecret) {
+            vscode.window.showWarningMessage('No webhook secret configured.');
+            return;
+        }
+        await vscode.env.clipboard.writeText(webhookSecret);
+        vscode.window.showInformationMessage('Webhook secret copied to clipboard.');
+        return;
+    }
+    if (selection.label === 'Set Webhook Secret') {
+        const value = await vscode.window.showInputBox({
+            prompt: 'Enter GitHub webhook secret',
+            password: true,
+            placeHolder: 'secret',
+        });
+        if (value !== undefined) {
+            await config.update('webhookSecret', value, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage('Webhook secret updated.');
+        }
+        return;
+    }
+    if (selection.label === 'Open GitHub Webhook Settings') {
+        const repoUrl = await getRepositoryUrl();
+        if (!repoUrl) {
+            vscode.window.showWarningMessage('Unable to detect repository URL.');
+            return;
+        }
+        const httpsUrl = repoUrl.replace(/\.git$/, '');
+        const settingsUrl = `${httpsUrl}/settings/hooks`;
+        vscode.env.openExternal(vscode.Uri.parse(settingsUrl));
+        return;
+    }
+}
 class ArchitecturePanel {
     /**
      * Analyze repository using backend API
@@ -365,11 +478,15 @@ class ArchitecturePanel {
         this._extensionUri = extensionUri;
         // Set the webview's initial html content
         this._update();
+        this._postConfigToWebview();
         // Listen for when the panel is disposed
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         // Handle messages from the webview
         this._panel.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
+                case 'requestConfig':
+                    this._postConfigToWebview();
+                    return;
                 case 'requestArchitecture':
                     await this._sendArchitecture();
                     return;
@@ -403,8 +520,48 @@ class ArchitecturePanel {
                 case 'saveFile':
                     await this._saveFile(message.data, message.filename, message.mimeType);
                     return;
+                case 'graphUpdated':
+                    await this._handleGraphUpdated(message);
+                    return;
+                case 'showNotification':
+                    vscode.window.showInformationMessage(message.message || 'ArchMind notification');
+                    return;
             }
         }, null, this._disposables);
+    }
+    _postConfigToWebview() {
+        const config = vscode.workspace.getConfiguration('archmind');
+        this._panel.webview.postMessage({
+            command: 'config',
+            data: {
+                backendUrl: config.get('backendUrl', 'http://localhost:8080'),
+                graphEngineUrl: config.get('graphEngineUrl', 'http://localhost:8000'),
+            },
+        });
+    }
+    async _handleGraphUpdated(message) {
+        const config = vscode.workspace.getConfiguration('archmind');
+        const enabled = config.get('notifications.enabled', true);
+        if (!enabled)
+            return;
+        const changedFilesCount = message.changedFiles?.length || message.changedNodes?.length || 0;
+        const result = await vscode.window.showInformationMessage(`ArchMind: Architecture updated (${changedFilesCount} files changed)`, 'View Changes', 'Dismiss');
+        if (result === 'View Changes') {
+            ArchitecturePanel.createOrShow(this._extensionUri);
+            this._panel.webview.postMessage({
+                command: 'highlightNodes',
+                nodeIds: message.changedNodes || [],
+            });
+        }
+    }
+    switchView(view) {
+        this._panel.webview.postMessage({ command: 'switchView', view });
+    }
+    toggleHeatmap() {
+        this._panel.webview.postMessage({ command: 'toggleHeatmap' });
+    }
+    revealBoundaryFile(filePath) {
+        this._panel.webview.postMessage({ command: 'revealBoundaryFile', filePath });
     }
     /**
      * Opens a file in the editor and optionally navigates to a specific line

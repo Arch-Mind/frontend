@@ -1,4 +1,5 @@
 import { Node, Edge } from 'reactflow';
+import { getVsCodeApi } from '../../webview/vscode-api';
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
 
 export interface MarkdownExportOptions {
@@ -312,8 +313,8 @@ function generateEdgeList(edges: Edge[], nodes: Node[]): string {
  */
 function downloadMarkdown(content: string, filename: string): void {
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+    const vscode = getVsCodeApi();
+    if (vscode) {
         vscode.postMessage({
             command: 'saveFile',
             data: content,

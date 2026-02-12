@@ -19,6 +19,7 @@
  * @component
  */
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
+import { getVsCodeApi } from './vscode-api';
 import ReactFlow, {
     Background,
     useNodesState,
@@ -820,12 +821,7 @@ function formatEdges(rawEdges: RawEdge[], selectedNodeId: string | null, matchin
     });
 }
 
-// Declare VS Code API type
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+// Declare VS Code API type removed (handled by wrapper)
 
 interface StatsDisplayProps {
     stats: GraphStats | null;
@@ -1259,7 +1255,7 @@ interface ArchitectureGraphProps {
 
 const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
     // VS Code API reference - memoized to call only once
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
 
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
@@ -1620,7 +1616,8 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
             // Handle no data state
             if (message.command === 'noData') {
                 setIsLoading(false);
-                setErrorMessage(message.message || 'No data available');
+                setErrorMessage(null);
+                setNodes([]);
                 return;
             }
 
@@ -1933,6 +1930,24 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
         return Object.keys(stats.filesByLanguage).sort();
     }, [stats]);
 
+    // Show empty state
+    if (!isLoading && !errorMessage && nodes.length === 0) {
+        return (
+            <div className="loading-container">
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏗️</div>
+                <h3 style={{ margin: 0, fontSize: '18px' }}>No Architecture Data</h3>
+                <p style={{ opacity: 0.8, maxWidth: '400px', textAlign: 'center' }}>
+                    Run analysis to visualize the codebase.
+                </p>
+                <div className="error-actions">
+                    <button className="backend-button" onClick={handleAnalyzeWithBackend}>
+                        Analyze Repository
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     // Show error state
     if (errorMessage) {
         return (
@@ -1973,7 +1988,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({ heatmapMode,
             className={isFullscreen ? 'fullscreen-graph' : ''}
         >
             <StatsDisplay stats={stats} source={dataSource} />
-            {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
+            {heatmapMode !== 'off' && (
                 <div className="heatmap-legend-floating">
                     <HeatmapLegend
                         mode={heatmapMode}

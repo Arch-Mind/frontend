@@ -6,6 +6,7 @@ exports.parseImportedJSON = parseImportedJSON;
 exports.convertToReactFlowFormat = convertToReactFlowFormat;
 exports.getJSONSize = getJSONSize;
 exports.formatFileSize = formatFileSize;
+const vscode_api_1 = require("../../webview/vscode-api");
 /**
  * Export graph data as JSON
  */
@@ -44,8 +45,8 @@ function exportAsJSON(nodes, edges, rawData, source = 'local') {
 function downloadJSON(nodes, edges, filename = 'graph-export.json', rawData, source = 'local') {
     const jsonString = exportAsJSON(nodes, edges, rawData, source);
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+    const vscode = (0, vscode_api_1.getVsCodeApi)();
+    if (vscode) {
         vscode.postMessage({
             command: 'saveFile',
             data: jsonString,

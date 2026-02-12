@@ -1,401 +1,380 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import ReactFlow, { Background, BackgroundVariant, Edge, Node, ReactFlowProvider } from 'reactflow';
+import ReactFlow, {
+    Background,
+    useNodesState,
+    useEdgesState,
+    Node,
+    Edge,
+    ReactFlowProvider,
+    MarkerType,
+} from 'reactflow';
 import 'reactflow/dist/style.css';
-
-import { dagreLayout } from './layoutAlgorithms';
 import { ArchMindWebviewApiClient } from '../api/webviewClient';
-import { ContributionsResponse, DependenciesResponse, DependencyRecord } from '../api/types';
+import { DependenciesResponse, DependencyRecord, ContributionsResponse } from '../api/types';
+import { HeatmapMode, HeatmapState, buildHeatmap, normalizePath } from './heatmapUtils';
 import { HeatmapLegend } from './HeatmapLegend';
-import { HeatmapNode } from './HeatmapNode';
-import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { dagreLayout, LayoutNode, LayoutEdge } from './layoutAlgorithms';
+import { getVsCodeApi } from './vscode-api';
 
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+/**
+ * Generate fallback dependencies from the architecture graph edges.
+ * Handles local analysis data where node IDs are absolute file paths
+ * and import targets may be relative module paths.
+ */
+function generateFallbackDependencies(graphData: any): DependenciesResponse {
+    const nodesArray: any[] = graphData?.nodes || [];
+    const edgesArray: any[] = graphData?.edges || [];
 
-const edgeStyles: Record<string, { color: string; dash: string; width: number }> = {
-    import: { color: '#6b7280', dash: '0', width: 1.2 },
-    inheritance: { color: '#8b5cf6', dash: '6 4', width: 1.2 },
-    library: { color: '#a16207', dash: '2 6', width: 1.2 },
-    data: { color: '#dc2626', dash: '0', width: 2.2 },
-};
+    // Find the workspace root for building short names
+    const rootNode = nodesArray.find((n: any) => n.type === 'directory' && n.depth === 0);
+    const rootPrefix = rootNode
+        ? (rootNode.filePath || rootNode.id || '').replace(/\\/g, '/').replace(/\/?$/, '/')
+        : '';
 
-interface FilterState {
-    import: boolean;
-    inheritance: boolean;
-    library: boolean;
-    data: boolean;
+    function shortName(absPath: string): string {
+        const normalized = absPath.replace(/\\/g, '/');
+        return rootPrefix && normalized.startsWith(rootPrefix)
+            ? normalized.slice(rootPrefix.length)
+            : normalized;
+    }
+
+    // Build a set of known node IDs for resolution
+    const nodeIds = new Set(nodesArray.map((n: any) => n.id));
+
+    // Collect import and call edges
+    const depEdges = edgesArray.filter((e: any) => e.type === 'imports' || e.type === 'calls');
+
+    const dependencies: DependencyRecord[] = [];
+    const seen = new Set<string>();
+
+    for (const edge of depEdges) {
+        const src = edge.source || '';
+        const tgt = edge.target || '';
+        const key = `${src}→${tgt}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        dependencies.push({
+            source_file: shortName(src),
+            source_language: '',
+            target: shortName(tgt),
+            target_type: nodeIds.has(tgt) ? 'file' : 'module',
+            relationship: edge.type || 'imports',
+            relationship_properties: {},
+        });
+    }
+
+    // If no import/call edges found, generate lightweight dependencies 
+    // from directory→file containment so the diagram shows *something*
+    if (dependencies.length === 0) {
+        const fileNodes = nodesArray.filter((n: any) => n.type === 'file');
+        const dirNodes = nodesArray.filter((n: any) => n.type === 'directory' && n.depth > 0);
+
+        for (const dir of dirNodes) {
+            const children = fileNodes.filter((f: any) => f.parentId === dir.id);
+            if (children.length > 1) {
+                // Create dependencies between sibling files (they share a module)
+                for (let i = 1; i < children.length; i++) {
+                    dependencies.push({
+                        source_file: shortName(children[0].id),
+                        source_language: '',
+                        target: shortName(children[i].id),
+                        target_type: 'file',
+                        relationship: 'sibling',
+                        relationship_properties: { directory: shortName(dir.id) },
+                    });
+                }
+            }
+        }
+    }
+
+    return {
+        repo_id: graphData?.repoId || graphData?.repo_id || '',
+        total_dependencies: dependencies.length,
+        dependencies,
+    };
 }
-
-type FocusMode = 'off' | '1' | '2' | 'all';
 
 interface DependencyDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
 }
 
-export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+const DependencyDiagramInner: React.FC<DependencyDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
+    const [nodes, setNodes, onNodesChange] = useNodesState([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
     const [repoId, setRepoId] = useState<string | null>(null);
+    const [initialLoading, setInitialLoading] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [rawData, setRawData] = useState<DependenciesResponse | null>(null);
+    const [dependencyData, setDependencyData] = useState<DependenciesResponse | null>(null);
     const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
-    const [nodes, setNodes] = useState<Node[]>([]);
-    const [edges, setEdges] = useState<Edge[]>([]);
-    const [selectedNode, setSelectedNode] = useState<string | null>(null);
-    const [focusMode, setFocusMode] = useState<FocusMode>('off');
-
-    const [filters, setFilters] = useState<FilterState>({
-        import: true,
-        inheritance: true,
-        library: true,
-        data: true,
-    });
+    const [graphData, setGraphData] = useState<any>(null);
 
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
         [contributions, heatmapMode]
     );
 
-    const highlightSet = useMemo(
-        () => new Set(highlightNodeIds.map((id) => normalizePath(id.replace(/^file:/, '')))),
-        [highlightNodeIds]
-    );
-
     useEffect(() => {
         const handler = (event: MessageEvent) => {
             const message = event.data;
             if (message?.command === 'architectureData') {
+                setInitialLoading(false);
                 const extractedRepoId = message.data?.repo_id || message.data?.repoId;
                 if (extractedRepoId) {
                     setRepoId(extractedRepoId);
                 }
+                if (message.data) {
+                    setGraphData(message.data);
+                }
+            }
+            if (message?.command === 'loading') {
+                setInitialLoading(false);
+                setIsLoading(true);
+                setError(null);
+            }
+            if (message?.command === 'error') {
+                setInitialLoading(false);
+                setError(message.message || 'An error occurred');
+                setIsLoading(false);
+            }
+            if (message?.command === 'noData') {
+                setInitialLoading(false);
             }
         };
-
         window.addEventListener('message', handler);
         vscode.postMessage({ command: 'requestArchitecture' });
-
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
 
     useEffect(() => {
-        if (!repoId) return;
-        let active = true;
-
+        if (!repoId) {
+            // No repoId — try fallback from graph data
+            if (graphData) {
+                const fallback = generateFallbackDependencies(graphData);
+                if (fallback.dependencies.length > 0) {
+                    setDependencyData(fallback);
+                }
+            }
+            return;
+        }
         const load = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
                 const response = await apiClient.getDependencies(repoId);
-                if (!active) return;
-                setRawData(response);
-            } catch (err) {
-                if (!active) return;
-                setError(err instanceof Error ? err.message : 'Failed to load dependencies');
-            } finally {
-                if (active) {
-                    setIsLoading(false);
+                if (response && response.dependencies && response.dependencies.length > 0) {
+                    setDependencyData(response);
+                } else {
+                    console.warn('Dependency API returned empty, using fallback');
+                    const fallback = generateFallbackDependencies(graphData);
+                    setDependencyData(fallback.dependencies.length > 0 ? fallback : response);
                 }
+            } catch (err) {
+                console.error("Failed to load dependencies:", err);
+                if (graphData) {
+                    const fallback = generateFallbackDependencies(graphData);
+                    if (fallback.dependencies.length > 0) {
+                        setDependencyData(fallback);
+                        setError(null);
+                    } else {
+                        setError("Failed to load dependency data. Backend may be unavailable.");
+                    }
+                } else {
+                    setError("Failed to load dependency data. Backend may be unavailable.");
+                }
+            } finally {
+                setIsLoading(false);
             }
         };
-
         load();
-        return () => {
-            active = false;
-        };
-    }, [apiClient, repoId]);
+    }, [repoId, apiClient, graphData]);
 
     useEffect(() => {
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
         }
-
         let active = true;
         const load = async () => {
             try {
                 const response = await apiClient.getContributions(repoId);
-                if (active) {
-                    setContributions(response);
-                }
-            } catch {
-                if (active) {
-                    setContributions(null);
-                }
+                if (active) setContributions(response);
+            } catch (err) {
+                console.error("Failed to load contributions:", err);
             }
         };
-
         load();
-        return () => {
-            active = false;
-        };
-    }, [apiClient, repoId, heatmapMode]);
-
-    const filteredRecords = useMemo(() => {
-        if (!rawData) return [];
-        return rawData.dependencies.filter(record => {
-            const category = getDependencyCategory(record);
-            return filters[category];
-        });
-    }, [rawData, filters]);
+        return () => { active = false; };
+    }, [repoId, heatmapMode, apiClient]);
 
     useEffect(() => {
-        if (!rawData) return;
+        if (!dependencyData) return;
 
-        const records = applyFocusMode(filteredRecords, selectedNode, focusMode);
+        const uniqueNodes = new Map<string, Node>();
+        const newEdges: Edge[] = [];
 
-        const nodeMap = new Map<string, Node>();
-        const edgeMap = new Map<string, {
-            source: string;
-            target: string;
-            category: keyof FilterState;
-            count: number;
-        }>();
-
-        records.forEach(record => {
-            const sourceId = `file:${record.source_file}`;
-            const targetId = `${record.target_type}:${record.target}`;
-            const category = getDependencyCategory(record);
-            const sourceHeatmap = heatmapState.entries.get(normalizePath(record.source_file));
-            const sourceHighlighted = highlightSet.has(normalizePath(record.source_file));
-
-            if (!nodeMap.has(sourceId)) {
-                nodeMap.set(
-                    sourceId,
-                    createNode(
-                        sourceId,
-                        record.source_file,
-                        'File',
-                        sourceHeatmap?.color,
-                        sourceHeatmap?.tooltip,
-                        sourceHighlighted
-                    )
-                );
-            }
-            if (!nodeMap.has(targetId)) {
-                const targetHighlighted =
-                    targetId.startsWith('file:') && highlightSet.has(normalizePath(record.target));
-                nodeMap.set(
-                    targetId,
-                    createNode(targetId, record.target, record.target_type, undefined, undefined, targetHighlighted)
-                );
+        dependencyData.dependencies.forEach((dep, index) => {
+            // Source Node
+            if (!uniqueNodes.has(dep.source_file)) {
+                uniqueNodes.set(dep.source_file, {
+                    id: dep.source_file,
+                    data: { label: dep.source_file.split('/').pop(), type: 'file' },
+                    position: { x: 0, y: 0 },
+                    style: { background: 'var(--am-panel-bg)', color: 'var(--am-fg)', border: '1px solid var(--am-border)', borderRadius: 4, padding: 8, width: 180 },
+                });
             }
 
-            const key = `${sourceId}|${targetId}|${category}`;
-            const entry = edgeMap.get(key);
-            if (entry) {
-                entry.count += 1;
-            } else {
-                edgeMap.set(key, { source: sourceId, target: targetId, category, count: 1 });
+            // Target Node
+            if (!uniqueNodes.has(dep.target)) {
+                uniqueNodes.set(dep.target, {
+                    id: dep.target,
+                    data: { label: dep.target.split('/').pop(), type: dep.target_type },
+                    position: { x: 0, y: 0 },
+                    style: { background: 'var(--am-panel-bg)', color: 'var(--am-fg)', border: '1px solid var(--am-border)', borderRadius: 4, padding: 8, width: 180 },
+                });
             }
+
+            // Edge
+            newEdges.push({
+                id: `e-${index}`,
+                source: dep.source_file,
+                target: dep.target,
+                label: dep.relationship,
+                type: 'smoothstep',
+                markerEnd: { type: MarkerType.ArrowClosed },
+                style: { stroke: 'var(--am-fg)', opacity: 0.6 },
+            });
         });
 
-        const nodeList = Array.from(nodeMap.values());
-        const edgeList: Edge[] = Array.from(edgeMap.entries()).map(([key, edge]) => {
-            const style = edgeStyles[edge.category];
-            return {
-                id: key,
-                source: edge.source,
-                target: edge.target,
-                label: `${edge.count} ${edge.category}`,
-                style: {
-                    stroke: style.color,
-                    strokeWidth: style.width,
-                    strokeDasharray: style.dash,
-                },
-                labelStyle: { fill: style.color, fontSize: 10 },
-                animated: edge.category === 'data',
-            };
+        // Apply Heatmap
+        let processedNodes = Array.from(uniqueNodes.values());
+        if (heatmapMode !== 'off') {
+            processedNodes = processedNodes.map(node => {
+                const entry = heatmapState.entries.get(normalizePath(node.id));
+                if (entry) {
+                    return {
+                        ...node,
+                        style: { ...node.style, background: entry.color },
+                        data: { ...node.data, heatmapTooltip: entry.tooltip }
+                    };
+                }
+                return node;
+            });
+        }
+
+        // Apply Layout
+        const layoutNodes: LayoutNode[] = processedNodes.map(n => ({ id: n.id, width: 180, height: 40 }));
+        const layoutEdgesWrapper: LayoutEdge[] = newEdges.map(e => ({ id: e.id, source: e.source, target: e.target }));
+
+        const layoutResult = dagreLayout(layoutNodes, layoutEdgesWrapper, 'TB');
+
+        const finalNodes = processedNodes.map(node => {
+            const pos = layoutResult.nodes.get(node.id) || { x: 0, y: 0 };
+            return { ...node, position: pos };
         });
 
-        const layoutNodes = nodeList.map(node => ({
-            id: node.id,
-            width: 180,
-            height: 50,
-        }));
+        setNodes(finalNodes);
+        setEdges(newEdges);
 
-        const layoutEdges = edgeList.map(edge => ({
-            id: edge.id,
-            source: edge.source,
-            target: edge.target,
-        }));
+    }, [dependencyData, heatmapState, heatmapMode, setNodes, setEdges]);
 
-        const { nodes: positions } = dagreLayout(layoutNodes, layoutEdges, 'LR');
-        const layoutedNodes = nodeList.map(node => ({
-            ...node,
-            position: positions.get(node.id) || { x: 0, y: 0 },
-        }));
+    // Show "initializing" spinner while waiting for first architectureData
+    if (initialLoading) {
+        return (
+            <div className="loading-container">
+                <div className="loading-spinner" />
+                Initializing dependency diagram...
+            </div>
+        );
+    }
 
-        setNodes(layoutedNodes);
-        setEdges(edgeList);
-    }, [rawData, filteredRecords, focusMode, selectedNode, heatmapState, highlightSet]);
+    if (!repoId && !dependencyData) {
+        return (
+            <div className="diagram-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
+                <h3>No Repository Analyzed</h3>
+                <p style={{ opacity: 0.8, maxWidth: '400px', marginBottom: '24px' }}>
+                    Run backend analysis to visualize dependencies, or open a workspace for local analysis.
+                </p>
+                <button
+                    className="diagram-pill active"
+                    onClick={() => vscode.postMessage({ command: 'analyzeRepository' })}
+                >
+                    Analyze Repository
+                </button>
+            </div>
+        );
+    }
+    if (isLoading) {
+        return <div className="loading-container"><div className="loading-spinner" />Loading dependencies...</div>;
+    }
 
-    return (
-        <div className="diagram-container">
-            <div className="diagram-header">
-                <div>
-                    <h2>Dependency Diagram</h2>
-                    <p>Visualize import, inheritance, library, and data dependencies.</p>
-                </div>
-                <div className="diagram-filters">
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.import}
-                            onChange={() => setFilters(prev => ({ ...prev, import: !prev.import }))}
-                        />
-                        Import
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.inheritance}
-                            onChange={() => setFilters(prev => ({ ...prev, inheritance: !prev.inheritance }))}
-                        />
-                        Inheritance
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.library}
-                            onChange={() => setFilters(prev => ({ ...prev, library: !prev.library }))}
-                        />
-                        Library
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.data}
-                            onChange={() => setFilters(prev => ({ ...prev, data: !prev.data }))}
-                        />
-                        Data
-                    </label>
-                </div>
-                <div className="diagram-filters focus-group">
-                    <span>Focus:</span>
-                    {(['off', '1', '2', 'all'] as FocusMode[]).map(mode => (
-                        <button
-                            key={mode}
-                            className={focusMode === mode ? 'diagram-pill active' : 'diagram-pill'}
-                            onClick={() => setFocusMode(mode)}
-                        >
-                            {mode === 'off' ? 'All' : `${mode}-hop`}
-                        </button>
-                    ))}
+    if (error) {
+        return (
+            <div className="error-container">
+                <div className="error-icon">⚠️</div>
+                <h3>Error</h3>
+                <p>{error}</p>
+                <div className="error-actions">
+                    <button className="retry-button" onClick={() => {
+                        setError(null);
+                        if (repoId) {
+                            setIsLoading(true);
+                            apiClient.getDependencies(repoId)
+                                .then(r => { setDependencyData(r); setIsLoading(false); })
+                                .catch(() => { setError('Retry failed'); setIsLoading(false); });
+                        }
+                    }}>Retry</button>
                 </div>
             </div>
-            {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
-                <HeatmapLegend
-                    mode={heatmapMode}
-                    minMetric={heatmapState.minMetric}
-                    maxMetric={heatmapState.maxMetric}
-                />
-            )}
+        );
+    }
 
-            {isLoading && <div className="diagram-state">Loading dependencies...</div>}
-            {error && <div className="diagram-state diagram-error">{error}</div>}
+    // Empty state
+    if (!isLoading && !error && (!dependencyData || dependencyData.total_dependencies === 0)) {
+        return (
+            <div className="loading-container">
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔗</div>
+                <h3 style={{ margin: 0, fontSize: '18px' }}>No Dependencies Found</h3>
+                <p style={{ opacity: 0.8, maxWidth: '400px', textAlign: 'center' }}>
+                    Run analysis to detect dependencies.
+                </p>
+            </div>
+        );
+    }
 
-            {!isLoading && !error && (
-                <ReactFlowProvider>
-                    <div className="diagram-flow">
-                        <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
-                            nodeTypes={{ heatmapNode: HeatmapNode }}
-                            fitView
-                            fitViewOptions={{ padding: 0.2 }}
-                            onNodeClick={(_, node) => setSelectedNode(node.id)}
-                        >
-                            <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
-                        </ReactFlow>
-                    </div>
-                </ReactFlowProvider>
+    return (
+        <div style={{ width: '100%', height: '100%' }}>
+            {heatmapMode !== 'off' && (
+                <div className="heatmap-legend-floating">
+                    <HeatmapLegend
+                        mode={heatmapMode}
+                        minMetric={heatmapState.minMetric}
+                        maxMetric={heatmapState.maxMetric}
+                    />
+                </div>
             )}
+            <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                fitView
+            >
+                <Background color="var(--am-border)" gap={16} />
+            </ReactFlow>
         </div>
     );
 };
 
-function getDependencyCategory(record: DependencyRecord): keyof FilterState {
-    if (record.relationship === 'INHERITS') return 'inheritance';
-    if (record.relationship === 'USES_TABLE') return 'data';
-    if (record.relationship === 'DEPENDS_ON' && record.target_type === 'Library') return 'library';
-    return 'import';
-}
-
-function createNode(
-    id: string,
-    label: string,
-    type: string,
-    heatmapColor?: string,
-    heatmapTooltip?: string,
-    isHighlighted?: boolean
-): Node {
-    return {
-        id,
-        type: 'heatmapNode',
-        position: { x: 0, y: 0 },
-        style: {
-            padding: '8px 10px',
-            borderRadius: '8px',
-            background: heatmapColor || '#0f172a',
-            color: '#f8fafc',
-            border: isHighlighted ? '2px solid #f97316' : '1px solid #334155',
-            boxShadow: isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.6)' : undefined,
-            fontSize: 11,
-        },
-        width: 180,
-        data: {
-            label,
-            type,
-            heatmapTooltip,
-        },
-    };
-}
-
-function applyFocusMode(
-    records: DependencyRecord[],
-    selectedNode: string | null,
-    focusMode: FocusMode
-): DependencyRecord[] {
-    if (!selectedNode || focusMode === 'off') return records;
-
-    const targetId = selectedNode.includes(':')
-        ? selectedNode.split(':').slice(1).join(':')
-        : selectedNode;
-    const adjacency = new Map<string, Set<string>>();
-
-    records.forEach(record => {
-        const source = record.source_file;
-        const target = record.target;
-        if (!adjacency.has(source)) adjacency.set(source, new Set());
-        adjacency.get(source)?.add(target);
-        if (!adjacency.has(target)) adjacency.set(target, new Set());
-        adjacency.get(target)?.add(source);
-    });
-
-    const maxDepth = focusMode === 'all' ? 99 : parseInt(focusMode, 10);
-    const queue: Array<{ id: string; depth: number }> = [{ id: targetId, depth: 0 }];
-    const visited = new Set<string>([targetId]);
-
-    while (queue.length > 0) {
-        const current = queue.shift();
-        if (!current) break;
-        if (current.depth >= maxDepth) continue;
-        const neighbors = adjacency.get(current.id);
-        if (!neighbors) continue;
-        neighbors.forEach(neighbor => {
-            if (!visited.has(neighbor)) {
-                visited.add(neighbor);
-                queue.push({ id: neighbor, depth: current.depth + 1 });
-            }
-        });
-    }
-
-    return records.filter(record => visited.has(record.source_file) || visited.has(record.target));
-}
+export const DependencyDiagram = (props: DependencyDiagramProps) => (
+    <ReactFlowProvider>
+        <DependencyDiagramInner {...props} />
+    </ReactFlowProvider>
+);

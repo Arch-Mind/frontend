@@ -4,11 +4,7 @@ import { ContributionsResponse, ModuleBoundariesResponse, ModuleBoundary } from 
 import { HeatmapLegend } from './HeatmapLegend';
 import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
 
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+import { getVsCodeApi } from './vscode-api';
 
 interface BoundaryGroup {
     title: string;
@@ -50,7 +46,7 @@ interface ModuleBoundaryDiagramProps {
 }
 
 export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
     const [repoId, setRepoId] = useState<string | null>(null);
@@ -182,7 +178,7 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({ he
                     </button>
                 </div>
             </div>
-            {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
+            {heatmapMode !== 'off' && (
                 <HeatmapLegend
                     mode={heatmapMode}
                     minMetric={heatmapState.minMetric}

@@ -6,11 +6,7 @@ import { dagreLayout } from './layoutAlgorithms';
 import { ArchMindWebviewApiClient } from '../api/webviewClient';
 import { CommunicationResponse } from '../api/types';
 
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+import { getVsCodeApi } from './vscode-api';
 
 interface FilterState {
     http: boolean;
@@ -20,7 +16,7 @@ interface FilterState {
 }
 
 export const ServiceCommunicationDiagram: React.FC = () => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
     const [repoId, setRepoId] = useState<string | null>(null);

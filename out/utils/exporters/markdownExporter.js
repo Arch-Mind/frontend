@@ -5,6 +5,7 @@ exports.exportAsMarkdown = exportAsMarkdown;
 exports.generateMermaidDiagram = generateMermaidDiagram;
 exports.exportAsREADME = exportAsREADME;
 exports.getMarkdownSize = getMarkdownSize;
+const vscode_api_1 = require("../../webview/vscode-api");
 exports.DEFAULT_MARKDOWN_OPTIONS = {
     format: 'mermaid',
     includeMetadata: true,
@@ -253,8 +254,8 @@ function generateEdgeList(edges, nodes) {
  */
 function downloadMarkdown(content, filename) {
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+    const vscode = (0, vscode_api_1.getVsCodeApi)();
+    if (vscode) {
         vscode.postMessage({
             command: 'saveFile',
             data: content,

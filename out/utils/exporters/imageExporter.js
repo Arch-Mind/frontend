@@ -11,6 +11,7 @@ exports.exportAsSVG = exportAsSVG;
 exports.copyToClipboard = copyToClipboard;
 exports.estimateImageSize = estimateImageSize;
 const html2canvas_1 = __importDefault(require("html2canvas"));
+const vscode_api_1 = require("../../webview/vscode-api");
 const vscodeExportHelper_1 = require("./vscodeExportHelper");
 exports.DEFAULT_IMAGE_OPTIONS = {
     format: 'png',
@@ -226,8 +227,8 @@ function escapeXML(text) {
 }
 function downloadString(content, filename, mimeType) {
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+    const vscode = (0, vscode_api_1.getVsCodeApi)();
+    if (vscode) {
         vscode.postMessage({
             command: 'saveFile',
             data: content,

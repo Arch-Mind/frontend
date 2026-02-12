@@ -8,8 +8,21 @@ interface HeatmapLegendProps {
 }
 
 export const HeatmapLegend: React.FC<HeatmapLegendProps> = ({ mode, minMetric, maxMetric }) => {
-    if (mode === 'off' || maxMetric <= 0) {
+    if (mode === 'off') {
         return null;
+    }
+
+    if (maxMetric <= 0) {
+        return (
+            <div className="heatmap-legend">
+                <div className="heatmap-legend-title">Heatmap: {labelForMode(mode)}</div>
+                <div className="heatmap-legend-empty">
+                    <span style={{ opacity: 0.7, fontSize: '12px' }}>
+                        ⚠️ No contribution data available. Run backend analysis to enable heatmap coloring.
+                    </span>
+                </div>
+            </div>
+        );
     }
 
     const steps = [0.1, 0.5, 1];

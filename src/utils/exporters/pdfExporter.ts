@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { getVsCodeApi } from '../../webview/vscode-api';
 import html2canvas from 'html2canvas';
 import { Node, Edge } from 'reactflow';
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
@@ -113,17 +114,21 @@ export async function exportAsPDF(
 
         // Save PDF
         // Check if we're in VS Code webview context
-        if (typeof acquireVsCodeApi === 'function') {
+        if (typeof window !== 'undefined') {
             const pdfBlob = pdf.output('blob');
             const reader = new FileReader();
             reader.onloadend = () => {
-                const vscode = acquireVsCodeApi();
-                vscode.postMessage({
-                    command: 'saveFile',
-                    data: reader.result as string,
-                    filename: filename,
-                    mimeType: 'application/pdf'
-                });
+                const vscode = getVsCodeApi();
+                if (vscode) {
+                    vscode.postMessage({
+                        command: 'saveFile',
+                        data: reader.result as string,
+                        filename: filename,
+                        mimeType: 'application/pdf'
+                    });
+                } else {
+                    pdf.save(filename);
+                }
             };
             reader.onerror = () => { throw new Error('Failed to read PDF blob'); };
             reader.readAsDataURL(pdfBlob);
@@ -281,11 +286,11 @@ export async function exportCustomPDF(
 
     // Save PDF
     // Check if we're in VS Code webview context
-    if (typeof acquireVsCodeApi === 'function') {
+    const vscode = getVsCodeApi();
+    if (vscode) {
         const pdfBlob = pdf.output('blob');
         const reader = new FileReader();
         reader.onloadend = () => {
-            const vscode = acquireVsCodeApi();
             vscode.postMessage({
                 command: 'saveFile',
                 data: reader.result as string,

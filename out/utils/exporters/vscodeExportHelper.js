@@ -1,12 +1,9 @@
 "use strict";
-/**
- * Helper for VS Code webview file exports
- * Wraps postMessage with promises that resolve when extension responds
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initializeExportListener = initializeExportListener;
 exports.saveFileInVSCode = saveFileInVSCode;
 exports.isVSCodeWebview = isVSCodeWebview;
+const vscode_api_1 = require("../../webview/vscode-api");
 let pendingExports = new Map();
 /**
  * Initialize export message listener (call once on app start)
@@ -41,12 +38,12 @@ function initializeExportListener() {
  */
 function saveFileInVSCode(data, filename, mimeType) {
     return new Promise((resolve, reject) => {
-        // Check if we're in VS Code webview context
-        if (typeof acquireVsCodeApi !== 'function') {
+        // Use singleton API accessor
+        const vscode = (0, vscode_api_1.getVsCodeApi)();
+        if (!vscode) {
             reject(new Error('Not in VS Code webview context'));
             return;
         }
-        const vscode = acquireVsCodeApi();
         // Store promise handlers
         pendingExports.set(filename, { resolve, reject });
         // Send message to extension
@@ -69,6 +66,7 @@ function saveFileInVSCode(data, filename, mimeType) {
  * Check if we're in VS Code webview context
  */
 function isVSCodeWebview() {
-    return typeof acquireVsCodeApi === 'function';
+    // Check if API is available via our singleton wrapper
+    return !!(0, vscode_api_1.getVsCodeApi)();
 }
 //# sourceMappingURL=vscodeExportHelper.js.map

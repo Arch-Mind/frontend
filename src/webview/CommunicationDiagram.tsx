@@ -15,12 +15,7 @@ import { CommunicationResponse, ContributionsResponse } from '../api/types';
 import { HeatmapLegend } from './HeatmapLegend';
 import { HeatmapNode } from './HeatmapNode';
 import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
-
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+import { getVsCodeApi } from './vscode-api';
 
 interface FilterState {
     http: boolean;
@@ -41,7 +36,7 @@ interface CommunicationDiagramProps {
 }
 
 export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heatmapMode, highlightNodeIds = [] }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(() => new ArchMindWebviewApiClient(), []);
 
     const [repoId, setRepoId] = useState<string | null>(null);
@@ -62,6 +57,8 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
         compose: true,
     });
 
+    const [initialLoading, setInitialLoading] = useState(true);
+
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
         [contributions, heatmapMode]
@@ -76,10 +73,24 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
         const handler = (event: MessageEvent) => {
             const message = event.data;
             if (message?.command === 'architectureData') {
+                setInitialLoading(false);
                 const extractedRepoId = message.data?.repo_id || message.data?.repoId;
                 if (extractedRepoId) {
                     setRepoId(extractedRepoId);
                 }
+            }
+            if (message?.command === 'loading') {
+                setInitialLoading(false);
+                setIsLoading(true);
+                setError(null);
+            }
+            if (message?.command === 'error') {
+                setInitialLoading(false);
+                setError(message.message || 'An error occurred');
+                setIsLoading(false);
+            }
+            if (message?.command === 'noData') {
+                setInitialLoading(false);
             }
         };
 
@@ -301,115 +312,158 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({ heat
 
     return (
         <div className="diagram-container">
-            <div className="diagram-header">
-                <div>
-                    <h2>Communication Diagram</h2>
-                    <p>Service calls across HTTP, RPC, and queues with compose boundaries.</p>
+            {initialLoading && (
+                <div className="loading-container">
+                    <div className="loading-spinner" />
+                    Initializing communication diagram...
                 </div>
-                <div className="diagram-filters">
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.http}
-                            onChange={() => setFilters(prev => ({ ...prev, http: !prev.http }))}
-                        />
-                        HTTP
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.rpc}
-                            onChange={() => setFilters(prev => ({ ...prev, rpc: !prev.rpc }))}
-                        />
-                        RPC
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.queues}
-                            onChange={() => setFilters(prev => ({ ...prev, queues: !prev.queues }))}
-                        />
-                        Queue
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.compose}
-                            onChange={() => setFilters(prev => ({ ...prev, compose: !prev.compose }))}
-                        />
-                        Compose
-                    </label>
-                </div>
-                <div className="diagram-filters">
-                    <label className="diagram-toggle">
-                        <input
-                            type="checkbox"
-                            checked={apiFlowMode}
-                            onChange={() => setApiFlowMode(prev => !prev)}
-                        />
-                        API Flow
-                    </label>
-                    {apiFlowMode && data?.compose_services?.length ? (
-                        <select
-                            className="diagram-select"
-                            value={flowEntry}
-                            onChange={(event) => setFlowEntry(event.target.value)}
-                        >
-                            {data.compose_services.map(service => (
-                                <option key={service.name} value={service.name}>
-                                    {service.name}
-                                </option>
-                            ))}
-                        </select>
-                    ) : null}
-                </div>
-            </div>
-
-            {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
-                <HeatmapLegend
-                    mode={heatmapMode}
-                    minMetric={heatmapState.minMetric}
-                    maxMetric={heatmapState.maxMetric}
-                />
             )}
 
-            {isLoading && <div className="diagram-state">Loading communication data...</div>}
-            {error && <div className="diagram-state diagram-error">{error}</div>}
-
-            {!isLoading && !error && (
-                <ReactFlowProvider>
-                    <div className="diagram-flow">
-                        <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
-                            nodeTypes={{ heatmapNode: HeatmapNode }}
-                            fitView
-                            fitViewOptions={{ padding: 0.2 }}
-                            onEdgeClick={(_, edge) => {
-                                const details = edge.data?.details as EdgeDetails | undefined;
-                                if (details) {
-                                    setEdgeDetails(details);
-                                }
-                            }}
-                        >
-                            <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
-                        </ReactFlow>
-                    </div>
-                </ReactFlowProvider>
+            {!initialLoading && !repoId && !data && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
+                    <h3>No Repository Analyzed</h3>
+                    <p style={{ opacity: 0.8, maxWidth: '400px', marginBottom: '24px' }}>
+                        Run backend analysis to visualize service communication patterns.
+                    </p>
+                    <button
+                        className="diagram-pill active"
+                        onClick={() => vscode.postMessage({ command: 'analyzeRepository' })}
+                    >
+                        Analyze Repository
+                    </button>
+                </div>
             )}
 
-            {edgeDetails && (
-                <div className="edge-details">
-                    <div className="edge-details-header">
-                        <span>{edgeDetails.label}</span>
-                        <button onClick={() => setEdgeDetails(null)}>×</button>
+            {!initialLoading && (repoId || data) && (
+                <>
+                    <div className="diagram-header">
+                        <div>
+                            <h2>Communication Diagram</h2>
+                            <p>Service calls across HTTP, RPC, and queues with compose boundaries.</p>
+                        </div>
+                        <div className="diagram-filters">
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={filters.http}
+                                    onChange={() => setFilters(prev => ({ ...prev, http: !prev.http }))}
+                                />
+                                HTTP
+                            </label>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={filters.rpc}
+                                    onChange={() => setFilters(prev => ({ ...prev, rpc: !prev.rpc }))}
+                                />
+                                RPC
+                            </label>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={filters.queues}
+                                    onChange={() => setFilters(prev => ({ ...prev, queues: !prev.queues }))}
+                                />
+                                Queue
+                            </label>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={filters.compose}
+                                    onChange={() => setFilters(prev => ({ ...prev, compose: !prev.compose }))}
+                                />
+                                Compose
+                            </label>
+                        </div>
+                        <div className="diagram-filters">
+                            <label className="diagram-toggle">
+                                <input
+                                    type="checkbox"
+                                    checked={apiFlowMode}
+                                    onChange={() => setApiFlowMode(prev => !prev)}
+                                />
+                                API Flow
+                            </label>
+                            {apiFlowMode && data?.compose_services?.length ? (
+                                <select
+                                    className="diagram-select"
+                                    value={flowEntry}
+                                    onChange={(event) => setFlowEntry(event.target.value)}
+                                >
+                                    {data.compose_services.map(service => (
+                                        <option key={service.name} value={service.name}>
+                                            {service.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : null}
+                        </div>
                     </div>
-                    <ul>
-                        {edgeDetails.meta.map((item) => (
-                            <li key={item}>{item}</li>
-                        ))}
-                    </ul>
-                </div>
+
+                    {heatmapMode !== 'off' && (
+                        <HeatmapLegend
+                            mode={heatmapMode}
+                            minMetric={heatmapState.minMetric}
+                            maxMetric={heatmapState.maxMetric}
+                        />
+                    )}
+
+                    {isLoading && <div className="diagram-state">Loading communication data...</div>}
+                    {error && <div className="diagram-state diagram-error">{error}</div>}
+
+                    {!isLoading && !error && nodes.length === 0 && (
+                        <div className="diagram-state">
+                            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📡</div>
+                            <h3>No Communication Patterns Detected</h3>
+                            <p style={{ opacity: 0.8, maxWidth: '400px', margin: '0 auto 24px' }}>
+                                Analysis found no HTTP, RPC, or Queue interactions.
+                            </p>
+                            <button
+                                className="diagram-pill active"
+                                onClick={() => vscode.postMessage({ command: 'analyzeRepository' })}
+                            >
+                                Re-run Analysis
+                            </button>
+                        </div>
+                    )}
+
+                    {!isLoading && !error && nodes.length > 0 && (
+                        <ReactFlowProvider>
+                            <div className="diagram-flow">
+                                <ReactFlow
+                                    nodes={nodes}
+                                    edges={edges}
+                                    nodeTypes={{ heatmapNode: HeatmapNode }}
+                                    fitView
+                                    fitViewOptions={{ padding: 0.2 }}
+                                    onEdgeClick={(_, edge) => {
+                                        const details = edge.data?.details as EdgeDetails | undefined;
+                                        if (details) {
+                                            setEdgeDetails(details);
+                                        }
+                                    }}
+                                >
+                                    <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
+                                </ReactFlow>
+                            </div>
+                        </ReactFlowProvider>
+                    )}
+
+                    {edgeDetails && (
+                        <div className="edge-details">
+                            <div className="edge-details-header">
+                                <span>{edgeDetails.label}</span>
+                                <button onClick={() => setEdgeDetails(null)}>×</button>
+                            </div>
+                            <ul>
+                                {edgeDetails.meta.map((item) => (
+                                    <li key={item}>{item}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );
