@@ -1,15 +1,17 @@
-import { Node, Edge } from 'reactflow';
-import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
+import { Node, Edge } from 'reactflow'; // Types from ReactFlow
+import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code environments
 
+// Options for tailoring the Markdown output
 export interface MarkdownExportOptions {
-    format: 'standard' | 'github' | 'mermaid';
-    includeMetadata: boolean;
-    includeStats: boolean;
-    includeNodeList: boolean;
-    includeEdgeList: boolean;
-    mermaidDirection: 'TB' | 'LR' | 'RL' | 'BT';
+    format: 'standard' | 'github' | 'mermaid'; // Style of the diagram/content
+    includeMetadata: boolean; // Whether to include timestamp and counts
+    includeStats: boolean; // Whether to include thorough statistics
+    includeNodeList: boolean; // Detailed table of nodes
+    includeEdgeList: boolean; // Detailed table of edges
+    mermaidDirection: 'TB' | 'LR' | 'RL' | 'BT'; // Direction for Mermaid diagrams
 }
 
+// Default settings if no options are provided
 export const DEFAULT_MARKDOWN_OPTIONS: MarkdownExportOptions = {
     format: 'mermaid',
     includeMetadata: true,
@@ -20,32 +22,33 @@ export const DEFAULT_MARKDOWN_OPTIONS: MarkdownExportOptions = {
 };
 
 /**
- * Export as Markdown
+ * Main function to export variables graph as a Markdown file.
+ * It builds a string based on selected options and triggers a download.
  */
 export function exportAsMarkdown(
-    nodes: Node[],
-    edges: Edge[],
-    filename: string = 'graph.md',
-    options: Partial<MarkdownExportOptions> = {}
+    nodes: Node[],            // Array of nodes
+    edges: Edge[],            // Array of edges
+    filename: string = 'graph.md', // Output filename
+    options: Partial<MarkdownExportOptions> = {} // Optional overrides
 ): void {
     const opts = { ...DEFAULT_MARKDOWN_OPTIONS, ...options };
 
     let markdown = '';
 
-    // Add header
+    // 1. Add Header
     markdown += '# Architecture Graph\n\n';
 
-    // Add metadata
+    // 2. Add Metadata (if requested)
     if (opts.includeMetadata) {
         markdown += generateMetadata(nodes, edges);
     }
 
-    // Add statistics
+    // 3. Add Statistics (if requested)
     if (opts.includeStats) {
         markdown += generateStatistics(nodes, edges);
     }
 
-    // Add diagram based on format
+    // 4. Add Diagram Section based on format
     switch (opts.format) {
         case 'mermaid':
             markdown += generateMermaidDiagram(nodes, edges, opts.mermaidDirection);
@@ -58,22 +61,23 @@ export function exportAsMarkdown(
             break;
     }
 
-    // Add node list
+    // 5. Add Detailed Node List (if requested)
     if (opts.includeNodeList) {
         markdown += generateNodeList(nodes);
     }
 
-    // Add edge list
+    // 6. Add Detailed Edge List (if requested)
     if (opts.includeEdgeList) {
         markdown += generateEdgeList(edges, nodes);
     }
 
-    // Download
+    // 7. Trigger Download
     downloadMarkdown(markdown, filename);
 }
 
 /**
- * Generate Mermaid diagram
+ * Generates technical text representation of the graph using Mermaid syntax.
+ * This renders as a diagram in compatible viewers (GitHub, Notion, etc.).
  */
 export function generateMermaidDiagram(
     nodes: Node[],
@@ -83,7 +87,7 @@ export function generateMermaidDiagram(
     let mermaid = '\n## Graph Diagram\n\n```mermaid\n';
     mermaid += `graph ${direction}\n`;
 
-    // Add nodes with shapes based on type
+    // 1. Define Nodes with specific styles per type
     nodes.forEach(node => {
         const id = sanitizeMermaidId(node.id);
         const label = escapeMarkdown(node.data?.label || node.id);
@@ -113,7 +117,7 @@ export function generateMermaidDiagram(
 
     mermaid += '\n';
 
-    // Add edges
+    // 2. Define Edges (Connections)
     edges.forEach(edge => {
         const sourceId = sanitizeMermaidId(edge.source);
         const targetId = sanitizeMermaidId(edge.target);
@@ -127,7 +131,7 @@ export function generateMermaidDiagram(
 }
 
 /**
- * Generate metadata section
+ * Creates a metadata section with timestamp and summary counts.
  */
 function generateMetadata(nodes: Node[], edges: Edge[]): string {
     const now = new Date();
@@ -141,12 +145,12 @@ function generateMetadata(nodes: Node[], edges: Edge[]): string {
 }
 
 /**
- * Generate statistics section
+ * Calculates and formats statistics about the graph structure.
  */
 function generateStatistics(nodes: Node[], edges: Edge[]): string {
     let md = '## Statistics\n\n';
 
-    // Node type distribution
+    // 1. Node type distribution table
     const typeCount = new Map<string, number>();
     nodes.forEach(node => {
         const type = node.data?.type || 'default';
@@ -166,15 +170,16 @@ function generateStatistics(nodes: Node[], edges: Edge[]): string {
 
     md += '\n';
 
-    // Connection statistics
+    // 2. Connection statistics
     const avgConnections = nodes.length > 0 ? (edges.length / nodes.length).toFixed(2) : '0';
     md += '### Connection Statistics\n\n';
     md += `- **Average connections per node**: ${avgConnections}\n`;
     md += `- **Total connections**: ${edges.length}\n`;
 
-    // Find most connected nodes
+    // 3. Find most connected nodes (Hubs)
     const connectionCount = new Map<string, number>();
     edges.forEach(edge => {
+        // Count for both source and target to see total degree
         connectionCount.set(edge.source, (connectionCount.get(edge.source) || 0) + 1);
         connectionCount.set(edge.target, (connectionCount.get(edge.target) || 0) + 1);
     });
@@ -267,7 +272,7 @@ function generateStandardMarkdown(nodes: Node[], edges: Edge[]): string {
 }
 
 /**
- * Generate node list
+ * Generates a simple node list table.
  */
 function generateNodeList(nodes: Node[]): string {
     let md = '## Node Details\n\n';
@@ -287,7 +292,7 @@ function generateNodeList(nodes: Node[]): string {
 }
 
 /**
- * Generate edge list
+ * Generates a simple edge list table.
  */
 function generateEdgeList(edges: Edge[], nodes: Node[]): string {
     let md = '## Edge Details\n\n';
@@ -308,7 +313,8 @@ function generateEdgeList(edges: Edge[], nodes: Node[]): string {
 }
 
 /**
- * Download markdown file
+ * Handles the actual download process.
+ * Detects if running in a VS Code extension context or a standard browser.
  */
 function downloadMarkdown(content: string, filename: string): void {
     // Check if we're in VS Code webview context
@@ -321,7 +327,7 @@ function downloadMarkdown(content: string, filename: string): void {
             mimeType: 'text/markdown;charset=utf-8'
         });
     } else {
-        // Fallback for non-VS Code contexts (browser)
+        // Fallback for standard browser context
         const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -335,15 +341,16 @@ function downloadMarkdown(content: string, filename: string): void {
 }
 
 /**
- * Sanitize ID for Mermaid
+ * Helper: Sanitizes IDs to be compatible with Mermaid syntax (no special chars).
  */
 function sanitizeMermaidId(id: string): string {
     const sanitized = id.replace(/[^a-zA-Z0-9_]/g, '_');
+    // Mermaid IDs cannot start with numbers
     return sanitized.match(/^[0-9]/) ? `node_${sanitized}` : sanitized;
 }
 
 /**
- * Escape markdown special characters
+ * Helper: Escapes characters that would break Markdown formatting.
  */
 function escapeMarkdown(text: string): string {
     return text
@@ -356,7 +363,8 @@ function escapeMarkdown(text: string): string {
 }
 
 /**
- * Export as README template
+ * Special exporter meant for project READMEs.
+ * Creates a "ARCHITECTURE.md" style document.
  */
 export function exportAsREADME(
     nodes: Node[],
