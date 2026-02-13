@@ -1,19 +1,21 @@
-import { Node, Edge } from 'reactflow';
-import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
+import { Node, Edge } from 'reactflow'; // ReactFlow types
+import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // VS Code helper
 
+// Structure of the exported JSON file
 export interface ExportData {
-    version: string;
-    exportDate: string;
-    metadata: {
+    version: string;             // File format version
+    exportDate: string;          // ISO timestamp of export
+    metadata: {                  // Summary info
         totalNodes: number;
         totalEdges: number;
-        source: 'local' | 'backend';
+        source: 'local' | 'backend'; // Where the data originated
     };
-    nodes: ExportNode[];
-    edges: ExportEdge[];
-    rawData?: any;
+    nodes: ExportNode[];         // List of graph nodes
+    edges: ExportEdge[];         // List of graph connections
+    rawData?: any;               // Original raw data (optional backup)
 }
 
+// Simplified node structure for export
 export interface ExportNode {
     id: string;
     label: string;
@@ -23,22 +25,24 @@ export interface ExportNode {
     style?: Record<string, any>;
 }
 
+// Simplified edge structure for export
 export interface ExportEdge {
     id: string;
-    source: string;
-    target: string;
+    source: string; // ID of start node
+    target: string; // ID of end node
     type?: string;
     label?: string;
 }
 
 /**
- * Export graph data as JSON
+ * Creates the JSON string representation of the graph.
+ * Maps ReactFlow objects to a stable export format.
  */
 export function exportAsJSON(
-    nodes: Node[],
-    edges: Edge[],
-    rawData?: any,
-    source: 'local' | 'backend' = 'local'
+    nodes: Node[],            // Current nodes
+    edges: Edge[],            // Current edges
+    rawData?: any,            // Optional original data
+    source: 'local' | 'backend' = 'local' // Origin
 ): string {
     const exportData: ExportData = {
         version: '1.0',
@@ -48,6 +52,7 @@ export function exportAsJSON(
             totalEdges: edges.length,
             source,
         },
+        // Map nodes to export format
         nodes: nodes.map(node => ({
             id: node.id,
             label: node.data?.label || node.id,
@@ -56,6 +61,7 @@ export function exportAsJSON(
             data: node.data,
             style: node.style,
         })),
+        // Map edges to export format
         edges: edges.map(edge => ({
             id: edge.id,
             source: edge.source,
@@ -66,12 +72,12 @@ export function exportAsJSON(
         rawData,
     };
 
-    return JSON.stringify(exportData, null, 2);
+    return JSON.stringify(exportData, null, 2); // Pretty print
 }
 
 /**
- * Download JSON data as a file
- * In VS Code webview context, this sends a message to the extension to save the file
+ * Triggers the download of the JSON file.
+ * Handles both VS Code extension environment (via postMessage) and standard browser download.
  */
 export function downloadJSON(
     nodes: Node[],
@@ -81,7 +87,7 @@ export function downloadJSON(
     source: 'local' | 'backend' = 'local'
 ): void {
     const jsonString = exportAsJSON(nodes, edges, rawData, source);
-    
+
     // Check if we're in VS Code webview context
     if (typeof acquireVsCodeApi === 'function') {
         const vscode = acquireVsCodeApi();
@@ -106,13 +112,14 @@ export function downloadJSON(
 }
 
 /**
- * Parse imported JSON data
+ * Validates and parses a JSON string into the ExportData structure.
+ * Throws errors for invalid formats.
  */
 export function parseImportedJSON(jsonString: string): ExportData {
     try {
         const data = JSON.parse(jsonString);
 
-        // Validate structure
+        // Simple validation of required fields
         if (!data.version || !data.nodes || !data.edges) {
             throw new Error('Invalid export file format');
         }
@@ -124,7 +131,8 @@ export function parseImportedJSON(jsonString: string): ExportData {
 }
 
 /**
- * Convert imported data back to ReactFlow format
+ * Converts the exported JSON data back into ReactFlow-compatible Nodes and Edges.
+ * Used when importing a file.
  */
 export function convertToReactFlowFormat(exportData: ExportData): {
     nodes: Node[];
@@ -150,7 +158,7 @@ export function convertToReactFlowFormat(exportData: ExportData): {
 }
 
 /**
- * Get JSON file size estimate
+ * Wraps the size calculation to be reusable.
  */
 export function getJSONSize(nodes: Node[], edges: Edge[], rawData?: any): number {
     const jsonString = exportAsJSON(nodes, edges, rawData);
@@ -158,7 +166,7 @@ export function getJSONSize(nodes: Node[], edges: Edge[], rawData?: any): number
 }
 
 /**
- * Format JSON size for display
+ * Utility to format bytes into human-readable strings (KB, MB).
  */
 export function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
