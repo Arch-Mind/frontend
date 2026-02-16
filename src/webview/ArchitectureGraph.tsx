@@ -1822,6 +1822,15 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                     changedFiles: patch?.changed_files || [],
                 });
                 window.dispatchEvent(new CustomEvent('archmind:graphUpdated', { detail: { message } }));
+
+                // Final completion updates can arrive as graph_updated (not status),
+                // so ensure loading state is resolved here as well.
+                if (update.status === 'COMPLETED') {
+                    setIsLoading(false);
+                } else if (update.status === 'FAILED') {
+                    setIsLoading(false);
+                    setErrorMessage(update.error || 'Analysis failed');
+                }
             } else if (update.type === 'progress') {
                 // Show loading message with progress
                 if (update.progress !== undefined) {
@@ -1833,7 +1842,15 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                     }
                 }
             } else if (update.type === 'status') {
-                if (update.status === 'COMPLETED') {
+                if (update.status === 'QUEUED' || update.status === 'PROCESSING') {
+                    setErrorMessage(null);
+                    setIsLoading(true);
+                    setLoadingMessage(
+                        update.status === 'QUEUED'
+                            ? 'Webhook received. Queuing analysis...'
+                            : 'Webhook received. Processing new push...'
+                    );
+                } else if (update.status === 'COMPLETED') {
                     setIsLoading(false);
                     // Refresh graph data
                     vscode.postMessage({ command: 'requestArchitecture' });
