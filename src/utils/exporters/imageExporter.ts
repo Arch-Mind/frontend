@@ -2,6 +2,9 @@ import html2canvas from 'html2canvas'; // Library to capture DOM elements as ima
 import { Node, Edge } from 'reactflow'; // ReactFlow types
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code
 
+declare const acquireVsCodeApi: any;
+
+
 // Options for tailoring the image output
 export interface ImageExportOptions {
     format: 'png' | 'jpeg' | 'webp'; // Image file format

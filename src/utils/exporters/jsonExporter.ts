@@ -1,4 +1,8 @@
-import { Node, Edge } from 'reactflow'; // ReactFlow types
+import { Node, Edge } from 'reactflow';
+import { getVsCodeApi } from '../vscodeApi';
+
+declare const acquireVsCodeApi: any;
+// ReactFlow types
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // VS Code helper
 
 // Structure of the exported JSON file
@@ -90,7 +94,7 @@ export function downloadJSON(
 
     // Check if we're in VS Code webview context
     if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+        const vscode = getVsCodeApi();
         vscode.postMessage({
             command: 'saveFile',
             data: jsonString,

@@ -1,15 +1,16 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-// Mock jsPDF to prevent import errors
+const pdfExporter_1 = require("../pdfExporter");
+// Mock jsPDF to prevent import errors during testing (runs in Node environment)
 jest.mock('jspdf', () => {
     return jest.fn();
 });
-// Mock html2canvas
+// Mock html2canvas as it requires a browser DOM
 jest.mock('html2canvas', () => {
     return jest.fn();
 });
-const pdfExporter_1 = require("../pdfExporter");
 describe('pdfExporter', () => {
+    // Mock Data: Standard nodes representing architecture components
     const mockNodes = [
         {
             id: 'node1',
@@ -27,6 +28,7 @@ describe('pdfExporter', () => {
             data: { label: 'database', type: 'directory' },
         },
     ];
+    // Mock Data: Edges connecting the nodes
     const mockEdges = [
         {
             id: 'edge1',
@@ -42,11 +44,13 @@ describe('pdfExporter', () => {
         },
     ];
     describe('estimatePDFSize', () => {
+        // Verify size calculation basics
         it('should estimate PDF file size', () => {
             const size = (0, pdfExporter_1.estimatePDFSize)(mockNodes, mockEdges);
             expect(size).toBeGreaterThan(0);
             expect(typeof size).toBe('number');
         });
+        // Verify that adding data increases size estimate
         it('should return larger size for more nodes', () => {
             const singleNode = [mockNodes[0]];
             const singleEdge = [mockEdges[0]];
@@ -54,16 +58,19 @@ describe('pdfExporter', () => {
             const multiSize = (0, pdfExporter_1.estimatePDFSize)(mockNodes, mockEdges);
             expect(multiSize).toBeGreaterThan(singleSize);
         });
+        // Verify base overhead calculation
         it('should include base size', () => {
             const size = (0, pdfExporter_1.estimatePDFSize)([], []);
             expect(size).toBeGreaterThan(0);
-            expect(size).toBeGreaterThanOrEqual(50000);
+            expect(size).toBeGreaterThanOrEqual(50000); // 50KB base overhead check
         });
+        // Verify that edges contribute to size
         it('should account for edges', () => {
             const noEdges = (0, pdfExporter_1.estimatePDFSize)(mockNodes, []);
             const withEdges = (0, pdfExporter_1.estimatePDFSize)(mockNodes, mockEdges);
             expect(withEdges).toBeGreaterThan(noEdges);
         });
+        // Verify handling of large datasets
         it('should handle large graphs', () => {
             const manyNodes = Array.from({ length: 1000 }, (_, i) => ({
                 id: `node${i}`,
@@ -73,11 +80,13 @@ describe('pdfExporter', () => {
             const size = (0, pdfExporter_1.estimatePDFSize)(manyNodes, []);
             expect(size).toBeGreaterThan(100000);
         });
+        // Verify deterministic output
         it('should provide consistent estimates', () => {
             const size1 = (0, pdfExporter_1.estimatePDFSize)(mockNodes, mockEdges);
             const size2 = (0, pdfExporter_1.estimatePDFSize)(mockNodes, mockEdges);
             expect(size1).toBe(size2);
         });
+        // Verify progressive scaling
         it('should scale with data', () => {
             const smallGraph = (0, pdfExporter_1.estimatePDFSize)([mockNodes[0]], []);
             const mediumGraph = (0, pdfExporter_1.estimatePDFSize)(mockNodes.slice(0, 2), [mockEdges[0]]);

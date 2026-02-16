@@ -83,6 +83,7 @@ import { RelationshipVisualizer } from './RelationshipVisualizer';
 import { ExportModal } from '../components/ExportModal';
 import { HeatmapLegend } from './HeatmapLegend';
 import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { getVsCodeApi } from '../utils/vscodeApi';
 
 // Custom node types for ReactFlow
 const nodeTypes = {
@@ -1274,7 +1275,10 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     graphEngineUrl,
 }) => {
     // VS Code API reference - memoized to call only once
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    // ... other imports ...
+
+    // Inside component
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const vscodeRef = useRef(vscode); // Keep ref for backward compatibility in callbacks
 
     const apiClient = useMemo(

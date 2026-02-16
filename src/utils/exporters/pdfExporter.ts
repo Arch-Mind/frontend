@@ -2,6 +2,10 @@ import jsPDF from 'jspdf'; // Library for generating PDF files
 import html2canvas from 'html2canvas'; // Library to capture DOM elements as images
 import { Node, Edge } from 'reactflow'; // Types from ReactFlow
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code environments
+import { getVsCodeApi } from '../vscodeApi';
+
+declare const acquireVsCodeApi: any;
+
 
 // Options for tailoring the PDF output
 export interface PDFExportOptions {
@@ -120,7 +124,7 @@ export async function exportAsPDF(
             const pdfBlob = pdf.output('blob');
             const reader = new FileReader();
             reader.onloadend = () => {
-                const vscode = acquireVsCodeApi();
+                const vscode = getVsCodeApi();
                 vscode.postMessage({
                     command: 'saveFile',
                     data: reader.result as string,
@@ -290,7 +294,7 @@ export async function exportCustomPDF(
         const pdfBlob = pdf.output('blob');
         const reader = new FileReader();
         reader.onloadend = () => {
-            const vscode = acquireVsCodeApi();
+            const vscode = getVsCodeApi();
             vscode.postMessage({
                 command: 'saveFile',
                 data: reader.result as string,

@@ -945,7 +945,7 @@ class ArchitecturePanel {
      */
     private _getFileFilters(filename: string): { [name: string]: string[] } {
         const ext = path.extname(filename).toLowerCase();
-        
+
         switch (ext) {
             case '.json':
                 return { 'JSON': ['json'] };

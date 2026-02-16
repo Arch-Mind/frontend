@@ -6,10 +6,16 @@ exports.parseImportedJSON = parseImportedJSON;
 exports.convertToReactFlowFormat = convertToReactFlowFormat;
 exports.getJSONSize = getJSONSize;
 exports.formatFileSize = formatFileSize;
+const vscodeApi_1 = require("../vscodeApi");
 /**
- * Export graph data as JSON
+ * Creates the JSON string representation of the graph.
+ * Maps ReactFlow objects to a stable export format.
  */
-function exportAsJSON(nodes, edges, rawData, source = 'local') {
+function exportAsJSON(nodes, // Current nodes
+edges, // Current edges
+rawData, // Optional original data
+source = 'local' // Origin
+) {
     const exportData = {
         version: '1.0',
         exportDate: new Date().toISOString(),
@@ -18,6 +24,7 @@ function exportAsJSON(nodes, edges, rawData, source = 'local') {
             totalEdges: edges.length,
             source,
         },
+        // Map nodes to export format
         nodes: nodes.map(node => ({
             id: node.id,
             label: node.data?.label || node.id,
@@ -26,6 +33,7 @@ function exportAsJSON(nodes, edges, rawData, source = 'local') {
             data: node.data,
             style: node.style,
         })),
+        // Map edges to export format
         edges: edges.map(edge => ({
             id: edge.id,
             source: edge.source,
@@ -35,17 +43,17 @@ function exportAsJSON(nodes, edges, rawData, source = 'local') {
         })),
         rawData,
     };
-    return JSON.stringify(exportData, null, 2);
+    return JSON.stringify(exportData, null, 2); // Pretty print
 }
 /**
- * Download JSON data as a file
- * In VS Code webview context, this sends a message to the extension to save the file
+ * Triggers the download of the JSON file.
+ * Handles both VS Code extension environment (via postMessage) and standard browser download.
  */
 function downloadJSON(nodes, edges, filename = 'graph-export.json', rawData, source = 'local') {
     const jsonString = exportAsJSON(nodes, edges, rawData, source);
     // Check if we're in VS Code webview context
     if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+        const vscode = (0, vscodeApi_1.getVsCodeApi)();
         vscode.postMessage({
             command: 'saveFile',
             data: jsonString,
@@ -67,12 +75,13 @@ function downloadJSON(nodes, edges, filename = 'graph-export.json', rawData, sou
     }
 }
 /**
- * Parse imported JSON data
+ * Validates and parses a JSON string into the ExportData structure.
+ * Throws errors for invalid formats.
  */
 function parseImportedJSON(jsonString) {
     try {
         const data = JSON.parse(jsonString);
-        // Validate structure
+        // Simple validation of required fields
         if (!data.version || !data.nodes || !data.edges) {
             throw new Error('Invalid export file format');
         }
@@ -83,7 +92,8 @@ function parseImportedJSON(jsonString) {
     }
 }
 /**
- * Convert imported data back to ReactFlow format
+ * Converts the exported JSON data back into ReactFlow-compatible Nodes and Edges.
+ * Used when importing a file.
  */
 function convertToReactFlowFormat(exportData) {
     const nodes = exportData.nodes.map(node => ({
@@ -103,14 +113,14 @@ function convertToReactFlowFormat(exportData) {
     return { nodes, edges };
 }
 /**
- * Get JSON file size estimate
+ * Wraps the size calculation to be reusable.
  */
 function getJSONSize(nodes, edges, rawData) {
     const jsonString = exportAsJSON(nodes, edges, rawData);
     return new Blob([jsonString]).size;
 }
 /**
- * Format JSON size for display
+ * Utility to format bytes into human-readable strings (KB, MB).
  */
 function formatFileSize(bytes) {
     if (bytes < 1024)

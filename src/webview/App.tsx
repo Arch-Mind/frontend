@@ -61,6 +61,8 @@ const App: React.FC = () => {
     const [repoId, setRepoId] = useState<string | null>(null);
     const [highlightNodes, setHighlightNodes] = useState<string[]>([]);
     const [history, setHistory] = useState<NotificationEntry[]>([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [architectureData, setArchitectureData] = useState<any>(null);
 
     const heatmapOptions: { value: HeatmapMode; label: string }[] = [
         { value: 'off', label: 'Off' },
@@ -93,10 +95,16 @@ const App: React.FC = () => {
                 setConfig(message.data);
             }
             if (message?.command === 'architectureData' && message.data) {
+                setArchitectureData(message.data);
                 const extractedRepoId = message.data.repo_id || message.data.repoId;
                 if (extractedRepoId) {
                     setRepoId(String(extractedRepoId));
                 }
+                console.log('App.tsx: Received architectureData', {
+                    nodeCount: message.data.nodes?.length,
+                    edgeCount: message.data.edges?.length,
+                    repoId: extractedRepoId
+                });
             }
             if (message?.command === 'highlightNodes') {
                 setHighlightNodes(message.nodeIds || []);
@@ -196,19 +204,23 @@ const App: React.FC = () => {
                         />
                     )}
                     {activeView === 'boundaries' && (
+                        console.log('App.tsx: Rendering ModuleBoundaryDiagram', { architectureData }),
                         <ModuleBoundaryDiagram
                             heatmapMode={heatmapMode}
                             highlightNodeIds={highlightNodes}
                             repoId={repoId}
                             graphEngineUrl={config?.graphEngineUrl}
+                            architectureData={architectureData}
                         />
                     )}
                     {activeView === 'boundary-diagram' && (
+                        console.log('App.tsx: Rendering BoundaryDiagram', { architectureData }),
                         <BoundaryDiagram
                             heatmapMode={heatmapMode}
                             highlightNodeIds={highlightNodes}
                             repoId={repoId}
                             graphEngineUrl={config?.graphEngineUrl}
+                            architectureData={architectureData}
                         />
                     )}
                     {activeView === 'dependency-diagram' && (
@@ -217,6 +229,7 @@ const App: React.FC = () => {
                             highlightNodeIds={highlightNodes}
                             repoId={repoId}
                             graphEngineUrl={config?.graphEngineUrl}
+                            architectureData={architectureData}
                         />
                     )}
                     {activeView === 'communication' && (
@@ -225,6 +238,7 @@ const App: React.FC = () => {
                             highlightNodeIds={highlightNodes}
                             repoId={repoId}
                             graphEngineUrl={config?.graphEngineUrl}
+                            architectureData={architectureData}
                         />
                     )}
                     {activeView === 'webhooks' && (

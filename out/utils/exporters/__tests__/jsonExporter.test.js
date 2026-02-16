@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const jsonExporter_1 = require("../jsonExporter");
+// Test suite for JSON Exporter functionality
 describe('jsonExporter', () => {
+    // Mock Data: Standard nodes for testing exports
     const mockNodes = [
         {
             id: 'node1',
@@ -15,6 +17,7 @@ describe('jsonExporter', () => {
             style: { backgroundColor: 'blue' },
         },
     ];
+    // Mock Data: Standard edges connecting the nodes
     const mockEdges = [
         {
             id: 'edge1',
@@ -25,6 +28,7 @@ describe('jsonExporter', () => {
         },
     ];
     describe('exportAsJSON', () => {
+        // Verify that the minimal export structure is correct
         it('should export nodes and edges as JSON string', () => {
             const result = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges);
             const parsed = JSON.parse(result);
@@ -34,17 +38,20 @@ describe('jsonExporter', () => {
             expect(parsed.nodes).toHaveLength(2);
             expect(parsed.edges).toHaveLength(1);
         });
+        // Verify that extra raw data is preserved in the export
         it('should include rawData when provided', () => {
             const rawData = { custom: 'data' };
             const result = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges, rawData);
             const parsed = JSON.parse(result);
             expect(parsed.rawData).toEqual(rawData);
         });
+        // Verify metadata source tracking
         it('should set correct source metadata', () => {
             const backendResult = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges, undefined, 'backend');
             const parsed = JSON.parse(backendResult);
             expect(parsed.metadata.source).toBe('backend');
         });
+        // Verify fallback behavior for nodes missing explicit labels
         it('should handle nodes without labels', () => {
             const nodesWithoutLabels = [
                 {
@@ -57,11 +64,13 @@ describe('jsonExporter', () => {
             const parsed = JSON.parse(result);
             expect(parsed.nodes[0].label).toBe('test-node');
         });
+        // Verify styling data is kept
         it('should include node style information', () => {
             const result = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges);
             const parsed = JSON.parse(result);
             expect(parsed.nodes[1].style).toEqual({ backgroundColor: 'blue' });
         });
+        // Verify that non-standard labels are handled gracefully
         it('should handle edges with non-string labels', () => {
             const edgesWithObjectLabel = [
                 {
@@ -75,6 +84,7 @@ describe('jsonExporter', () => {
             const parsed = JSON.parse(result);
             expect(parsed.edges[0].label).toBeUndefined();
         });
+        // Verify timestamps are generated correctly
         it('should include exportDate in ISO format', () => {
             const result = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges);
             const parsed = JSON.parse(result);
@@ -83,6 +93,7 @@ describe('jsonExporter', () => {
         });
     });
     describe('parseImportedJSON', () => {
+        // Verify happy path for parsing
         it('should parse valid JSON export', () => {
             const validJSON = (0, jsonExporter_1.exportAsJSON)(mockNodes, mockEdges);
             const result = (0, jsonExporter_1.parseImportedJSON)(validJSON);
@@ -90,9 +101,11 @@ describe('jsonExporter', () => {
             expect(result.nodes).toHaveLength(2);
             expect(result.edges).toHaveLength(1);
         });
+        // Verify error handling for malformed JSON strings
         it('should throw error for invalid JSON', () => {
             expect(() => (0, jsonExporter_1.parseImportedJSON)('invalid json')).toThrow('Failed to parse JSON');
         });
+        // Verify error handling for missing required fields (version)
         it('should throw error for missing version', () => {
             const invalidData = JSON.stringify({
                 nodes: [],
@@ -100,6 +113,7 @@ describe('jsonExporter', () => {
             });
             expect(() => (0, jsonExporter_1.parseImportedJSON)(invalidData)).toThrow('Invalid export file format');
         });
+        // Verify error handling for missing nodes array
         it('should throw error for missing nodes', () => {
             const invalidData = JSON.stringify({
                 version: '1.0',
@@ -107,6 +121,7 @@ describe('jsonExporter', () => {
             });
             expect(() => (0, jsonExporter_1.parseImportedJSON)(invalidData)).toThrow('Invalid export file format');
         });
+        // Verify error handling for missing edges array
         it('should throw error for missing edges', () => {
             const invalidData = JSON.stringify({
                 version: '1.0',
@@ -116,6 +131,7 @@ describe('jsonExporter', () => {
         });
     });
     describe('convertToReactFlowFormat', () => {
+        // Verify that import data is correctly transformed back into ReactFlow state
         it('should convert exported data back to ReactFlow format', () => {
             const exportData = {
                 version: '1.0',
@@ -150,6 +166,7 @@ describe('jsonExporter', () => {
             expect(result.nodes[0].id).toBe('node1');
             expect(result.edges[0].source).toBe('node1');
         });
+        // Verify handling of default types (which are explicitly undefined in ReactFlow)
         it('should handle default type conversion', () => {
             const exportData = {
                 version: '1.0',
@@ -173,6 +190,7 @@ describe('jsonExporter', () => {
             const result = (0, jsonExporter_1.convertToReactFlowFormat)(exportData);
             expect(result.nodes[0].type).toBeUndefined();
         });
+        // Verify integrity of visual properties (position, style)
         it('should preserve node positions and data', () => {
             const exportData = {
                 version: '1.0',
@@ -201,11 +219,13 @@ describe('jsonExporter', () => {
         });
     });
     describe('getJSONSize', () => {
+        // Verify size calculation
         it('should return size in bytes', () => {
             const size = (0, jsonExporter_1.getJSONSize)(mockNodes, mockEdges);
             expect(size).toBeGreaterThan(0);
             expect(typeof size).toBe('number');
         });
+        // Verify that more data equals larger size
         it('should return larger size for more data', () => {
             const singleNode = [mockNodes[0]];
             const singleSize = (0, jsonExporter_1.getJSONSize)(singleNode, []);

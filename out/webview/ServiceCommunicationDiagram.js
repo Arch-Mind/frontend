@@ -39,8 +39,9 @@ const reactflow_1 = __importStar(require("reactflow"));
 require("reactflow/dist/style.css");
 const layoutAlgorithms_1 = require("./layoutAlgorithms");
 const webviewClient_1 = require("../api/webviewClient");
+const vscodeApi_1 = require("../utils/vscodeApi");
 const ServiceCommunicationDiagram = () => {
-    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+    const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(), []);
     const [repoId, setRepoId] = (0, react_1.useState)(null);
     const [isLoading, setIsLoading] = (0, react_1.useState)(false);

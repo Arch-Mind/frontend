@@ -8,34 +8,43 @@ exports.exportAsPDF = exportAsPDF;
 exports.exportDetailedPDF = exportDetailedPDF;
 exports.exportCustomPDF = exportCustomPDF;
 exports.estimatePDFSize = estimatePDFSize;
-const jspdf_1 = __importDefault(require("jspdf"));
-const html2canvas_1 = __importDefault(require("html2canvas"));
+const jspdf_1 = __importDefault(require("jspdf")); // Library for generating PDF files
+const html2canvas_1 = __importDefault(require("html2canvas")); // Library to capture DOM elements as images
+const vscodeApi_1 = require("../vscodeApi");
+// Default settings if no options are provided
 exports.DEFAULT_PDF_OPTIONS = {
     orientation: 'landscape',
     format: 'a4',
     includeMetadata: true,
     includeTitle: true,
     title: 'Architecture Graph',
-    quality: 0.95,
+    quality: 0.95, // High quality JPEG
 };
 /**
- * Export graph as PDF
+ * Main function to export the ReactFlow graph as a PDF.
+ * Captures the current view, converts it to an image, and places it in a PDF.
  */
-async function exportAsPDF(element, nodes, edges, filename = 'graph.pdf', options = {}) {
+async function exportAsPDF(element, // The container element of the graph
+nodes, // Array of nodes in the graph
+edges, // Array of edges in the graph
+filename = 'graph.pdf', // Output filename
+options = {} // Optional overrides
+) {
     const opts = { ...exports.DEFAULT_PDF_OPTIONS, ...options };
     try {
+        // 1. Locate the viewport element containing the graph
         const viewport = element.querySelector('.react-flow__viewport');
         if (!viewport) {
             throw new Error('ReactFlow viewport not found');
         }
-        // Create canvas from viewport
+        // 2. Capture the viewport as a high-resolution canvas image
         const canvas = await (0, html2canvas_1.default)(viewport, {
-            backgroundColor: '#1e1e1e',
-            scale: 2,
-            logging: false,
-            useCORS: true,
+            backgroundColor: '#1e1e1e', // Dark background for contrast
+            scale: 2, // 2x scale for better resolution
+            logging: false, // Disable debug logs
+            useCORS: true, // Allow cross-origin images
         });
-        // Initialize PDF
+        // 3. Initialize a new PDF document
         const pdf = new jspdf_1.default({
             orientation: opts.orientation,
             unit: 'mm',
@@ -43,15 +52,15 @@ async function exportAsPDF(element, nodes, edges, filename = 'graph.pdf', option
         });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        let yOffset = 10;
-        // Add title
+        let yOffset = 10; // Vertical position tracker
+        // 4. Add Title if requested
         if (opts.includeTitle && opts.title) {
             pdf.setFontSize(16);
             pdf.setTextColor(0, 0, 0);
             pdf.text(opts.title, pageWidth / 2, yOffset, { align: 'center' });
             yOffset += 10;
         }
-        // Add metadata
+        // 5. Add Metadata (Timestamp, counts) in smaller text
         if (opts.includeMetadata) {
             pdf.setFontSize(10);
             pdf.setTextColor(100, 100, 100);
@@ -65,34 +74,33 @@ async function exportAsPDF(element, nodes, edges, filename = 'graph.pdf', option
             });
             yOffset += 5;
         }
-        // Add graph image
+        // 6. Convert canvas to image data
         const imgData = canvas.toDataURL('image/jpeg', opts.quality);
         const imgWidth = canvas.width;
         const imgHeight = canvas.height;
         const ratio = imgWidth / imgHeight;
-        // Calculate dimensions to fit page
+        // 7. Calculate image dimensions to fit page
         let pdfImgWidth = pageWidth - 20; // 10mm margin on each side
         let pdfImgHeight = pdfImgWidth / ratio;
-        // If image is too tall, scale to fit height
+        // Scale down if image height exceeds available page height
         if (pdfImgHeight > pageHeight - yOffset - 10) {
             pdfImgHeight = pageHeight - yOffset - 10;
             pdfImgWidth = pdfImgHeight * ratio;
         }
-        // Center the image
+        // Center the image horizontally
         const xOffset = (pageWidth - pdfImgWidth) / 2;
         pdf.addImage(imgData, 'JPEG', xOffset, yOffset, pdfImgWidth, pdfImgHeight);
-        // Add second page with details if needed
+        // 8. Add a second page with details if requested
         if (opts.includeMetadata && nodes.length > 0) {
             pdf.addPage();
             addNodeDetailsPage(pdf, nodes, edges);
         }
-        // Save PDF
-        // Check if we're in VS Code webview context
+        // 9. Save file - Handle different environments (VS Code Extension vs Web)
         if (typeof acquireVsCodeApi === 'function') {
             const pdfBlob = pdf.output('blob');
             const reader = new FileReader();
             reader.onloadend = () => {
-                const vscode = acquireVsCodeApi();
+                const vscode = (0, vscodeApi_1.getVsCodeApi)();
                 vscode.postMessage({
                     command: 'saveFile',
                     data: reader.result,
@@ -113,24 +121,25 @@ async function exportAsPDF(element, nodes, edges, filename = 'graph.pdf', option
     }
 }
 /**
- * Export as multi-page PDF with detailed node information
+ * Wrapper to export a detailed PDF which always includes metadata.
  */
 async function exportDetailedPDF(element, nodes, edges, filename = 'graph-detailed.pdf', options = {}) {
     const opts = { ...exports.DEFAULT_PDF_OPTIONS, includeMetadata: true, ...options };
     return exportAsPDF(element, nodes, edges, filename, opts);
 }
 /**
- * Add node details page to PDF
+ * Helper: Adds a page listing specific details about the nodes.
  */
 function addNodeDetailsPage(pdf, nodes, edges) {
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     let yPos = 20;
+    // Header
     pdf.setFontSize(14);
     pdf.setTextColor(0, 0, 0);
     pdf.text('Graph Details', pageWidth / 2, yPos, { align: 'center' });
     yPos += 10;
-    // Summary
+    // Summary Section
     pdf.setFontSize(12);
     pdf.text('Summary', 10, yPos);
     yPos += 7;
@@ -145,7 +154,7 @@ function addNodeDetailsPage(pdf, nodes, edges) {
         yPos += 6;
     });
     yPos += 10;
-    // Node list
+    // Node list Section
     pdf.setFontSize(12);
     pdf.text('Nodes', 10, yPos);
     yPos += 7;
@@ -164,7 +173,7 @@ function addNodeDetailsPage(pdf, nodes, edges) {
     }
 }
 /**
- * Get unique node types
+ * Helper: Extracts a unique list of node types from the node array.
  */
 function getUniqueTypes(nodes) {
     const types = new Set();
@@ -174,7 +183,8 @@ function getUniqueTypes(nodes) {
     return Array.from(types);
 }
 /**
- * Export as PDF with custom layout
+ * Advanced export function allowing for a custom simplified layout.
+ * Good for generating reports.
  */
 async function exportCustomPDF(element, nodes, edges, config) {
     const pdf = new jspdf_1.default({
@@ -184,7 +194,7 @@ async function exportCustomPDF(element, nodes, edges, config) {
     });
     const pageWidth = pdf.internal.pageSize.getWidth();
     let yPos = 20;
-    // Title page
+    // 1. Create Title Page
     pdf.setFontSize(20);
     pdf.setTextColor(0, 0, 0);
     pdf.text(config.title, pageWidth / 2, yPos, { align: 'center' });
@@ -195,7 +205,7 @@ async function exportCustomPDF(element, nodes, edges, config) {
         pdf.text(config.subtitle, pageWidth / 2, yPos, { align: 'center' });
         yPos += 10;
     }
-    // Export graph
+    // 2. Add Graph Image on the first page
     const viewport = element.querySelector('.react-flow__viewport');
     if (viewport) {
         const canvas = await (0, html2canvas_1.default)(viewport, {
@@ -205,25 +215,25 @@ async function exportCustomPDF(element, nodes, edges, config) {
         });
         pdf.addPage();
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        // Fixed positioning for report style
         pdf.addImage(imgData, 'JPEG', 10, 10, pageWidth - 20, 180);
     }
-    // Add statistics
+    // 3. Add Statistics Page if requested
     if (config.includeStats) {
         pdf.addPage();
         addStatsPage(pdf, nodes, edges);
     }
-    // Add node list
+    // 4. Add Detailed Node List if requested
     if (config.includeNodeList) {
         pdf.addPage();
         addNodeDetailsPage(pdf, nodes, edges);
     }
-    // Save PDF
-    // Check if we're in VS Code webview context
+    // 5. Save the file (VS Code or Browser)
     if (typeof acquireVsCodeApi === 'function') {
         const pdfBlob = pdf.output('blob');
         const reader = new FileReader();
         reader.onloadend = () => {
-            const vscode = acquireVsCodeApi();
+            const vscode = (0, vscodeApi_1.getVsCodeApi)();
             vscode.postMessage({
                 command: 'saveFile',
                 data: reader.result,
@@ -240,7 +250,7 @@ async function exportCustomPDF(element, nodes, edges, config) {
     }
 }
 /**
- * Add statistics page
+ * Helper: Adds a page with statistical breakdown of the graph.
  */
 function addStatsPage(pdf, nodes, edges) {
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -248,7 +258,7 @@ function addStatsPage(pdf, nodes, edges) {
     pdf.setFontSize(14);
     pdf.text('Statistics', pageWidth / 2, yPos, { align: 'center' });
     yPos += 15;
-    // Type distribution
+    // Section: Node Type Distribution
     pdf.setFontSize(12);
     pdf.text('Node Type Distribution', 10, yPos);
     yPos += 7;
@@ -263,7 +273,7 @@ function addStatsPage(pdf, nodes, edges) {
         yPos += 6;
     });
     yPos += 10;
-    // Connection statistics
+    // Section: Connection Stats
     pdf.setFontSize(12);
     pdf.text('Connection Statistics', 10, yPos);
     yPos += 7;
@@ -272,7 +282,8 @@ function addStatsPage(pdf, nodes, edges) {
     pdf.text(`Average connections per node: ${avgConnections.toFixed(2)}`, 15, yPos);
 }
 /**
- * Estimate PDF file size
+ * Utility: Rough estimation of the resulting PDF size based on graph complexity.
+ * Used for progress bars or warnings.
  */
 function estimatePDFSize(nodes, edges) {
     // Rough estimate: base size + node data

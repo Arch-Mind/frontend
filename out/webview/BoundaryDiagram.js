@@ -41,6 +41,7 @@ const layoutAlgorithms_1 = require("./layoutAlgorithms");
 const webviewClient_1 = require("../api/webviewClient");
 const HeatmapLegend_1 = require("./HeatmapLegend");
 const heatmapUtils_1 = require("./heatmapUtils");
+const vscodeApi_1 = require("../utils/vscodeApi");
 const boundaryColors = {
     physical: '#3b82f6',
     logical: '#22c55e',
@@ -84,8 +85,10 @@ function FileNode({ data }) {
             boxShadow: data?.isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.75)' : undefined,
         }, title: data?.heatmapTooltip || '' }));
 }
-const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, }) => {
-    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, }) => {
+    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
+    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
+    const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
     const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
     const [isLoading, setIsLoading] = (0, react_1.useState)(false);
@@ -123,7 +126,10 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
             }
         };
         window.addEventListener('message', handler);
-        vscode.postMessage({ command: 'requestArchitecture' });
+        window.addEventListener('message', handler);
+        if (vscode) {
+            vscode.postMessage({ command: 'requestArchitecture' });
+        }
         return () => window.removeEventListener('message', handler);
     }, [vscode, boundaryData]);
     (0, react_1.useEffect)(() => {
@@ -139,14 +145,61 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
             try {
                 setIsLoading(true);
                 setError(null);
-                const [boundaries, analysis] = await Promise.all([
-                    apiClient.getModuleBoundaries(repoId),
-                    apiClient.getArchitectureInsights(repoId).catch(() => null),
-                ]);
-                if (!active)
-                    return;
-                setBoundaryData(boundaries);
-                setInsights(analysis);
+                console.log('BoundaryDiagram: Attempting to load boundaries', { repoId });
+                // Try fetching boundaries from the backend
+                try {
+                    const [boundaries, analysis] = await Promise.all([
+                        apiClient.getModuleBoundaries(repoId),
+                        apiClient.getArchitectureInsights(repoId).catch(() => null),
+                    ]);
+                    if (!active)
+                        return;
+                    if (boundaries && boundaries.boundaries.length > 0) {
+                        setBoundaryData(boundaries);
+                        setInsights(analysis);
+                    }
+                    else {
+                        throw new Error('No boundaries returned from backend');
+                    }
+                }
+                catch (backendError) {
+                    console.warn('BoundaryDiagram: Backend fetch failed, trying fallback', backendError);
+                    if (!active)
+                        return;
+                    // Fallback: Derive from architectureData if available
+                    if (architectureData && architectureData.nodes) {
+                        console.log('BoundaryDiagram: Deriving from architectureData', { nodeCount: architectureData.nodes.length });
+                        const files = architectureData.nodes.filter((n) => n.type === 'file');
+                        // Group by directory
+                        const dirMap = new Map();
+                        files.forEach((node) => {
+                            const pathParts = (node.filePath || node.id).split('/');
+                            const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                            if (!dirMap.has(dir))
+                                dirMap.set(dir, []);
+                            dirMap.get(dir)?.push(node.filePath || node.id);
+                        });
+                        const derivedBoundaries = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                            id: `physical-${index}`,
+                            name: dir,
+                            path: dir,
+                            type: 'physical',
+                            files: files,
+                            file_count: files.length,
+                            layer: 'Unknown'
+                        }));
+                        setBoundaryData({
+                            boundaries: derivedBoundaries,
+                            total_boundaries: derivedBoundaries.length,
+                            repo_id: repoId
+                        });
+                    }
+                    else {
+                        console.error('BoundaryDiagram: No architectureData available for fallback');
+                        // If no graph data either, bubble the error
+                        throw backendError;
+                    }
+                }
             }
             catch (err) {
                 if (!active)
@@ -163,7 +216,7 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
         return () => {
             active = false;
         };
-    }, [apiClient, repoId]);
+    }, [apiClient, repoId, architectureData]);
     (0, react_1.useEffect)(() => {
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);

@@ -35,9 +35,10 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebhookSetup = void 0;
 const react_1 = __importStar(require("react"));
+const vscodeApi_1 = require("../utils/vscodeApi");
 const defaultEvents = ['push', 'pull_request'];
 const WebhookSetup = ({ backendUrl }) => {
-    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+    const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const [repoUrl, setRepoUrl] = (0, react_1.useState)('');
     const [secret, setSecret] = (0, react_1.useState)('');
     const [events, setEvents] = (0, react_1.useState)(defaultEvents);

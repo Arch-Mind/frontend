@@ -38,6 +38,7 @@ const react_1 = __importStar(require("react"));
 const webviewClient_1 = require("../api/webviewClient");
 const HeatmapLegend_1 = require("./HeatmapLegend");
 const heatmapUtils_1 = require("./heatmapUtils");
+const vscodeApi_1 = require("../utils/vscodeApi");
 const boundaryTypeOrder = ['physical', 'logical', 'architectural'];
 const boundaryTypeDescriptions = {
     physical: 'Workspaces, repos, and packages detected from manifests.',
@@ -63,8 +64,10 @@ function getBoundaryHeatmap(boundary, heatmapState) {
     });
     return hottest;
 }
-const ModuleBoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, }) => {
-    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+const ModuleBoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, }) => {
+    console.log('ModuleBoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
+    console.log('ModuleBoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
+    const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
     const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
     const [isLoading, setIsLoading] = (0, react_1.useState)(false);
@@ -85,7 +88,10 @@ const ModuleBoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: ini
             }
         };
         window.addEventListener('message', handler);
-        vscode.postMessage({ command: 'requestArchitecture' });
+        window.addEventListener('message', handler);
+        if (vscode) {
+            vscode.postMessage({ command: 'requestArchitecture' });
+        }
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
     (0, react_1.useEffect)(() => {
@@ -99,8 +105,50 @@ const ModuleBoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: ini
         try {
             setIsLoading(true);
             setError(null);
-            const response = await apiClient.getModuleBoundaries(repoId);
-            setData(response);
+            try {
+                const response = await apiClient.getModuleBoundaries(repoId);
+                if (response && response.boundaries.length > 0) {
+                    setData(response);
+                }
+                else {
+                    console.warn('ModuleBoundaryDiagram: Backend returned empty boundaries');
+                    throw new Error('No boundaries returned from backend');
+                }
+            }
+            catch (backendError) {
+                console.warn('ModuleBoundaryDiagram: Backend fetch failed', backendError);
+                // Fallback: Derive from architectureData if available
+                if (architectureData && architectureData.nodes) {
+                    console.log('ModuleBoundaryDiagram: Using fallback data');
+                    const files = architectureData.nodes.filter((n) => n.type === 'file');
+                    // Group by directory
+                    const dirMap = new Map();
+                    files.forEach((node) => {
+                        const pathParts = (node.filePath || node.id).split('/');
+                        const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                        if (!dirMap.has(dir))
+                            dirMap.set(dir, []);
+                        dirMap.get(dir)?.push(node.filePath || node.id);
+                    });
+                    const derivedBoundaries = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                        id: `physical-${index}`,
+                        name: dir,
+                        path: dir,
+                        type: 'physical',
+                        files: files,
+                        file_count: files.length,
+                        layer: 'Unknown'
+                    }));
+                    setData({
+                        boundaries: derivedBoundaries,
+                        total_boundaries: derivedBoundaries.length,
+                        repo_id: repoId
+                    });
+                }
+                else {
+                    throw backendError;
+                }
+            }
         }
         catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load boundaries');
@@ -122,7 +170,7 @@ const ModuleBoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: ini
         return () => {
             active = false;
         };
-    }, [repoId]);
+    }, [repoId, architectureData]);
     (0, react_1.useEffect)(() => {
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);

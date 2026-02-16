@@ -85,6 +85,8 @@ const App = () => {
     const [repoId, setRepoId] = (0, react_1.useState)(null);
     const [highlightNodes, setHighlightNodes] = (0, react_1.useState)([]);
     const [history, setHistory] = (0, react_1.useState)([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [architectureData, setArchitectureData] = (0, react_1.useState)(null);
     const heatmapOptions = [
         { value: 'off', label: 'Off' },
         { value: 'commit_count', label: 'Commit Count' },
@@ -115,10 +117,16 @@ const App = () => {
                 setConfig(message.data);
             }
             if (message?.command === 'architectureData' && message.data) {
+                setArchitectureData(message.data);
                 const extractedRepoId = message.data.repo_id || message.data.repoId;
                 if (extractedRepoId) {
                     setRepoId(String(extractedRepoId));
                 }
+                console.log('App.tsx: Received architectureData', {
+                    nodeCount: message.data.nodes?.length,
+                    edgeCount: message.data.edges?.length,
+                    repoId: extractedRepoId
+                });
             }
             if (message?.command === 'highlightNodes') {
                 setHighlightNodes(message.nodeIds || []);
@@ -162,10 +170,12 @@ const App = () => {
                         : 'heatmap-pill', onClick: () => setHeatmapMode(option.value) }, option.label))))),
             react_1.default.createElement("main", { className: "app-main" },
                 activeView === 'graph' && (react_1.default.createElement(ArchitectureGraph_1.default, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
-                activeView === 'boundaries' && (react_1.default.createElement(ModuleBoundaryDiagram_1.ModuleBoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
-                activeView === 'boundary-diagram' && (react_1.default.createElement(BoundaryDiagram_1.BoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
-                activeView === 'dependency-diagram' && (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
-                activeView === 'communication' && (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
+                activeView === 'boundaries' && (console.log('App.tsx: Rendering ModuleBoundaryDiagram', { architectureData }),
+                    react_1.default.createElement(ModuleBoundaryDiagram_1.ModuleBoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
+                activeView === 'boundary-diagram' && (console.log('App.tsx: Rendering BoundaryDiagram', { architectureData }),
+                    react_1.default.createElement(BoundaryDiagram_1.BoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
+                activeView === 'dependency-diagram' && (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
+                activeView === 'communication' && (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
                 activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app' }))),
             react_1.default.createElement(NotificationHistory_1.NotificationHistory, { entries: history, onClear: () => setHistory([]) }))));
 };

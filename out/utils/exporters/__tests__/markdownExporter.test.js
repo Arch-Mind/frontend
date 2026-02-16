@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const markdownExporter_1 = require("../markdownExporter");
+// Test suite for Markdown Exporter functionality
 describe('markdownExporter', () => {
+    // Mock Data: Standard nodes representing different code entities (class, function, directory)
     const mockNodes = [
         {
             id: 'node1',
@@ -19,6 +21,7 @@ describe('markdownExporter', () => {
             data: { label: 'database', type: 'directory' },
         },
     ];
+    // Mock Data: Edges connecting the nodes
     const mockEdges = [
         {
             id: 'edge1',
@@ -34,12 +37,14 @@ describe('markdownExporter', () => {
         },
     ];
     describe('generateMermaidDiagram', () => {
+        // Verify default syntax generation
         it('should generate mermaid diagram with default direction', () => {
             const result = (0, markdownExporter_1.generateMermaidDiagram)(mockNodes, mockEdges);
             expect(result).toContain('```mermaid');
             expect(result).toContain('graph TB');
             expect(result).toContain('```');
         });
+        // Verify that direction configuration works
         it('should support different directions', () => {
             const directions = ['TB', 'LR', 'RL', 'BT'];
             directions.forEach(direction => {
@@ -47,6 +52,7 @@ describe('markdownExporter', () => {
                 expect(result).toContain(`graph ${direction}`);
             });
         });
+        // Verify that different node types get rendered with appropriate shapes
         it('should include nodes with appropriate shapes', () => {
             const result = (0, markdownExporter_1.generateMermaidDiagram)(mockNodes, mockEdges);
             // Class nodes use rectangle
@@ -56,11 +62,13 @@ describe('markdownExporter', () => {
             // Directory nodes use rectangle
             expect(result).toContain('[database]');
         });
+        // Verify that edge labels are included
         it('should include edges with labels', () => {
             const result = (0, markdownExporter_1.generateMermaidDiagram)(mockNodes, mockEdges);
             expect(result).toContain('|calls|');
             expect(result).toContain('|connects to|');
         });
+        // Verify ID sanitization (removing special chars that break Mermaid)
         it('should sanitize IDs for Mermaid compatibility', () => {
             const nodesWithSpecialChars = [
                 {
@@ -78,6 +86,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('node_with_dashes');
             expect(result).toContain('node_123_starts_with_number');
         });
+        // Verify escaping of Markdown special characters
         it('should escape markdown special characters in labels', () => {
             const nodesWithSpecialChars = [
                 {
@@ -95,6 +104,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('Test\\[bracket\\]');
             expect(result).toContain('Has\\|pipe');
         });
+        // Verify rendering of all supported node types
         it('should handle different node types', () => {
             const typedNodes = [
                 { id: 'file1', position: { x: 0, y: 0 }, data: { label: 'File', type: 'file' } },
@@ -115,6 +125,7 @@ describe('markdownExporter', () => {
             // Default uses hexagon
             expect(result).toContain('{{Default}}');
         });
+        // Verify handling of edges without explicit labels
         it('should handle edges without labels', () => {
             const edgesWithoutLabels = [
                 {
@@ -126,12 +137,14 @@ describe('markdownExporter', () => {
             const result = (0, markdownExporter_1.generateMermaidDiagram)(mockNodes, edgesWithoutLabels);
             expect(result).toContain('-->');
         });
+        // Verify handling of empty data sets
         it('should handle empty nodes and edges', () => {
             const result = (0, markdownExporter_1.generateMermaidDiagram)([], []);
             expect(result).toContain('```mermaid');
             expect(result).toContain('graph TB');
             expect(result).toContain('```');
         });
+        // Verify default type handling
         it('should handle nodes without type', () => {
             const nodesWithoutType = [
                 {
@@ -143,6 +156,7 @@ describe('markdownExporter', () => {
             const result = (0, markdownExporter_1.generateMermaidDiagram)(nodesWithoutType, []);
             expect(result).toContain('Test');
         });
+        // Verify performance/output with larger data
         it('should handle very large graphs', () => {
             const manyNodes = Array.from({ length: 100 }, (_, i) => ({
                 id: `node${i}`,
@@ -155,11 +169,13 @@ describe('markdownExporter', () => {
         });
     });
     describe('getMarkdownSize', () => {
+        // Verify size calculation
         it('should return size in bytes', () => {
             const size = (0, markdownExporter_1.getMarkdownSize)(mockNodes, mockEdges);
             expect(size).toBeGreaterThan(0);
             expect(typeof size).toBe('number');
         });
+        // Verify that more data means larger file size
         it('should return larger size for more nodes', () => {
             const singleNode = [mockNodes[0]];
             const singleSize = (0, markdownExporter_1.getMarkdownSize)(singleNode, []);

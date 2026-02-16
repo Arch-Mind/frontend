@@ -2,6 +2,10 @@
  * Helper for VS Code webview file exports
  * Wraps postMessage with promises that resolve when extension responds
  */
+import { getVsCodeApi } from '../vscodeApi';
+
+declare const acquireVsCodeApi: any;
+
 
 type SaveFileResponse = {
     command: 'fileSaveSuccess' | 'fileSaveError' | 'fileSaveCancelled';
@@ -16,14 +20,14 @@ let pendingExports: Map<string, { resolve: (path: string) => void; reject: (erro
  */
 export function initializeExportListener() {
     if (typeof window === 'undefined') return;
-    
+
     window.addEventListener('message', (event) => {
         const message = event.data as SaveFileResponse;
-        
-        if (message.command === 'fileSaveSuccess' || 
-            message.command === 'fileSaveError' || 
+
+        if (message.command === 'fileSaveSuccess' ||
+            message.command === 'fileSaveError' ||
             message.command === 'fileSaveCancelled') {
-            
+
             // Resolve all pending exports
             pendingExports.forEach(({ resolve, reject }, filename) => {
                 if (message.command === 'fileSaveSuccess') {
@@ -34,7 +38,7 @@ export function initializeExportListener() {
                     reject(new Error('Export cancelled by user'));
                 }
             });
-            
+
             // Clear pending exports
             pendingExports.clear();
         }
@@ -52,11 +56,11 @@ export function saveFileInVSCode(data: string, filename: string, mimeType: strin
             return;
         }
 
-        const vscode = acquireVsCodeApi();
-        
+        const vscode = getVsCodeApi();
+
         // Store promise handlers
         pendingExports.set(filename, { resolve, reject });
-        
+
         // Send message to extension
         vscode.postMessage({
             command: 'saveFile',
@@ -64,7 +68,7 @@ export function saveFileInVSCode(data: string, filename: string, mimeType: strin
             filename: filename,
             mimeType: mimeType
         });
-        
+
         // Timeout after 30 seconds
         setTimeout(() => {
             if (pendingExports.has(filename)) {

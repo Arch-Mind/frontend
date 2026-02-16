@@ -4,6 +4,7 @@ import 'reactflow/dist/style.css';
 
 import { elkLayout } from './layoutAlgorithms';
 import { ArchMindWebviewApiClient } from '../api/webviewClient';
+import { RawNode } from './graphTypes';
 import {
     ArchitectureInsightsResponse,
     ContributionsResponse,
@@ -12,12 +13,9 @@ import {
 } from '../api/types';
 import { HeatmapLegend } from './HeatmapLegend';
 import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { getVsCodeApi } from '../utils/vscodeApi';
 
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+declare const acquireVsCodeApi: any;
 
 const boundaryColors: Record<string, string> = {
     physical: '#3b82f6',
@@ -96,11 +94,29 @@ function FileNode({ data }: { data?: { heatmapColor?: string; heatmapTooltip?: s
     );
 }
 
+interface GraphStats {
+    totalFiles: number;
+    totalDirectories: number;
+    totalFunctions?: number;
+    totalClasses?: number;
+    filesByLanguage: Record<string, number>;
+}
+
+interface ArchitectureData {
+    nodes: RawNode[];
+    edges: unknown[];
+    stats: GraphStats;
+    source?: 'local' | 'backend';
+    repoId?: string;
+    repo_id?: string;
+}
+
 interface BoundaryDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
     repoId?: string | null;
     graphEngineUrl?: string;
+    architectureData?: ArchitectureData | null;
 }
 
 export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
@@ -108,8 +124,13 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
     highlightNodeIds = [],
     repoId: initialRepoId = null,
     graphEngineUrl,
+    architectureData,
 }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
+
+    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
+
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(
         () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
         [graphEngineUrl]
@@ -164,7 +185,10 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
         };
 
         window.addEventListener('message', handler);
-        vscode.postMessage({ command: 'requestArchitecture' });
+        window.addEventListener('message', handler);
+        if (vscode) {
+            vscode.postMessage({ command: 'requestArchitecture' });
+        }
 
         return () => window.removeEventListener('message', handler);
     }, [vscode, boundaryData]);
@@ -183,14 +207,64 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
             try {
                 setIsLoading(true);
                 setError(null);
-                const [boundaries, analysis] = await Promise.all([
-                    apiClient.getModuleBoundaries(repoId),
-                    apiClient.getArchitectureInsights(repoId).catch(() => null),
-                ]);
 
-                if (!active) return;
-                setBoundaryData(boundaries);
-                setInsights(analysis);
+                console.log('BoundaryDiagram: Attempting to load boundaries', { repoId });
+
+                // Try fetching boundaries from the backend
+                try {
+                    const [boundaries, analysis] = await Promise.all([
+                        apiClient.getModuleBoundaries(repoId),
+                        apiClient.getArchitectureInsights(repoId).catch(() => null),
+                    ]);
+
+                    if (!active) return;
+
+                    if (boundaries && boundaries.boundaries.length > 0) {
+                        setBoundaryData(boundaries);
+                        setInsights(analysis);
+                    } else {
+                        throw new Error('No boundaries returned from backend');
+                    }
+                } catch (backendError) {
+                    console.warn('BoundaryDiagram: Backend fetch failed, trying fallback', backendError);
+
+                    if (!active) return;
+
+                    // Fallback: Derive from architectureData if available
+                    if (architectureData && architectureData.nodes) {
+                        console.log('BoundaryDiagram: Deriving from architectureData', { nodeCount: architectureData.nodes.length });
+                        const files = architectureData.nodes.filter((n: RawNode) => n.type === 'file');
+                        // Group by directory
+                        const dirMap = new Map<string, string[]>();
+
+                        files.forEach((node: RawNode) => {
+                            const pathParts = (node.filePath || node.id).split('/');
+                            const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                            if (!dirMap.has(dir)) dirMap.set(dir, []);
+                            dirMap.get(dir)?.push(node.filePath || node.id);
+                        });
+
+                        const derivedBoundaries: ModuleBoundary[] = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                            id: `physical-${index}`,
+                            name: dir,
+                            path: dir,
+                            type: 'physical',
+                            files: files,
+                            file_count: files.length,
+                            layer: 'Unknown'
+                        }));
+
+                        setBoundaryData({
+                            boundaries: derivedBoundaries,
+                            total_boundaries: derivedBoundaries.length,
+                            repo_id: repoId
+                        });
+                    } else {
+                        console.error('BoundaryDiagram: No architectureData available for fallback');
+                        // If no graph data either, bubble the error
+                        throw backendError;
+                    }
+                }
             } catch (err) {
                 if (!active) return;
                 setError(err instanceof Error ? err.message : 'Failed to load boundaries');
@@ -205,7 +279,7 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
         return () => {
             active = false;
         };
-    }, [apiClient, repoId]);
+    }, [apiClient, repoId, architectureData]);
 
     useEffect(() => {
         if (!repoId || heatmapMode === 'off') {

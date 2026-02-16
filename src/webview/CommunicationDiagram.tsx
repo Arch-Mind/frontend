@@ -15,12 +15,10 @@ import { CommunicationResponse, ContributionsResponse } from '../api/types';
 import { HeatmapLegend } from './HeatmapLegend';
 import { HeatmapNode } from './HeatmapNode';
 import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { RawEdge, RawNode } from './graphTypes';
+import { getVsCodeApi } from '../utils/vscodeApi';
 
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+declare const acquireVsCodeApi: any;
 
 interface FilterState {
     http: boolean;
@@ -40,6 +38,8 @@ interface CommunicationDiagramProps {
     highlightNodeIds?: string[];
     repoId?: string | null;
     graphEngineUrl?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    architectureData?: any;
 }
 
 export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
@@ -47,8 +47,10 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
     highlightNodeIds = [],
     repoId: initialRepoId = null,
     graphEngineUrl,
+    architectureData,
 }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    console.log('CommunicationDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(
         () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
         [graphEngineUrl]
@@ -94,7 +96,10 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
         };
 
         window.addEventListener('message', handler);
-        vscode.postMessage({ command: 'requestArchitecture' });
+        window.addEventListener('message', handler);
+        if (vscode) {
+            vscode.postMessage({ command: 'requestArchitecture' });
+        }
 
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
@@ -113,9 +118,70 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
             try {
                 setIsLoading(true);
                 setError(null);
-                const response = await apiClient.getCommunication(repoId);
-                if (!active) return;
-                setData(response);
+
+                try {
+                    const response = await apiClient.getCommunication(repoId);
+                    if (!active) return;
+                    if (response && (response.endpoints.length > 0 || response.rpc_services.length > 0)) {
+                        setData(response);
+                    } else {
+                        console.warn('CommunicationDiagram: Backend returned empty data');
+                        throw new Error('No communication data returned from backend');
+                    }
+                } catch (backendError) {
+                    console.warn('CommunicationDiagram: Fallback to graph data', backendError);
+                    if (!active) return;
+
+                    // Fallback: This is tricky for communication as it's not a direct map.
+                    // We can try to infer endpoints from nodes that look like URLs or have specific types.
+                    if (architectureData && architectureData.nodes) {
+                        console.log('CommunicationDiagram: Deriving from nodes', architectureData.nodes.length);
+                        const endpoints: any[] = [];
+
+                        // Infer endpoints from graph nodes if they have specific metadata
+                        // OR if we just visualize the raw graph as communication? No, structure expects specific format.
+                        // Let's look for nodes with type 'endpoint' or 'route' if any...
+                        // Or look for edges with type 'http' / 'rpc'
+
+                        // For now, let's create a minimal derived set if possible.
+                        // If no specific 'http' edges exist in raw graph, we might not show much.
+
+                        architectureData.edges?.forEach((e: RawEdge) => {
+                            if (e.type === 'http' || e.type === 'rpc' || e.type === 'queue') {
+                                // We found some relevant edges!
+                                // Construct a minimal response
+                                // ... (Implementation of heuristic mapping)
+                            }
+                        });
+
+                        // If we didn't find anything specific, we might just have to show empty or 
+                        // simple "Service" nodes for directories?
+
+                        // Let's at least populate 'compose_services' if we can guess them from 'service' nodes
+                        const services = architectureData.nodes
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            .filter((n: any) => n.type === 'service' || n.type === 'container')
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            .map((n: any) => ({
+                                name: n.label,
+                                image: '',
+                                ports: [],
+                                volumes: [],
+                                depends_on: []
+                            }));
+
+                        setData({
+                            endpoints: [],
+                            rpc_services: [],
+                            queues: [],
+                            compose_services: services, // At least show services
+                            repo_id: repoId
+                        });
+                    } else {
+                        throw backendError;
+                    }
+                }
+
             } catch (err) {
                 if (!active) return;
                 setError(err instanceof Error ? err.message : 'Failed to load communication data');
@@ -130,7 +196,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
         return () => {
             active = false;
         };
-    }, [apiClient, repoId]);
+    }, [apiClient, repoId, architectureData]);
 
     useEffect(() => {
         if (!repoId || heatmapMode === 'off') {

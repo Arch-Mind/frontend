@@ -1,11 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { WebhookConfig, WebhookRequest, WebhookResponse } from '../api/types';
-
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+import { getVsCodeApi } from '../utils/vscodeApi';
 
 interface WebhookSetupProps {
     backendUrl: string;
@@ -14,7 +9,7 @@ interface WebhookSetupProps {
 const defaultEvents = ['push', 'pull_request'];
 
 export const WebhookSetup: React.FC<WebhookSetupProps> = ({ backendUrl }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const [repoUrl, setRepoUrl] = useState('');
     const [secret, setSecret] = useState('');
     const [events, setEvents] = useState<string[]>(defaultEvents);
@@ -208,7 +203,7 @@ export const WebhookSetup: React.FC<WebhookSetupProps> = ({ backendUrl }) => {
 };
 
 class WebhookApiClient {
-    constructor(private baseUrl: string) {}
+    constructor(private baseUrl: string) { }
 
     async request<T>(path: string, options: RequestInit = {}): Promise<T> {
         const response = await fetch(`${this.baseUrl}${path}`, {

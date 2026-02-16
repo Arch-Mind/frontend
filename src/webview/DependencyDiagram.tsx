@@ -8,12 +8,10 @@ import { ContributionsResponse, DependenciesResponse, DependencyRecord } from '.
 import { HeatmapLegend } from './HeatmapLegend';
 import { HeatmapNode } from './HeatmapNode';
 import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { RawEdge, RawNode } from './graphTypes';
+import { getVsCodeApi } from '../utils/vscodeApi';
 
-declare function acquireVsCodeApi(): {
-    postMessage(message: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+declare const acquireVsCodeApi: any;
 
 const edgeStyles: Record<string, { color: string; dash: string; width: number }> = {
     import: { color: '#6b7280', dash: '0', width: 1.2 },
@@ -36,6 +34,8 @@ interface DependencyDiagramProps {
     highlightNodeIds?: string[];
     repoId?: string | null;
     graphEngineUrl?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    architectureData?: any;
 }
 
 export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
@@ -43,8 +43,9 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
     highlightNodeIds = [],
     repoId: initialRepoId = null,
     graphEngineUrl,
+    architectureData,
 }) => {
-    const vscode = useMemo(() => acquireVsCodeApi(), []);
+    const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(
         () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
         [graphEngineUrl]
@@ -89,7 +90,10 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
         };
 
         window.addEventListener('message', handler);
-        vscode.postMessage({ command: 'requestArchitecture' });
+        window.addEventListener('message', handler);
+        if (vscode) {
+            vscode.postMessage({ command: 'requestArchitecture' });
+        }
 
         return () => window.removeEventListener('message', handler);
     }, [vscode]);
@@ -108,9 +112,64 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
             try {
                 setIsLoading(true);
                 setError(null);
-                const response = await apiClient.getDependencies(repoId);
-                if (!active) return;
-                setRawData(response);
+
+                try {
+                    const response = await apiClient.getDependencies(repoId);
+                    if (!active) return;
+
+                    if (response && response.dependencies.length > 0) {
+                        setRawData(response);
+                    } else {
+                        throw new Error('No dependencies returned from backend');
+                    }
+                } catch (backendError) {
+                    console.warn('Failed to fetch dependencies from backend, falling back to graph data:', backendError);
+                    if (!active) return;
+
+                    // Fallback: Derive from architectureData if available
+                    if (architectureData && architectureData.edges && architectureData.nodes) {
+                        const derivedDependencies: DependencyRecord[] = [];
+                        const nodesMap = new Map<string, string>(); // id -> filePath (or type)
+
+                        // Populate helpers
+                        architectureData.nodes.forEach((n: RawNode) => {
+                            if (n.type === 'file') {
+                                nodesMap.set(n.id, n.filePath || n.id);
+                            } else {
+                                nodesMap.set(n.id, n.label || n.id);
+                            }
+                        });
+
+                        architectureData.edges.forEach((e: RawEdge) => {
+                            if (e.type === 'imports' || e.type === 'calls' || e.type === 'inheritance') {
+                                const sourceFile = nodesMap.get(e.source) || e.source;
+                                const target = nodesMap.get(e.target) || e.target;
+
+                                // Basic mapping
+                                let relationship = 'IMPORTS'; // default
+                                if (e.type === 'inheritance') relationship = 'INHERITS';
+                                if (e.type === 'calls') relationship = 'CALLS'; // Could map to USES_TABLE or just treating as import for visibility
+
+                                derivedDependencies.push({
+                                    source_file: sourceFile,
+                                    source_language: 'typescript', // default assumption
+                                    target: target,
+                                    target_type: 'File', // Simplified Assumption
+                                    relationship: relationship,
+                                    relationship_properties: {}
+                                });
+                            }
+                        });
+
+                        setRawData({
+                            dependencies: derivedDependencies,
+                            total_dependencies: derivedDependencies.length,
+                            repo_id: repoId
+                        });
+                    } else {
+                        throw backendError;
+                    }
+                }
             } catch (err) {
                 if (!active) return;
                 setError(err instanceof Error ? err.message : 'Failed to load dependencies');
@@ -125,7 +184,7 @@ export const DependencyDiagram: React.FC<DependencyDiagramProps> = ({
         return () => {
             active = false;
         };
-    }, [apiClient, repoId]);
+    }, [apiClient, repoId, architectureData]);
 
     useEffect(() => {
         if (!repoId || heatmapMode === 'off') {

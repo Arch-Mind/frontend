@@ -1,12 +1,13 @@
 "use strict";
-/**
- * Helper for VS Code webview file exports
- * Wraps postMessage with promises that resolve when extension responds
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initializeExportListener = initializeExportListener;
 exports.saveFileInVSCode = saveFileInVSCode;
 exports.isVSCodeWebview = isVSCodeWebview;
+/**
+ * Helper for VS Code webview file exports
+ * Wraps postMessage with promises that resolve when extension responds
+ */
+const vscodeApi_1 = require("../vscodeApi");
 let pendingExports = new Map();
 /**
  * Initialize export message listener (call once on app start)
@@ -46,7 +47,7 @@ function saveFileInVSCode(data, filename, mimeType) {
             reject(new Error('Not in VS Code webview context'));
             return;
         }
-        const vscode = acquireVsCodeApi();
+        const vscode = (0, vscodeApi_1.getVsCodeApi)();
         // Store promise handlers
         pendingExports.set(filename, { resolve, reject });
         // Send message to extension

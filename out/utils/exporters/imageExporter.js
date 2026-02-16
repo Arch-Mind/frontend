@@ -10,32 +10,40 @@ exports.exportAsWebP = exportAsWebP;
 exports.exportAsSVG = exportAsSVG;
 exports.copyToClipboard = copyToClipboard;
 exports.estimateImageSize = estimateImageSize;
-const html2canvas_1 = __importDefault(require("html2canvas"));
-const vscodeExportHelper_1 = require("./vscodeExportHelper");
+const html2canvas_1 = __importDefault(require("html2canvas")); // Library to capture DOM elements as images
+const vscodeExportHelper_1 = require("./vscodeExportHelper"); // Helper for VS Code
+// Default settings if no options are provided
 exports.DEFAULT_IMAGE_OPTIONS = {
     format: 'png',
     quality: 0.95,
-    scale: 2,
-    backgroundColor: '#1e1e1e',
+    scale: 2, // High resolution by default
+    backgroundColor: '#1e1e1e', // Dark theme background
     includeBackground: true,
 };
 /**
- * Export graph as PNG using html2canvas
+ * Main function to export graph as PNG using html2canvas.
+ * This is the base function used by other raster formats (JPEG, WebP).
  */
-async function exportAsPNG(element, filename = 'graph.png', options = {}) {
+async function exportAsPNG(element, // The container element
+filename = 'graph.png', // Output filename
+options = {} // Optional overrides
+) {
     const opts = { ...exports.DEFAULT_IMAGE_OPTIONS, ...options };
     try {
+        // 1. Locate view to capture
         const viewport = element.querySelector('.react-flow__viewport');
         if (!viewport) {
             throw new Error('ReactFlow viewport not found');
         }
+        // 2. Capture canvas
         const canvas = await (0, html2canvas_1.default)(viewport, {
             backgroundColor: opts.includeBackground ? opts.backgroundColor : null,
             scale: opts.scale,
-            logging: false,
-            useCORS: true,
+            logging: false, // Disable debug logs
+            useCORS: true, // Allow cross-origin images
             allowTaint: true,
         });
+        // 3. Trigger Download
         await downloadCanvas(canvas, filename, opts);
     }
     catch (error) {
@@ -57,28 +65,31 @@ async function exportAsWebP(element, filename = 'graph.webp', options = {}) {
     return exportAsPNG(element, filename, opts);
 }
 /**
- * Export as SVG
+ * Export as vector SVG.
+ * Manually constructs an SVG string from the node/edge data.
+ * Note: limits styling fidelity compared to html2canvas.
  */
 function exportAsSVG(nodes, edges, filename = 'graph.svg', options = {}) {
     const { padding = 50 } = options;
-    // Calculate bounds
+    // 1. Calculate boundaries to fit all nodes
     const bounds = calculateBounds(nodes);
     const width = options.width || (bounds.maxX - bounds.minX + padding * 2);
     const height = options.height || (bounds.maxY - bounds.minY + padding * 2);
-    // Create SVG
+    // 2. Create SVG Container
     let svg = createSVGDocument(width, height);
-    // Add transform group
+    // 3. Add Content Group (centered/padded)
     svg += `  <g transform="translate(${padding - bounds.minX}, ${padding - bounds.minY})">\n`;
-    // Add edges
+    // 4. Add Edges (lines)
     svg += addEdgesToSVG(edges, nodes);
-    // Add nodes
+    // 5. Add Nodes (rects + text)
     svg += addNodesToSVG(nodes);
     svg += '  </g>\n</svg>';
-    // Download
+    // 6. Download File
     downloadString(svg, filename, 'image/svg+xml');
 }
 /**
- * Capture screenshot and copy to clipboard
+ * Capture screenshot and immediately copy to clipboard.
+ * Useful for quick sharing.
  */
 async function copyToClipboard(element) {
     try {
@@ -86,6 +97,7 @@ async function copyToClipboard(element) {
         if (!viewport) {
             throw new Error('ReactFlow viewport not found');
         }
+        // Capture
         const canvas = await (0, html2canvas_1.default)(viewport, {
             backgroundColor: '#1e1e1e',
             scale: 2,
@@ -100,7 +112,7 @@ async function copyToClipboard(element) {
                     reject(new Error('Failed to create blob'));
             });
         });
-        // Copy to clipboard
+        // Write to Clipboard API
         await navigator.clipboard.write([
             new ClipboardItem({ 'image/png': blob })
         ]);
@@ -110,6 +122,9 @@ async function copyToClipboard(element) {
     }
 }
 // Helper functions
+/**
+ * Helper: Converts canvas to blob and saves it using the appropriate method (VS Code vs Browser).
+ */
 function downloadCanvas(canvas, filename, options) {
     return new Promise((resolve, reject) => {
         const mimeType = `image/${options.format}`;
@@ -154,6 +169,9 @@ function downloadCanvas(canvas, filename, options) {
         }, mimeType, options.quality);
     });
 }
+/**
+ * Helper: Determines the total bounding box of all nodes.
+ */
 function calculateBounds(nodes) {
     if (nodes.length === 0) {
         return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
@@ -163,6 +181,7 @@ function calculateBounds(nodes) {
     let maxX = -Infinity;
     let maxY = -Infinity;
     nodes.forEach(node => {
+        // Assume default node dimensions if not set
         const width = 180;
         const height = 40;
         minX = Math.min(minX, node.position.x);
@@ -224,6 +243,9 @@ function escapeXML(text) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;');
 }
+/**
+ * Helper: Downloads string content as a file (mainly for SVG).
+ */
 function downloadString(content, filename, mimeType) {
     // Check if we're in VS Code webview context
     if (typeof acquireVsCodeApi === 'function') {
@@ -249,13 +271,15 @@ function downloadString(content, filename, mimeType) {
     }
 }
 /**
- * Get estimated image size
+ * Get estimated image size in bytes.
+ * Used for file size warnings.
  */
 function estimateImageSize(nodes, scale = 2) {
     const bounds = calculateBounds(nodes);
     const width = (bounds.maxX - bounds.minX) * scale;
     const height = (bounds.maxY - bounds.minY) * scale;
-    const estimatedBytes = Math.round(width * height * 4 * 0.5); // Rough estimate
+    // RGBA = 4 bytes per pixel, 0.5 compression factor rough estimate
+    const estimatedBytes = Math.round(width * height * 4 * 0.5);
     return { width, height, estimatedBytes };
 }
 //# sourceMappingURL=imageExporter.js.map

@@ -81,6 +81,7 @@ const RelationshipVisualizer_1 = require("./RelationshipVisualizer");
 const ExportModal_1 = require("../components/ExportModal");
 const HeatmapLegend_1 = require("./HeatmapLegend");
 const heatmapUtils_1 = require("./heatmapUtils");
+const vscodeApi_1 = require("../utils/vscodeApi");
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode_1.ClusterNode,
@@ -827,7 +828,9 @@ const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, on
 };
 const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, }) => {
     // VS Code API reference - memoized to call only once
-    const vscode = (0, react_1.useMemo)(() => acquireVsCodeApi(), []);
+    // ... other imports ...
+    // Inside component
+    const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const vscodeRef = (0, react_1.useRef)(vscode); // Keep ref for backward compatibility in callbacks
     const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
     const state = vscode.getState() || {};

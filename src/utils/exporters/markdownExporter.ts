@@ -1,4 +1,8 @@
-import { Node, Edge } from 'reactflow'; // Types from ReactFlow
+import { Node, Edge } from 'reactflow';
+import { getVsCodeApi } from '../vscodeApi';
+
+declare const acquireVsCodeApi: any;
+// Types from ReactFlow
 import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code environments
 
 // Options for tailoring the Markdown output
@@ -319,7 +323,7 @@ function generateEdgeList(edges: Edge[], nodes: Node[]): string {
 function downloadMarkdown(content: string, filename: string): void {
     // Check if we're in VS Code webview context
     if (typeof acquireVsCodeApi === 'function') {
-        const vscode = acquireVsCodeApi();
+        const vscode = getVsCodeApi();
         vscode.postMessage({
             command: 'saveFile',
             data: content,
