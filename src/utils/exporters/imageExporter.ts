@@ -1,47 +1,53 @@
-import html2canvas from 'html2canvas';
-import { Node, Edge } from 'reactflow';
-import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper';
+import html2canvas from 'html2canvas'; // Library to capture DOM elements as images
+import { Node, Edge } from 'reactflow'; // ReactFlow types
+import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code
 
+// Options for tailoring the image output
 export interface ImageExportOptions {
-    format: 'png' | 'jpeg' | 'webp';
-    quality: number; // 0.1 to 1.0
-    scale: number; // 1x, 2x, 3x
-    backgroundColor?: string;
-    includeBackground: boolean;
+    format: 'png' | 'jpeg' | 'webp'; // Image file format
+    quality: number; // Validation 0.0 to 1.0 (for JPEG/WebP)
+    scale: number; // Resolution multiplier (1x, 2x, etc.)
+    backgroundColor?: string; // Optional custom background
+    includeBackground: boolean; // Whether to include background or keep transparent
 }
 
+// Default settings if no options are provided
 export const DEFAULT_IMAGE_OPTIONS: ImageExportOptions = {
     format: 'png',
     quality: 0.95,
-    scale: 2,
-    backgroundColor: '#1e1e1e',
+    scale: 2, // High resolution by default
+    backgroundColor: '#1e1e1e', // Dark theme background
     includeBackground: true,
 };
 
 /**
- * Export graph as PNG using html2canvas
+ * Main function to export graph as PNG using html2canvas.
+ * This is the base function used by other raster formats (JPEG, WebP).
  */
 export async function exportAsPNG(
-    element: HTMLElement,
-    filename: string = 'graph.png',
-    options: Partial<ImageExportOptions> = {}
+    element: HTMLElement,     // The container element
+    filename: string = 'graph.png', // Output filename
+    options: Partial<ImageExportOptions> = {} // Optional overrides
 ): Promise<void> {
     const opts = { ...DEFAULT_IMAGE_OPTIONS, ...options };
 
     try {
+        // 1. Locate view to capture
         const viewport = element.querySelector('.react-flow__viewport') as HTMLElement;
         if (!viewport) {
             throw new Error('ReactFlow viewport not found');
         }
 
+        // 2. Capture canvas
         const canvas = await html2canvas(viewport, {
             backgroundColor: opts.includeBackground ? opts.backgroundColor : null,
             scale: opts.scale,
-            logging: false,
-            useCORS: true,
+            logging: false, // Disable debug logs
+            useCORS: true,  // Allow cross-origin images
             allowTaint: true,
         });
 
+        // 3. Trigger Download
         await downloadCanvas(canvas, filename, opts);
     } catch (error) {
         throw new Error(`PNG export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -73,7 +79,9 @@ export async function exportAsWebP(
 }
 
 /**
- * Export as SVG
+ * Export as vector SVG.
+ * Manually constructs an SVG string from the node/edge data.
+ * Note: limits styling fidelity compared to html2canvas.
  */
 export function exportAsSVG(
     nodes: Node[],
@@ -87,31 +95,32 @@ export function exportAsSVG(
 ): void {
     const { padding = 50 } = options;
 
-    // Calculate bounds
+    // 1. Calculate boundaries to fit all nodes
     const bounds = calculateBounds(nodes);
     const width = options.width || (bounds.maxX - bounds.minX + padding * 2);
     const height = options.height || (bounds.maxY - bounds.minY + padding * 2);
 
-    // Create SVG
+    // 2. Create SVG Container
     let svg = createSVGDocument(width, height);
 
-    // Add transform group
+    // 3. Add Content Group (centered/padded)
     svg += `  <g transform="translate(${padding - bounds.minX}, ${padding - bounds.minY})">\n`;
 
-    // Add edges
+    // 4. Add Edges (lines)
     svg += addEdgesToSVG(edges, nodes);
 
-    // Add nodes
+    // 5. Add Nodes (rects + text)
     svg += addNodesToSVG(nodes);
 
     svg += '  </g>\n</svg>';
 
-    // Download
+    // 6. Download File
     downloadString(svg, filename, 'image/svg+xml');
 }
 
 /**
- * Capture screenshot and copy to clipboard
+ * Capture screenshot and immediately copy to clipboard.
+ * Useful for quick sharing.
  */
 export async function copyToClipboard(element: HTMLElement): Promise<void> {
     try {
@@ -120,6 +129,7 @@ export async function copyToClipboard(element: HTMLElement): Promise<void> {
             throw new Error('ReactFlow viewport not found');
         }
 
+        // Capture
         const canvas = await html2canvas(viewport, {
             backgroundColor: '#1e1e1e',
             scale: 2,
@@ -134,7 +144,7 @@ export async function copyToClipboard(element: HTMLElement): Promise<void> {
             });
         });
 
-        // Copy to clipboard
+        // Write to Clipboard API
         await navigator.clipboard.write([
             new ClipboardItem({ 'image/png': blob })
         ]);
@@ -145,6 +155,9 @@ export async function copyToClipboard(element: HTMLElement): Promise<void> {
 
 // Helper functions
 
+/**
+ * Helper: Converts canvas to blob and saves it using the appropriate method (VS Code vs Browser).
+ */
 function downloadCanvas(
     canvas: HTMLCanvasElement,
     filename: string,
@@ -197,6 +210,9 @@ function downloadCanvas(
     });
 }
 
+/**
+ * Helper: Determines the total bounding box of all nodes.
+ */
 function calculateBounds(nodes: Node[]): {
     minX: number;
     minY: number;
@@ -213,6 +229,7 @@ function calculateBounds(nodes: Node[]): {
     let maxY = -Infinity;
 
     nodes.forEach(node => {
+        // Assume default node dimensions if not set
         const width = 180;
         const height = 40;
         minX = Math.min(minX, node.position.x);
@@ -287,6 +304,9 @@ function escapeXML(text: string): string {
         .replace(/'/g, '&apos;');
 }
 
+/**
+ * Helper: Downloads string content as a file (mainly for SVG).
+ */
 function downloadString(content: string, filename: string, mimeType: string): void {
     // Check if we're in VS Code webview context
     if (typeof acquireVsCodeApi === 'function') {
@@ -312,7 +332,8 @@ function downloadString(content: string, filename: string, mimeType: string): vo
 }
 
 /**
- * Get estimated image size
+ * Get estimated image size in bytes.
+ * Used for file size warnings.
  */
 export function estimateImageSize(
     nodes: Node[],
@@ -321,7 +342,8 @@ export function estimateImageSize(
     const bounds = calculateBounds(nodes);
     const width = (bounds.maxX - bounds.minX) * scale;
     const height = (bounds.maxY - bounds.minY) * scale;
-    const estimatedBytes = Math.round(width * height * 4 * 0.5); // Rough estimate
+    // RGBA = 4 bytes per pixel, 0.5 compression factor rough estimate
+    const estimatedBytes = Math.round(width * height * 4 * 0.5);
 
     return { width, height, estimatedBytes };
 }

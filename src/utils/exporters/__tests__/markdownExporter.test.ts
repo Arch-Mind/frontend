@@ -5,7 +5,9 @@ import {
     DEFAULT_MARKDOWN_OPTIONS,
 } from '../markdownExporter';
 
+// Test suite for Markdown Exporter functionality
 describe('markdownExporter', () => {
+    // Mock Data: Standard nodes representing different code entities (class, function, directory)
     const mockNodes: Node[] = [
         {
             id: 'node1',
@@ -24,6 +26,7 @@ describe('markdownExporter', () => {
         },
     ];
 
+    // Mock Data: Edges connecting the nodes
     const mockEdges: Edge[] = [
         {
             id: 'edge1',
@@ -40,6 +43,7 @@ describe('markdownExporter', () => {
     ];
 
     describe('generateMermaidDiagram', () => {
+        // Verify default syntax generation
         it('should generate mermaid diagram with default direction', () => {
             const result = generateMermaidDiagram(mockNodes, mockEdges);
 
@@ -48,6 +52,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('```');
         });
 
+        // Verify that direction configuration works
         it('should support different directions', () => {
             const directions: Array<'TB' | 'LR' | 'RL' | 'BT'> = ['TB', 'LR', 'RL', 'BT'];
 
@@ -57,6 +62,7 @@ describe('markdownExporter', () => {
             });
         });
 
+        // Verify that different node types get rendered with appropriate shapes
         it('should include nodes with appropriate shapes', () => {
             const result = generateMermaidDiagram(mockNodes, mockEdges);
 
@@ -68,6 +74,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('[database]');
         });
 
+        // Verify that edge labels are included
         it('should include edges with labels', () => {
             const result = generateMermaidDiagram(mockNodes, mockEdges);
 
@@ -75,6 +82,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('|connects to|');
         });
 
+        // Verify ID sanitization (removing special chars that break Mermaid)
         it('should sanitize IDs for Mermaid compatibility', () => {
             const nodesWithSpecialChars: Node[] = [
                 {
@@ -95,6 +103,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('node_123_starts_with_number');
         });
 
+        // Verify escaping of Markdown special characters
         it('should escape markdown special characters in labels', () => {
             const nodesWithSpecialChars: Node[] = [
                 {
@@ -115,6 +124,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('Has\\|pipe');
         });
 
+        // Verify rendering of all supported node types
         it('should handle different node types', () => {
             const typedNodes: Node[] = [
                 { id: 'file1', position: { x: 0, y: 0 }, data: { label: 'File', type: 'file' } },
@@ -138,6 +148,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('{{Default}}');
         });
 
+        // Verify handling of edges without explicit labels
         it('should handle edges without labels', () => {
             const edgesWithoutLabels: Edge[] = [
                 {
@@ -152,6 +163,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('-->');
         });
 
+        // Verify handling of empty data sets
         it('should handle empty nodes and edges', () => {
             const result = generateMermaidDiagram([], []);
 
@@ -160,6 +172,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('```');
         });
 
+        // Verify default type handling
         it('should handle nodes without type', () => {
             const nodesWithoutType: Node[] = [
                 {
@@ -173,6 +186,7 @@ describe('markdownExporter', () => {
             expect(result).toContain('Test');
         });
 
+        // Verify performance/output with larger data
         it('should handle very large graphs', () => {
             const manyNodes: Node[] = Array.from({ length: 100 }, (_, i) => ({
                 id: `node${i}`,
@@ -187,6 +201,7 @@ describe('markdownExporter', () => {
     });
 
     describe('getMarkdownSize', () => {
+        // Verify size calculation
         it('should return size in bytes', () => {
             const size = getMarkdownSize(mockNodes, mockEdges);
 
@@ -194,6 +209,7 @@ describe('markdownExporter', () => {
             expect(typeof size).toBe('number');
         });
 
+        // Verify that more data means larger file size
         it('should return larger size for more nodes', () => {
             const singleNode: Node[] = [mockNodes[0]];
             const singleSize = getMarkdownSize(singleNode, []);
