@@ -47,7 +47,8 @@ const ThemeContext_1 = require("./ThemeContext");
 const ThemeToggle_1 = require("./ThemeToggle");
 const vscodeExportHelper_1 = require("../utils/exporters/vscodeExportHelper");
 const NotificationHistory_1 = require("./NotificationHistory");
-// ✅ backend-driven diagrams (new)
+const WebhookSetup_1 = require("./WebhookSetup");
+// ✅ backend-driven diagrams
 const BackendDependencyDiagram_1 = require("./diagrams/BackendDependencyDiagram");
 const BackendBoundaryDiagram_1 = require("./diagrams/BackendBoundaryDiagram");
 function normalizeView(view) {
@@ -189,6 +190,7 @@ const App = () => {
                 activeView === 'dependency-diagram' &&
                     (backendGraph ? (react_1.default.createElement(BackendDependencyDiagram_1.BackendDependencyDiagram, { graph: backendGraph })) : (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData, localContributions: localContributions }))),
                 activeView === 'communication' && (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
+                activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app' })),
                 activeView === 'commits' && (react_1.default.createElement(CommitDetails_1.CommitDetails, { backendUrl: config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app', repoId: repoId }))),
             react_1.default.createElement(NotificationHistory_1.NotificationHistory, { entries: history, onClear: () => setHistory([]) }))));
 };

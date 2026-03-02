@@ -12,6 +12,7 @@ export interface RawNode {
     lineNumber?: number;
     endLineNumber?: number;
     status?: 'unchanged' | 'modified' | 'added' | 'deleted';
+    properties?: Record<string, unknown>;
 }
 
 export interface RawEdge {
