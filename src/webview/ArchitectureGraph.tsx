@@ -389,6 +389,9 @@ function createStyledNode(
     return {
         id: node.id,
         data: {
+            // Spread raw properties first (provides _nodeKind, _childCount, _isExpanded etc.)
+            ...(node.properties || {}),
+            // Then override with definitive node-level fields
             label: node.label + (isChanged ? ` (${node.status})` : ''),
             type: node.type,
             language: node.language,
@@ -396,7 +399,7 @@ function createStyledNode(
             filePath: node.filePath || node.id,
             lineNumber: node.lineNumber,
             endLineNumber: node.endLineNumber,
-            status: node.status, // Pass status to data
+            status: node.status,
         },
         position,
         style: {
@@ -540,30 +543,51 @@ interface ModuleGroup {
     fileToChildren: Map<string, RawNode[]>; // file id → function/class nodes
 }
 
+// ---------------------------------------------------------------------------
+// Path helpers for directory-based grouping
+// ---------------------------------------------------------------------------
+
+/** Returns the first path segment (top-level directory) of a relative path. */
+function getTopLevelDir(filePath: string): string {
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    return parts.length > 1 ? parts[0] : '__root__';
+}
+
+/** Returns the first two path segments of a relative path. */
+function getTwoLevelDir(filePath: string): string {
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    if (parts.length > 2) { return `${parts[0]}/${parts[1]}`; }
+    if (parts.length === 2) { return parts[0]; }
+    return '__root__';
+}
+
 /**
- * Build a map of module/directory nodes → their file and symbol children.
- * Uses CONTAINS edges first; falls back to path-prefix matching.
+ * Build a map of virtual directory modules → their file and symbol children.
+ *
+ * Strategy (no backend changes needed):
+ *  1. Ignore Module nodes from Neo4j — they represent external libraries (react,
+ *     axios…), NOT source directories. They cannot be used for visual grouping.
+ *  2. Group File nodes by the directory prefix derived from their relative path IDs.
+ *     Top-level segment first; if all files share one root, drill one level deeper.
+ *  3. Map files → symbols via DEFINES/CONTAINS edges AND the "path::name" ID
+ *     convention used by the normalizer.
  */
 function buildModuleGroups(rawData: ArchitectureData): Map<string, ModuleGroup> {
     const groups = new Map<string, ModuleGroup>();
-    const moduleNodes = rawData.nodes.filter(n => n.type === 'module' || n.type === 'directory');
     const fileNodes   = rawData.nodes.filter(n => n.type === 'file');
     const symbolNodes = rawData.nodes.filter(n => n.type === 'function' || n.type === 'class');
 
-    // Pass 1: build maps from CONTAINS edges
-    const moduleToFileIds = new Map<string, Set<string>>();
-    const fileToSymbolIds  = new Map<string, Set<string>>();
+    // ---- Step 1: Build file → symbol mapping --------------------------------
+    const fileToSymbolIds = new Map<string, Set<string>>();
 
     rawData.edges.forEach(edge => {
-        if (edge.type !== 'contains' && edge.type !== 'CONTAINS') return;
+        // Accept DEFINES (File->Function/Class) which client.ts remaps to 'contains',
+        // and any literal 'CONTAINS'/'contains' edges that exist.
+        if (edge.type !== 'contains' && edge.type !== 'CONTAINS' &&
+            edge.type !== 'defines'  && edge.type !== 'DEFINES') return;
         const src = rawData.nodes.find(n => n.id === edge.source);
         const tgt = rawData.nodes.find(n => n.id === edge.target);
         if (!src || !tgt) return;
-        if ((src.type === 'module' || src.type === 'directory') && tgt.type === 'file') {
-            const s = moduleToFileIds.get(src.id) || new Set<string>();
-            s.add(tgt.id);
-            moduleToFileIds.set(src.id, s);
-        }
         if (src.type === 'file' && (tgt.type === 'function' || tgt.type === 'class')) {
             const s = fileToSymbolIds.get(src.id) || new Set<string>();
             s.add(tgt.id);
@@ -571,60 +595,54 @@ function buildModuleGroups(rawData: ArchitectureData): Map<string, ModuleGroup> 
         }
     });
 
-    // Pass 2: path-prefix fallback when no CONTAINS edges exist
-    if (moduleToFileIds.size === 0 && moduleNodes.length > 0) {
-        moduleNodes.forEach(mod => {
-            const modPath = mod.id.replace(/\\/g, '/');
-            fileNodes.forEach(file => {
-                const fPath = file.id.replace(/\\/g, '/');
-                if (fPath.startsWith(modPath + '/') || fPath === modPath) {
-                    const s = moduleToFileIds.get(mod.id) || new Set<string>();
-                    s.add(file.id);
-                    moduleToFileIds.set(mod.id, s);
-                }
-            });
+    // Fallback: IDs use "filePath::symbolName" convention from normalizeNodeId()
+    fileNodes.forEach(file => {
+        symbolNodes.forEach(sym => {
+            if (sym.id.startsWith(file.id + '::')) {
+                const s = fileToSymbolIds.get(file.id) || new Set<string>();
+                s.add(sym.id);
+                fileToSymbolIds.set(file.id, s);
+            }
+        });
+    });
+
+    // ---- Step 2: Bucket files into top-level directories --------------------
+    const dirToFiles = new Map<string, RawNode[]>();
+    fileNodes.forEach(file => {
+        const key = getTopLevelDir(file.id);
+        const arr = dirToFiles.get(key) || [];
+        arr.push(file);
+        dirToFiles.set(key, arr);
+    });
+
+    // If all files share one top-level directory, drill one level deeper so
+    // the user gets meaningful groups instead of one giant collapsed box.
+    if (dirToFiles.size === 1) {
+        const [[, onlyFiles]] = [...dirToFiles.entries()];
+        dirToFiles.clear();
+        onlyFiles.forEach(file => {
+            const key = getTwoLevelDir(file.id);
+            const arr = dirToFiles.get(key) || [];
+            arr.push(file);
+            dirToFiles.set(key, arr);
         });
     }
 
-    // Pass 3: '::' notation fallback for file→symbol
-    if (fileToSymbolIds.size === 0) {
-        fileNodes.forEach(file => {
-            symbolNodes.forEach(sym => {
-                if (sym.id.startsWith(file.id + '::')) {
-                    const s = fileToSymbolIds.get(file.id) || new Set<string>();
-                    s.add(sym.id);
-                    fileToSymbolIds.set(file.id, s);
-                }
-            });
-        });
-    }
-
-    // Build groups from module nodes
-    moduleNodes.forEach(mod => {
-        const fileIds = Array.from(moduleToFileIds.get(mod.id) || []);
-        const files   = fileIds.map(id => rawData.nodes.find(n => n.id === id)).filter(Boolean) as RawNode[];
+    // ---- Step 3: Build ModuleGroup for each directory bucket ----------------
+    dirToFiles.forEach((files, dirKey) => {
+        const label = dirKey.replace('__root__', 'root').split('/').pop() || dirKey;
+        const groupId = `__dir__${dirKey}`;
+        const modNode: RawNode = { id: groupId, label, type: 'directory', depth: 0 };
         const fileChildMap = new Map<string, RawNode[]>();
         files.forEach(file => {
             const symIds  = Array.from(fileToSymbolIds.get(file.id) || []);
-            const symbols = symIds.map(id => rawData.nodes.find(n => n.id === id)).filter(Boolean) as RawNode[];
+            const symbols = symIds
+                .map(id => rawData.nodes.find(n => n.id === id))
+                .filter(Boolean) as RawNode[];
             fileChildMap.set(file.id, symbols);
         });
-        groups.set(mod.id, { moduleNode: mod, files, fileToChildren: fileChildMap });
+        groups.set(groupId, { moduleNode: modNode, files, fileToChildren: fileChildMap });
     });
-
-    // Collect orphan files (not assigned to any module) under a virtual __root__
-    const assignedFileIds = new Set([...moduleToFileIds.values()].flatMap(s => [...s]));
-    const orphans = fileNodes.filter(f => !assignedFileIds.has(f.id));
-    if (orphans.length > 0) {
-        const rootMod: RawNode = { id: '__root__', label: 'Root', type: 'module', depth: 0 };
-        const fileChildMap = new Map<string, RawNode[]>();
-        orphans.forEach(file => {
-            const symIds  = Array.from(fileToSymbolIds.get(file.id) || []);
-            const symbols = symIds.map(id => rawData.nodes.find(n => n.id === id)).filter(Boolean) as RawNode[];
-            fileChildMap.set(file.id, symbols);
-        });
-        groups.set('__root__', { moduleNode: rootMod, files: orphans, fileToChildren: fileChildMap });
-    }
 
     return groups;
 }
