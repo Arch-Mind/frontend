@@ -1648,6 +1648,10 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     // without causing the layout effect to re-run via dependency changes.
     const expandedModulesRef = useRef<Set<string>>(new Set());
     const expandedFilesRef   = useRef<Set<string>>(new Set());
+
+    // True when a full fit-view should fire after the next layout run
+    // (set when new rawData arrives; cleared after first fitView).
+    const fitPendingRef = useRef<boolean>(true);
     expandedModulesRef.current = expandedModules;
     expandedFilesRef.current   = expandedFiles;
 
@@ -1748,12 +1752,19 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
         setSelectedNode(node.id);
         setContextMenuNode(null);
 
-        // Open file in VS Code
-        if (vscodeRef.current && node.data.type !== 'directory') {
+        // Only open files for leaf symbol nodes (function/class).
+        // Module-box nodes (moduleBox type) cover both directory groups and
+        // file boxes — clicking them should only select, not open a file.
+        const isModuleBox = node.type === 'moduleBox';
+        const isDirectory = node.data?.type === 'directory';
+        if (vscodeRef.current && !isModuleBox && !isDirectory) {
+            const fp = node.data?.filePath;
+            // Guard against the string "undefined" that can come from client.ts
+            const safePath = (!fp || fp === 'undefined') ? node.id : fp;
             vscodeRef.current.postMessage({
                 command: 'openFile',
-                filePath: node.data.filePath || node.id,
-                lineNumber: node.data.lineNumber,
+                filePath: safePath,
+                lineNumber: node.data?.lineNumber,
             });
         }
     }, []);
@@ -1991,6 +2002,15 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                 setEdges(formattedEdges);
                 setMatchingNodeIds(newMatchingIds);
                 setIsLoading(false);
+
+                // Fit view only when fresh data loaded (not on every expand/collapse)
+                if (fitPendingRef.current) {
+                    fitPendingRef.current = false;
+                    // Small timeout lets ReactFlow measure node dimensions first
+                    setTimeout(() => {
+                        reactFlowInstance.fitView({ padding: 0.2, duration: 300 });
+                    }, 50);
+                }
             } catch (error) {
                 console.error('Layout calculation failed:', error);
                 setIsLoading(false);
@@ -2053,6 +2073,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                 }
 
                 // Setting rawData triggers visibleData recompute → layout useEffect
+                fitPendingRef.current = true; // request a fit-view for this fresh load
                 setRawData(processed);
                 setDataSource(processed.source || 'local');
                 setStats(processed.stats);
@@ -2477,8 +2498,6 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                 onNodeMouseLeave={onNodeMouseLeave}
                 onNodeDoubleClick={onNodeDoubleClick}
                 nodeTypes={nodeTypes}
-                fitView
-                fitViewOptions={{ padding: 0.2 }}
                 minZoom={0.1}
                 maxZoom={2}
                 defaultEdgeOptions={{

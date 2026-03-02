@@ -1116,6 +1116,9 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     // without causing the layout effect to re-run via dependency changes.
     const expandedModulesRef = (0, react_1.useRef)(new Set());
     const expandedFilesRef = (0, react_1.useRef)(new Set());
+    // True when a full fit-view should fire after the next layout run
+    // (set when new rawData arrives; cleared after first fitView).
+    const fitPendingRef = (0, react_1.useRef)(true);
     expandedModulesRef.current = expandedModules;
     expandedFilesRef.current = expandedFiles;
     // Derive module groups (module → files → symbols) from raw data
@@ -1190,12 +1193,19 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const onNodeClick = (0, react_1.useCallback)((event, node) => {
         setSelectedNode(node.id);
         setContextMenuNode(null);
-        // Open file in VS Code
-        if (vscodeRef.current && node.data.type !== 'directory') {
+        // Only open files for leaf symbol nodes (function/class).
+        // Module-box nodes (moduleBox type) cover both directory groups and
+        // file boxes — clicking them should only select, not open a file.
+        const isModuleBox = node.type === 'moduleBox';
+        const isDirectory = node.data?.type === 'directory';
+        if (vscodeRef.current && !isModuleBox && !isDirectory) {
+            const fp = node.data?.filePath;
+            // Guard against the string "undefined" that can come from client.ts
+            const safePath = (!fp || fp === 'undefined') ? node.id : fp;
             vscodeRef.current.postMessage({
                 command: 'openFile',
-                filePath: node.data.filePath || node.id,
-                lineNumber: node.data.lineNumber,
+                filePath: safePath,
+                lineNumber: node.data?.lineNumber,
             });
         }
     }, []);
@@ -1408,6 +1418,14 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
                 setEdges(formattedEdges);
                 setMatchingNodeIds(newMatchingIds);
                 setIsLoading(false);
+                // Fit view only when fresh data loaded (not on every expand/collapse)
+                if (fitPendingRef.current) {
+                    fitPendingRef.current = false;
+                    // Small timeout lets ReactFlow measure node dimensions first
+                    setTimeout(() => {
+                        reactFlowInstance.fitView({ padding: 0.2, duration: 300 });
+                    }, 50);
+                }
             }
             catch (error) {
                 console.error('Layout calculation failed:', error);
@@ -1462,6 +1480,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
                     }
                 }
                 // Setting rawData triggers visibleData recompute → layout useEffect
+                fitPendingRef.current = true; // request a fit-view for this fresh load
                 setRawData(processed);
                 setDataSource(processed.source || 'local');
                 setStats(processed.stats);
@@ -1774,7 +1793,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         !layoutPanelVisible && (react_1.default.createElement("button", { className: "layout-toggle-btn", onClick: () => setLayoutPanelVisible(true), title: "Layout Algorithm (Ctrl+L)" }, "\uD83D\uDCD0")),
         !exportMenuVisible && (react_1.default.createElement("button", { className: "export-toggle-btn", onClick: () => setExportMenuVisible(true), title: "Export Graph (Ctrl+E)" }, "\uD83D\uDCE5")),
         react_1.default.createElement("button", { className: "fullscreen-toggle-btn", onClick: toggleFullscreen, title: isFullscreen ? "Exit Fullscreen (F11 or Esc)" : "Enter Fullscreen (F11)" }, isFullscreen ? '🗗' : '⛶'),
-        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, onNodeDoubleClick: onNodeDoubleClick, nodeTypes: nodeTypes, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
+        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, onNodeDoubleClick: onNodeDoubleClick, nodeTypes: nodeTypes, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
             }, style: { background: 'var(--am-bg)' } },
             react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null, nodeColors: exports.NODE_COLORS, onNodeClick: handleMiniMapNodeClick }),
