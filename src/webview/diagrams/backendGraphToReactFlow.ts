@@ -167,7 +167,7 @@ export function toReactFlowWholeGraph(
         source: e.source,
         target: e.target,
         animated: false,
-        type: "straight", // ✅ straight line edges
+        type: "smoothstep", // ✅ orthogonal/90-degree bends
         style: {
             strokeWidth: 1,
             stroke: e.type === "imports" ? "#94a3b8" : "#6b7280",
