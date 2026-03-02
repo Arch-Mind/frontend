@@ -42,7 +42,7 @@ const ArchitectureGraph_1 = __importDefault(require("./ArchitectureGraph"));
 const ModuleBoundaryDiagram_1 = require("./ModuleBoundaryDiagram");
 const DependencyDiagram_1 = require("./DependencyDiagram");
 const CommunicationDiagram_1 = require("./CommunicationDiagram");
-const WebhookSetup_1 = require("./WebhookSetup");
+const CommitDetails_1 = require("./CommitDetails");
 const ThemeContext_1 = require("./ThemeContext");
 const ThemeToggle_1 = require("./ThemeToggle");
 const vscodeExportHelper_1 = require("../utils/exporters/vscodeExportHelper");
@@ -57,8 +57,10 @@ function normalizeView(view) {
         case 'boundary-diagram':
         case 'dependency-diagram':
         case 'communication':
-        case 'webhooks':
+        case 'commits':
             return view;
+        case 'webhooks':
+            return 'commits';
         case 'dependencies':
             return 'dependency-diagram';
         default:
@@ -175,7 +177,7 @@ const App = () => {
                 react_1.default.createElement("button", { className: activeView === 'boundaries' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('boundaries') }, "Boundaries"),
                 react_1.default.createElement("button", { className: activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('dependency-diagram') }, "Dependency Diagram"),
                 react_1.default.createElement("button", { className: activeView === 'communication' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('communication') }, "Communication"),
-                react_1.default.createElement("button", { className: activeView === 'webhooks' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('webhooks') }, "Webhooks")),
+                react_1.default.createElement("button", { className: activeView === 'commits' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('commits') }, "Commits")),
             react_1.default.createElement("div", { className: "heatmap-toolbar" },
                 react_1.default.createElement("span", { className: "heatmap-label" }, "Heatmap"),
                 react_1.default.createElement("div", { className: "heatmap-toggle" }, heatmapOptions.map((option) => (react_1.default.createElement("button", { key: option.value, className: heatmapMode === option.value ? 'heatmap-pill active' : 'heatmap-pill', onClick: () => setHeatmapMode(option.value) }, option.label))))),
@@ -187,7 +189,7 @@ const App = () => {
                 activeView === 'dependency-diagram' &&
                     (backendGraph ? (react_1.default.createElement(BackendDependencyDiagram_1.BackendDependencyDiagram, { graph: backendGraph })) : (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData, localContributions: localContributions }))),
                 activeView === 'communication' && (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
-                activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app' }))),
+                activeView === 'commits' && (react_1.default.createElement(CommitDetails_1.CommitDetails, { backendUrl: config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app', repoId: repoId }))),
             react_1.default.createElement(NotificationHistory_1.NotificationHistory, { entries: history, onClear: () => setHistory([]) }))));
 };
 exports.default = App;

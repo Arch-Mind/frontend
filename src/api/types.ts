@@ -239,6 +239,21 @@ export interface ContributionsResponse {
     contributions: FileContribution[];
 }
 
+export interface CommitHistoryItem {
+    sha: string;
+    author_name: string;
+    author_email: string;
+    message: string;
+    authored_at: string;
+    changed_files: string[];
+    files_changed_count: number;
+}
+
+export interface CommitHistoryResponse {
+    repo_id: string;
+    commits: CommitHistoryItem[];
+}
+
 export interface ArchitectureInsight {
     pattern_type: string;
     confidence: number | null;

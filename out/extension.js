@@ -250,7 +250,7 @@ function activate(context) {
     let configureWebhookCmd = vscode.commands.registerCommand('archmind.configureWebhook', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         if (ArchitecturePanel.currentPanel) {
-            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'webhooks' });
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'commits' });
         }
     });
     let showInBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showInBoundaryDiagram', async () => {

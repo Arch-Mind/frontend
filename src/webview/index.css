@@ -454,6 +454,136 @@ html, body, #root {
     font-size: 14px;
 }
 
+.commit-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.commit-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.commit-section h3 {
+    margin: 0;
+    font-size: 13px;
+    color: var(--am-fg);
+}
+
+.commit-contributor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.commit-contributor-card {
+    padding: 10px;
+    border: 1px solid var(--am-border);
+    border-radius: 10px;
+    background: var(--am-panel-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.commit-contributor-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.commit-contributor-email {
+    font-size: 11px;
+    color: var(--am-desc);
+    word-break: break-all;
+}
+
+.commit-contributor-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--am-fg);
+}
+
+.commit-contributor-time {
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.commit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 520px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.commit-card {
+    padding: 10px;
+    border: 1px solid var(--am-border);
+    border-radius: 10px;
+    background: var(--am-panel-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.commit-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--am-desc);
+    gap: 8px;
+}
+
+.commit-card-header code {
+    background: var(--am-kbd-bg);
+    border: 1px solid var(--am-kbd-border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--am-fg);
+}
+
+.commit-message {
+    font-size: 12px;
+    color: var(--am-fg);
+    word-break: break-word;
+}
+
+.commit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.commit-files summary {
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--am-accent);
+}
+
+.commit-files ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.commit-files li {
+    font-size: 11px;
+    color: var(--am-fg);
+    word-break: break-word;
+}
+
 .boundary-diagram-node {
     background: var(--am-bg);
     border: 2px solid var(--am-border);

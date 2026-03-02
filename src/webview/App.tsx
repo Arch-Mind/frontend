@@ -5,15 +5,16 @@ import { ModuleBoundaryDiagram } from './ModuleBoundaryDiagram';
 import { BoundaryDiagram } from './BoundaryDiagram';
 import { DependencyDiagram } from './DependencyDiagram';
 import { CommunicationDiagram } from './CommunicationDiagram';
-import { WebhookSetup } from './WebhookSetup';
+import { CommitDetails } from './CommitDetails';
 import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
 import { initializeExportListener } from '../utils/exporters/vscodeExportHelper';
 import { HeatmapMode } from './heatmapUtils';
 import { NotificationEntry } from './NotificationHistory';
 import { NotificationHistory } from './NotificationHistory';
+import { WebhookSetup } from './WebhookSetup';
 
-// ✅ backend-driven diagrams (new)
+// ✅ backend-driven diagrams
 import { BackendDependencyDiagram } from './diagrams/BackendDependencyDiagram';
 import { BackendBoundaryDiagram } from './diagrams/BackendBoundaryDiagram';
 import { BackendCommunicationDiagram } from './diagrams/BackendCommunicationDiagram';
@@ -24,7 +25,8 @@ type AppView =
     | 'boundary-diagram'
     | 'dependency-diagram'
     | 'communication'
-    | 'webhooks';
+    | 'webhooks'
+    | 'commits';
 
 function normalizeView(view: string): AppView | null {
     switch (view) {
@@ -33,8 +35,10 @@ function normalizeView(view: string): AppView | null {
         case 'boundary-diagram':
         case 'dependency-diagram':
         case 'communication':
-        case 'webhooks':
+        case 'commits':
             return view;
+        case 'webhooks':
+            return 'commits';
         case 'dependencies':
             return 'dependency-diagram';
         default:
@@ -202,10 +206,10 @@ const App: React.FC = () => {
                     </button>
 
                     <button
-                        className={activeView === 'webhooks' ? 'view-tab active' : 'view-tab'}
-                        onClick={() => setActiveView('webhooks')}
+                        className={activeView === 'commits' ? 'view-tab active' : 'view-tab'}
+                        onClick={() => setActiveView('commits')}
                     >
-                        Webhooks
+                        Commits
                     </button>
                 </div>
 
@@ -283,6 +287,13 @@ const App: React.FC = () => {
                     {activeView === 'webhooks' && (
                         <WebhookSetup
                             backendUrl={config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app'}
+                        />
+                    )}
+
+                    {activeView === 'commits' && (
+                        <CommitDetails
+                            backendUrl={config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app'}
+                            repoId={repoId}
                         />
                     )}
                 </main>
