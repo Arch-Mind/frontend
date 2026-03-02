@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArchMindWebviewApiClient } from '../api/webviewClient';
-import { ContributionsResponse, ModuleBoundariesResponse, ModuleBoundary } from '../api/types';
+import { ContributionsResponse, ModuleBoundariesResponse, ModuleBoundary, ArchitectureInsightsResponse } from '../api/types';
 import { HeatmapLegend } from './HeatmapLegend';
-import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath, findHeatmapEntry } from './heatmapUtils';
 import { RawNode } from './graphTypes';
 import { getVsCodeApi } from '../utils/vscodeApi';
-
-declare const acquireVsCodeApi: any;
 
 interface BoundaryGroup {
     title: string;
@@ -30,18 +28,6 @@ const layerStyles: Record<string, string> = {
     Unknown: 'layer-pill layer-unknown',
 };
 
-function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState): { color: string; tooltip: string; metric: number } | null {
-    let hottest: { color: string; tooltip: string; metric: number } | null = null;
-    boundary.files.forEach((file) => {
-        const entry = heatmapState.entries.get(normalizePath(file));
-        if (!entry) return;
-        if (!hottest || entry.metric > hottest.metric) {
-            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
-        }
-    });
-    return hottest;
-}
-
 interface ModuleBoundaryDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
@@ -49,6 +35,7 @@ interface ModuleBoundaryDiagramProps {
     graphEngineUrl?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     architectureData?: any;
+    localContributions?: ContributionsResponse | null;
 }
 
 export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
@@ -57,11 +44,8 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
     repoId: initialRepoId = null,
     graphEngineUrl,
     architectureData,
+    localContributions,
 }) => {
-    console.log('ModuleBoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
-
-    console.log('ModuleBoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
-
     const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(
         () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
@@ -72,8 +56,9 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<ModuleBoundariesResponse | null>(null);
+    const [insights, setInsights] = useState<ArchitectureInsightsResponse | null>(null);
     const [expandedBoundaryId, setExpandedBoundaryId] = useState<string | null>(null);
-    const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
+    const [contributions, setContributions] = useState<ContributionsResponse | null>(localContributions || null);
 
     const heatmapState = useMemo<HeatmapState>(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
@@ -97,7 +82,6 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
         };
 
         window.addEventListener('message', handler);
-        window.addEventListener('message', handler);
         if (vscode) {
             vscode.postMessage({ command: 'requestArchitecture' });
         }
@@ -106,84 +90,85 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
     }, [vscode]);
 
     useEffect(() => {
-        if (initialRepoId) {
-            setRepoId(initialRepoId);
-        }
-    }, [initialRepoId]);
-
-    const loadBoundaries = async () => {
-        if (!repoId) return;
-        try {
-            setIsLoading(true);
-            setError(null);
-
-            try {
-                const response = await apiClient.getModuleBoundaries(repoId);
-                if (response && response.boundaries.length > 0) {
-                    setData(response);
-                } else {
-                    console.warn('ModuleBoundaryDiagram: Backend returned empty boundaries');
-                    throw new Error('No boundaries returned from backend');
-                }
-            } catch (backendError) {
-                console.warn('ModuleBoundaryDiagram: Backend fetch failed', backendError);
-
-                // Fallback: Derive from architectureData if available
-                if (architectureData && architectureData.nodes) {
-                    console.log('ModuleBoundaryDiagram: Using fallback data');
-                    const files = architectureData.nodes.filter((n: RawNode) => n.type === 'file');
-                    // Group by directory
-                    const dirMap = new Map<string, string[]>();
-
-                    files.forEach((node: RawNode) => {
-                        const pathParts = (node.filePath || node.id).split('/');
-                        const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
-                        if (!dirMap.has(dir)) dirMap.set(dir, []);
-                        dirMap.get(dir)?.push(node.filePath || node.id);
-                    });
-
-                    const derivedBoundaries: ModuleBoundary[] = Array.from(dirMap.entries()).map(([dir, files], index) => ({
-                        id: `physical-${index}`,
-                        name: dir,
-                        path: dir,
-                        type: 'physical',
-                        files: files,
-                        file_count: files.length,
-                        layer: 'Unknown'
-                    }));
-
-                    setData({
-                        boundaries: derivedBoundaries,
-                        total_boundaries: derivedBoundaries.length,
-                        repo_id: repoId
-                    });
-                } else {
-                    throw backendError;
-                }
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load boundaries');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
         if (!repoId) return;
         let active = true;
 
-        const run = async () => {
-            if (!active) return;
-            await loadBoundaries();
+        const load = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
+
+                try {
+                    const [boundaries, analysis] = await Promise.all([
+                        apiClient.getModuleBoundaries(repoId),
+                        apiClient.getArchitectureInsights(repoId).catch(() => null),
+                    ]);
+
+                    if (!active) return;
+                    if (boundaries && boundaries.boundaries.length > 0) {
+                        setData(boundaries);
+                        setInsights(analysis);
+                    } else {
+                        throw new Error('No boundaries returned from backend');
+                    }
+                } catch (backendError) {
+                    if (!active) return;
+                    console.warn('ModuleBoundaryDiagram: Fallback to derived boundaries', backendError);
+
+                    if (architectureData && architectureData.nodes) {
+                        const files = architectureData.nodes.filter((n: RawNode) => n.type === 'file');
+                        const dirMap = new Map<string, string[]>();
+
+                        files.forEach((node: RawNode) => {
+                            const pathStr = node.filePath || node.id;
+                            const parts = pathStr.split('/');
+                            let dir = 'root';
+                            if (parts.length > 2) {
+                                dir = parts.slice(0, 2).join('/');
+                            } else if (parts.length > 1) {
+                                dir = parts[0];
+                            }
+
+                            if (!dirMap.has(dir)) dirMap.set(dir, []);
+                            dirMap.get(dir)?.push(pathStr);
+                        });
+
+                        const derived: ModuleBoundary[] = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                            id: `local-${dir.replace(/[\/\.]/g, '-')}`,
+                            name: dir,
+                            path: dir,
+                            type: 'physical',
+                            files: files,
+                            file_count: files.length,
+                            layer: 'Unknown'
+                        }));
+
+                        setData({
+                            boundaries: derived,
+                            total_boundaries: derived.length,
+                            repo_id: repoId
+                        });
+                    } else {
+                        throw backendError;
+                    }
+                }
+            } catch (err) {
+                if (!active) return;
+                setError(err instanceof Error ? err.message : 'Failed to load boundaries');
+            } finally {
+                if (active) setIsLoading(false);
+            }
         };
 
-        run();
-        return () => {
-            active = false;
-        };
-    }, [repoId, architectureData]);
+        load();
+        return () => { active = false; };
+    }, [apiClient, repoId, architectureData]);
 
     useEffect(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -193,21 +178,26 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
         const load = async () => {
             try {
                 const response = await apiClient.getContributions(repoId);
-                if (active) {
-                    setContributions(response);
-                }
+                if (active) setContributions(response);
             } catch {
-                if (active) {
-                    setContributions(null);
-                }
+                if (active) setContributions(null);
             }
         };
-
         load();
-        return () => {
-            active = false;
-        };
-    }, [apiClient, repoId, heatmapMode]);
+        return () => { active = false; };
+    }, [apiClient, repoId, heatmapMode, localContributions]);
+
+    const summaryByBoundary = useMemo(() => {
+        const map = new Map<string, string>();
+        if (!insights?.insights) return map;
+        insights.insights.forEach(item => {
+            if (item.pattern_type?.startsWith('module_summary:')) {
+                const name = item.pattern_type.replace('module_summary:', '').trim();
+                map.set(name, item.summary);
+            }
+        });
+        return map;
+    }, [insights]);
 
     const groups = useMemo<BoundaryGroup[]>(() => {
         const boundaries = data?.boundaries || [];
@@ -215,9 +205,7 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
 
         boundaries.forEach(boundary => {
             const key = boundary.type || 'unknown';
-            if (!grouped[key]) {
-                grouped[key] = [];
-            }
+            if (!grouped[key]) grouped[key] = [];
             grouped[key].push(boundary);
         });
 
@@ -230,25 +218,15 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
             }));
     }, [data]);
 
-    const totalBoundaries = data?.total_boundaries ?? 0;
-
     return (
         <div className="boundary-view">
             <div className="boundary-header">
                 <div>
                     <h2 className="boundary-title">Module Boundaries</h2>
-                    <p className="boundary-subtitle">Detected boundaries grouped by type.</p>
-                </div>
-                <div className="boundary-actions">
-                    <button
-                        className="boundary-refresh"
-                        onClick={loadBoundaries}
-                        disabled={!repoId || isLoading}
-                    >
-                        Refresh
-                    </button>
+                    <p className="boundary-subtitle">Detailed analysis of code ownership and logical groupings.</p>
                 </div>
             </div>
+
             {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
                 <HeatmapLegend
                     mode={heatmapMode}
@@ -257,28 +235,9 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
                 />
             )}
 
-            {isLoading && (
-                <div className="boundary-state">Loading boundaries...</div>
-            )}
-            {error && (
-                <div className="boundary-state boundary-error">{error}</div>
-            )}
-            {!isLoading && !error && !repoId && (
-                <div className="boundary-state">
-                    Backend repository context is not available. Run backend analysis first.
-                </div>
-            )}
-
-            {!isLoading && !error && !!repoId && totalBoundaries === 0 && (
-                <div className="boundary-state">No boundaries available yet.</div>
-            )}
-
-            {!isLoading && !error && !!repoId && totalBoundaries > 0 && (
-                <div className="boundary-summary">
-                    <span className="boundary-pill">{totalBoundaries} boundaries</span>
-                    {repoId && <span className="boundary-pill muted">Repo: {repoId}</span>}
-                </div>
-            )}
+            {isLoading && <div className="boundary-state">Loading boundaries...</div>}
+            {error && <div className="boundary-state boundary-error">{error}</div>}
+            {!isLoading && !error && !repoId && <div className="boundary-state">Missing context.</div>}
 
             <div className="boundary-grid">
                 {groups.map(group => (
@@ -293,13 +252,14 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
                                 const layerClass = layerStyles[boundary.layer || 'Unknown'] || layerStyles.Unknown;
                                 const heatmap = heatmapMode === 'off' ? null : getBoundaryHeatmap(boundary, heatmapState);
                                 const isHighlighted = boundary.files.some(file => highlightSet.has(normalizePath(file)));
+
                                 return (
                                     <div
                                         key={boundary.id}
                                         className="boundary-card"
                                         style={{
                                             borderColor: heatmap?.color,
-                                            boxShadow: isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.75)' : undefined,
+                                            boxShadow: isHighlighted ? '0 0 10px rgba(249, 115, 22, 0.5)' : undefined,
                                         }}
                                         title={heatmap?.tooltip || ''}
                                     >
@@ -318,7 +278,7 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
                                                 className="boundary-toggle"
                                                 onClick={() => setExpandedBoundaryId(isExpanded ? null : boundary.id)}
                                             >
-                                                {isExpanded ? 'Hide files' : 'Show files'}
+                                                {isExpanded ? 'Hide' : 'Show'}
                                             </button>
                                         </div>
                                         {isExpanded && (
@@ -342,3 +302,14 @@ export const ModuleBoundaryDiagram: React.FC<ModuleBoundaryDiagramProps> = ({
     );
 };
 
+function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState) {
+    let hottest: any = null;
+    boundary.files.forEach(file => {
+        const entry = findHeatmapEntry(heatmapState, file);
+        if (!entry) return;
+        if (!hottest || entry.metric > hottest.metric) {
+            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
+        }
+    });
+    return hottest;
+}

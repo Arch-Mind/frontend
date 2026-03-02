@@ -1266,6 +1266,7 @@ interface ArchitectureGraphProps {
     highlightNodeIds?: string[];
     repoId?: string | null;
     graphEngineUrl?: string;
+    localContributions?: ContributionsResponse | null;
 }
 
 const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
@@ -1273,6 +1274,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     highlightNodeIds = [],
     repoId: initialRepoId = null,
     graphEngineUrl,
+    localContributions,
 }) => {
     // VS Code API reference - memoized to call only once
     // ... other imports ...
@@ -1296,7 +1298,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [dataSource, setDataSource] = useState<'local' | 'backend'>('local');
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
-    const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
+    const [contributions, setContributions] = useState<ContributionsResponse | null>(localContributions || null);
 
     const heatmapState = useMemo(
         () => buildHeatmap(contributions?.contributions || [], heatmapMode),
@@ -1740,6 +1742,11 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
 
     useEffect(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
+
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -1763,7 +1770,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
         return () => {
             active = false;
         };
-    }, [apiClient, repoId, heatmapMode]);
+    }, [apiClient, repoId, heatmapMode, localContributions]);
 
     useEffect(() => {
         if (!nodes.length) return;
@@ -2246,6 +2253,7 @@ const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
     highlightNodeIds,
     repoId,
     graphEngineUrl,
+    localContributions,
 }) => {
     return (
         <ReactFlowProvider>
@@ -2254,6 +2262,7 @@ const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
                 highlightNodeIds={highlightNodeIds}
                 repoId={repoId}
                 graphEngineUrl={graphEngineUrl}
+                localContributions={localContributions}
             />
         </ReactFlowProvider>
     );

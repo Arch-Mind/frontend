@@ -826,7 +826,7 @@ const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, on
             react_1.default.createElement("kbd", null, "L"),
             " to toggle layout panel")));
 };
-const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, }) => {
+const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, localContributions, }) => {
     // VS Code API reference - memoized to call only once
     // ... other imports ...
     // Inside component
@@ -842,7 +842,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const [errorMessage, setErrorMessage] = (0, react_1.useState)(null);
     const [dataSource, setDataSource] = (0, react_1.useState)('local');
     const [selectedNode, setSelectedNode] = (0, react_1.useState)(null);
-    const [contributions, setContributions] = (0, react_1.useState)(null);
+    const [contributions, setContributions] = (0, react_1.useState)(localContributions || null);
     const heatmapState = (0, react_1.useMemo)(() => (0, heatmapUtils_1.buildHeatmap)(contributions?.contributions || [], heatmapMode), [contributions, heatmapMode]);
     // Search and filter state - initialized from persistence
     const [searchVisible, setSearchVisible] = (0, react_1.useState)(false);
@@ -1205,6 +1205,10 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         };
     }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
     (0, react_1.useEffect)(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -1227,7 +1231,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         return () => {
             active = false;
         };
-    }, [apiClient, repoId, heatmapMode]);
+    }, [apiClient, repoId, heatmapMode, localContributions]);
     (0, react_1.useEffect)(() => {
         if (!nodes.length)
             return;
@@ -1515,9 +1519,9 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider
-const ArchitectureGraph = ({ heatmapMode, highlightNodeIds, repoId, graphEngineUrl, }) => {
+const ArchitectureGraph = ({ heatmapMode, highlightNodeIds, repoId, graphEngineUrl, localContributions, }) => {
     return (react_1.default.createElement(reactflow_1.ReactFlowProvider, null,
-        react_1.default.createElement(ArchitectureGraphInner, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodeIds, repoId: repoId, graphEngineUrl: graphEngineUrl })));
+        react_1.default.createElement(ArchitectureGraphInner, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodeIds, repoId: repoId, graphEngineUrl: graphEngineUrl, localContributions: localContributions })));
 };
 exports.default = ArchitectureGraph;
 //# sourceMappingURL=ArchitectureGraph.js.map

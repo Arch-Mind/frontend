@@ -43,6 +43,7 @@ const localParser_1 = require("./analyzer/localParser");
 const analysisService_1 = require("./services/analysisService");
 const DependencyCodeLensProvider_1 = require("./providers/DependencyCodeLensProvider");
 const fingerprintService_1 = require("./services/fingerprintService");
+const gitAnalysisService_1 = require("./services/gitAnalysisService");
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
     // Initialize LocalParser
@@ -639,6 +640,29 @@ class ArchitecturePanel {
             // Add source indicator
             const enrichedData = { ...data, source: 'local' };
             this._panel.webview.postMessage({ command: 'architectureData', data: enrichedData });
+            // Fetch and send Git contributions data
+            this._panel.webview.postMessage({
+                command: 'loading',
+                message: 'Analyzing git history...'
+            });
+            const gitService = gitAnalysisService_1.GitAnalysisService.getInstance();
+            const gitStats = await gitService.getRepoStats(rootPath);
+            // Transform to ContributionsResponse format
+            const contributions = {
+                repo_id: 'local',
+                contributions: gitStats.map(stat => ({
+                    file_path: stat.filePath,
+                    commit_count: stat.commitCount,
+                    last_commit_date: new Date(stat.lastModified).toISOString(),
+                    primary_author: stat.authors[0]?.name || 'Unknown',
+                    contributors: stat.authors.map(a => ({
+                        name: a.name,
+                        email: a.email,
+                        commit_count: a.count
+                    }))
+                }))
+            };
+            this._panel.webview.postMessage({ command: 'contributions', data: contributions });
         }
         catch (error) {
             console.error(error);

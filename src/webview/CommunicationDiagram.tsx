@@ -39,7 +39,9 @@ interface CommunicationDiagramProps {
     repoId?: string | null;
     graphEngineUrl?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     architectureData?: any;
+    localContributions?: ContributionsResponse | null;
 }
 
 export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
@@ -48,6 +50,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
     repoId: initialRepoId = null,
     graphEngineUrl,
     architectureData,
+    localContributions,
 }) => {
     console.log('CommunicationDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
     const vscode = useMemo(() => getVsCodeApi(), []);
@@ -60,7 +63,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<CommunicationResponse | null>(null);
-    const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
+    const [contributions, setContributions] = useState<ContributionsResponse | null>(localContributions || null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
     const [edgeDetails, setEdgeDetails] = useState<EdgeDetails | null>(null);
@@ -95,7 +98,6 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
             }
         };
 
-        window.addEventListener('message', handler);
         window.addEventListener('message', handler);
         if (vscode) {
             vscode.postMessage({ command: 'requestArchitecture' });
@@ -136,32 +138,41 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
                     // We can try to infer endpoints from nodes that look like URLs or have specific types.
                     if (architectureData && architectureData.nodes) {
                         console.log('CommunicationDiagram: Deriving from nodes', architectureData.nodes.length);
+
                         const endpoints: any[] = [];
+                        const rpcServices: any[] = [];
+                        const nodeMap = new Map<string, string>();
 
-                        // Infer endpoints from graph nodes if they have specific metadata
-                        // OR if we just visualize the raw graph as communication? No, structure expects specific format.
-                        // Let's look for nodes with type 'endpoint' or 'route' if any...
-                        // Or look for edges with type 'http' / 'rpc'
+                        architectureData.nodes.forEach((n: any) => {
+                            nodeMap.set(n.id, n.filePath || n.id);
+                        });
 
-                        // For now, let's create a minimal derived set if possible.
-                        // If no specific 'http' edges exist in raw graph, we might not show much.
+                        // Heuristic: If we have 'calls' edges, we can visualize them as a form of communication
+                        // We'll treat files that call each other as communicating services for the sake of the local view
+                        const communicationEdges = architectureData.edges?.filter((e: any) => e.type === 'calls') || [];
 
-                        architectureData.edges?.forEach((e: RawEdge) => {
-                            if (e.type === 'http' || e.type === 'rpc' || e.type === 'queue') {
-                                // We found some relevant edges!
-                                // Construct a minimal response
-                                // ... (Implementation of heuristic mapping)
+                        const callersByTarget = new Map<string, Set<string>>();
+                        communicationEdges.forEach((e: any) => {
+                            const targetPath = nodeMap.get(e.target);
+                            const sourcePath = nodeMap.get(e.source);
+                            if (targetPath && sourcePath && targetPath !== sourcePath) {
+                                if (!callersByTarget.has(targetPath)) callersByTarget.set(targetPath, new Set());
+                                callersByTarget.get(targetPath)?.add(sourcePath);
                             }
                         });
 
-                        // If we didn't find anything specific, we might just have to show empty or 
-                        // simple "Service" nodes for directories?
+                        // Create pseudo-endpoints for local visualization
+                        callersByTarget.forEach((callers, target) => {
+                            endpoints.push({
+                                method: 'CALL',
+                                url: target,
+                                callers: Array.from(callers),
+                                services: []
+                            });
+                        });
 
-                        // Let's at least populate 'compose_services' if we can guess them from 'service' nodes
                         const services = architectureData.nodes
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             .filter((n: any) => n.type === 'service' || n.type === 'container')
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             .map((n: any) => ({
                                 name: n.label,
                                 image: '',
@@ -171,10 +182,10 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
                             }));
 
                         setData({
-                            endpoints: [],
+                            endpoints,
                             rpc_services: [],
                             queues: [],
-                            compose_services: services, // At least show services
+                            compose_services: services,
                             repo_id: repoId
                         });
                     } else {
@@ -199,6 +210,11 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
     }, [apiClient, repoId, architectureData]);
 
     useEffect(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
+
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -222,7 +238,7 @@ export const CommunicationDiagram: React.FC<CommunicationDiagramProps> = ({
         return () => {
             active = false;
         };
-    }, [apiClient, repoId, heatmapMode]);
+    }, [apiClient, repoId, heatmapMode, localContributions]);
 
     useEffect(() => {
         if (!data) return;

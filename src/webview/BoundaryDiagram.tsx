@@ -12,10 +12,8 @@ import {
     ModuleBoundary,
 } from '../api/types';
 import { HeatmapLegend } from './HeatmapLegend';
-import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath } from './heatmapUtils';
+import { buildHeatmap, HeatmapMode, HeatmapState, normalizePath, findHeatmapEntry } from './heatmapUtils';
 import { getVsCodeApi } from '../utils/vscodeApi';
-
-declare const acquireVsCodeApi: any;
 
 const boundaryColors: Record<string, string> = {
     physical: '#3b82f6',
@@ -25,18 +23,6 @@ const boundaryColors: Record<string, string> = {
 
 const defaultBoundaryColor = '#94a3b8';
 
-const boundaryNodeTypes: NodeTypes = {
-    boundaryNode: BoundaryNode,
-    fileDot: FileNode,
-};
-
-interface FilterState {
-    physical: boolean;
-    logical: boolean;
-    architectural: boolean;
-    showFiles: boolean;
-}
-
 interface BoundaryNodeData {
     boundary: ModuleBoundary;
     summary?: string;
@@ -45,21 +31,10 @@ interface BoundaryNodeData {
     isHighlighted?: boolean;
 }
 
-function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState): { color: string; tooltip: string; metric: number } | null {
-    let hottest: { color: string; tooltip: string; metric: number } | null = null;
-    boundary.files.forEach((file) => {
-        const entry = heatmapState.entries.get(normalizePath(file));
-        if (!entry) return;
-        if (!hottest || entry.metric > hottest.metric) {
-            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
-        }
-    });
-    return hottest;
-}
-
 function BoundaryNode({ data }: { data: BoundaryNodeData }) {
     const color = boundaryColors[data.boundary.type] || defaultBoundaryColor;
     const ring = data.isHighlighted ? '0 0 0 3px rgba(249, 115, 22, 0.75)' : undefined;
+
     return (
         <div
             className="boundary-diagram-node"
@@ -70,7 +45,7 @@ function BoundaryNode({ data }: { data: BoundaryNodeData }) {
             title={data.heatmapTooltip || data.summary || ''}
         >
             <div className="boundary-node-header" style={{ color }}>
-                <span>{data.boundary.name}</span>
+                <span className="boundary-node-name">{data.boundary.name}</span>
                 {data.boundary.layer && (
                     <span className="boundary-layer-pill">{data.boundary.layer}</span>
                 )}
@@ -94,29 +69,19 @@ function FileNode({ data }: { data?: { heatmapColor?: string; heatmapTooltip?: s
     );
 }
 
-interface GraphStats {
-    totalFiles: number;
-    totalDirectories: number;
-    totalFunctions?: number;
-    totalClasses?: number;
-    filesByLanguage: Record<string, number>;
-}
-
-interface ArchitectureData {
-    nodes: RawNode[];
-    edges: unknown[];
-    stats: GraphStats;
-    source?: 'local' | 'backend';
-    repoId?: string;
-    repo_id?: string;
-}
+const boundaryNodeTypes: NodeTypes = {
+    boundaryNode: BoundaryNode,
+    fileDot: FileNode,
+};
 
 interface BoundaryDiagramProps {
     heatmapMode: HeatmapMode;
     highlightNodeIds?: string[];
     repoId?: string | null;
     graphEngineUrl?: string;
-    architectureData?: ArchitectureData | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    architectureData?: any;
+    localContributions?: ContributionsResponse | null;
 }
 
 export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
@@ -125,11 +90,8 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
     repoId: initialRepoId = null,
     graphEngineUrl,
     architectureData,
+    localContributions,
 }) => {
-    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
-
-    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
-
     const vscode = useMemo(() => getVsCodeApi(), []);
     const apiClient = useMemo(
         () => new ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'),
@@ -141,12 +103,12 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [boundaryData, setBoundaryData] = useState<ModuleBoundariesResponse | null>(null);
     const [insights, setInsights] = useState<ArchitectureInsightsResponse | null>(null);
-    const [contributions, setContributions] = useState<ContributionsResponse | null>(null);
+    const [contributions, setContributions] = useState<ContributionsResponse | null>(localContributions || null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
     const [highlightBoundaryId, setHighlightBoundaryId] = useState<string | null>(null);
 
-    const [filters, setFilters] = useState<FilterState>({
+    const [filters, setFilters] = useState({
         physical: true,
         logical: true,
         architectural: true,
@@ -185,7 +147,6 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
         };
 
         window.addEventListener('message', handler);
-        window.addEventListener('message', handler);
         if (vscode) {
             vscode.postMessage({ command: 'requestArchitecture' });
         }
@@ -208,9 +169,6 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
                 setIsLoading(true);
                 setError(null);
 
-                console.log('BoundaryDiagram: Attempting to load boundaries', { repoId });
-
-                // Try fetching boundaries from the backend
                 try {
                     const [boundaries, analysis] = await Promise.all([
                         apiClient.getModuleBoundaries(repoId),
@@ -226,26 +184,31 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
                         throw new Error('No boundaries returned from backend');
                     }
                 } catch (backendError) {
-                    console.warn('BoundaryDiagram: Backend fetch failed, trying fallback', backendError);
-
                     if (!active) return;
+                    console.warn('BoundaryDiagram: Fallback to derived boundaries', backendError);
 
-                    // Fallback: Derive from architectureData if available
                     if (architectureData && architectureData.nodes) {
-                        console.log('BoundaryDiagram: Deriving from architectureData', { nodeCount: architectureData.nodes.length });
                         const files = architectureData.nodes.filter((n: RawNode) => n.type === 'file');
-                        // Group by directory
+                        // Group by directory - use a more robust multi-level grouping or just top-level folders
                         const dirMap = new Map<string, string[]>();
 
                         files.forEach((node: RawNode) => {
-                            const pathParts = (node.filePath || node.id).split('/');
-                            const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                            const pathStr = node.filePath || node.id;
+                            // Simplify: use first two levels of directory as the "boundary"
+                            const parts = pathStr.split('/');
+                            let dir = 'root';
+                            if (parts.length > 2) {
+                                dir = parts.slice(0, 2).join('/');
+                            } else if (parts.length > 1) {
+                                dir = parts[0];
+                            }
+
                             if (!dirMap.has(dir)) dirMap.set(dir, []);
-                            dirMap.get(dir)?.push(node.filePath || node.id);
+                            dirMap.get(dir)?.push(pathStr);
                         });
 
-                        const derivedBoundaries: ModuleBoundary[] = Array.from(dirMap.entries()).map(([dir, files], index) => ({
-                            id: `physical-${index}`,
+                        const derived: ModuleBoundary[] = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                            id: `local-${dir.replace(/[\/\.]/g, '-')}`,
                             name: dir,
                             path: dir,
                             type: 'physical',
@@ -255,13 +218,11 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
                         }));
 
                         setBoundaryData({
-                            boundaries: derivedBoundaries,
-                            total_boundaries: derivedBoundaries.length,
+                            boundaries: derived,
+                            total_boundaries: derived.length,
                             repo_id: repoId
                         });
                     } else {
-                        console.error('BoundaryDiagram: No architectureData available for fallback');
-                        // If no graph data either, bubble the error
                         throw backendError;
                     }
                 }
@@ -269,19 +230,19 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
                 if (!active) return;
                 setError(err instanceof Error ? err.message : 'Failed to load boundaries');
             } finally {
-                if (active) {
-                    setIsLoading(false);
-                }
+                if (active) setIsLoading(false);
             }
         };
 
         load();
-        return () => {
-            active = false;
-        };
+        return () => { active = false; };
     }, [apiClient, repoId, architectureData]);
 
     useEffect(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -291,21 +252,14 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
         const load = async () => {
             try {
                 const response = await apiClient.getContributions(repoId);
-                if (active) {
-                    setContributions(response);
-                }
+                if (active) setContributions(response);
             } catch {
-                if (active) {
-                    setContributions(null);
-                }
+                if (active) setContributions(null);
             }
         };
-
         load();
-        return () => {
-            active = false;
-        };
-    }, [apiClient, repoId, heatmapMode]);
+        return () => { active = false; };
+    }, [apiClient, repoId, heatmapMode, localContributions]);
 
     const summaryByBoundary = useMemo(() => {
         const map = new Map<string, string>();
@@ -322,91 +276,79 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
     useEffect(() => {
         if (!boundaryData) return;
 
-        const filteredBoundaries = boundaryData.boundaries.filter(boundary => {
-            if (boundary.type === 'physical') return filters.physical;
-            if (boundary.type === 'logical') return filters.logical;
-            if (boundary.type === 'architectural') return filters.architectural;
+        const filtered = boundaryData.boundaries.filter(b => {
+            if (b.type === 'physical') return filters.physical;
+            if (b.type === 'logical') return filters.logical;
+            if (b.type === 'architectural') return filters.architectural;
             return true;
         });
 
-        const boundaryNodes: Node[] = filteredBoundaries.map(boundary => {
-            const hottest = getBoundaryHeatmap(boundary, heatmapState);
-            const isHighlighted =
-                highlightBoundaryId === boundary.id ||
-                boundary.files.some(file => highlightSet.has(normalizePath(file)));
+        const boundaryNodes: Node[] = filtered.map(b => {
+            const heatmap = getBoundaryHeatmap(b, heatmapState);
+            const isHighlighted = highlightBoundaryId === b.id ||
+                b.files.some(file => highlightSet.has(normalizePath(file)));
+
             return {
-                id: `boundary:${boundary.id}`,
+                id: `boundary:${b.id}`,
                 type: 'boundaryNode',
                 position: { x: 0, y: 0 },
                 data: {
-                    boundary,
-                    summary: summaryByBoundary.get(boundary.name) || '',
-                    heatmapColor: hottest?.color,
-                    heatmapTooltip: hottest?.tooltip,
+                    boundary: b,
+                    summary: summaryByBoundary.get(b.name) || '',
+                    heatmapColor: heatmap?.color,
+                    heatmapTooltip: heatmap?.tooltip,
                     isHighlighted,
                 },
-                draggable: false,
-                selectable: true,
-                style: {
-                    width: 260,
-                    height: 120,
-                    boxShadow: isHighlighted ? '0 0 12px rgba(249, 115, 22, 0.6)' : undefined,
-                },
+                style: { width: 260, height: 120 },
             };
         });
 
         const fileNodes: Node[] = [];
         if (filters.showFiles) {
-            filteredBoundaries.forEach(boundary => {
-                const parentId = `boundary:${boundary.id}`;
-                const files = boundary.files || [];
+            filtered.forEach(b => {
+                const parentId = `boundary:${b.id}`;
+                const files = b.files || [];
                 const columns = Math.max(3, Math.ceil(Math.sqrt(files.length)));
                 files.forEach((file, index) => {
                     const row = Math.floor(index / columns);
                     const col = index % columns;
-                    const entry = heatmapState.entries.get(normalizePath(file));
-                    const isHighlighted = highlightSet.has(normalizePath(file));
+                    const heatmap = findHeatmapEntry(heatmapState, file);
+                    const highlighted = highlightSet.has(normalizePath(file));
+
                     fileNodes.push({
-                        id: `file:${boundary.id}:${index}`,
+                        id: `file:${b.id}:${index}`,
                         type: 'fileDot',
-                        position: {
-                            x: 16 + col * 14,
-                            y: 44 + row * 12,
-                        },
+                        position: { x: 16 + col * 14, y: 44 + row * 12 },
                         parentNode: parentId,
                         extent: 'parent',
                         draggable: false,
                         selectable: false,
                         data: {
                             file,
-                            heatmapColor: entry?.color,
-                            heatmapTooltip: entry?.tooltip,
-                            isHighlighted,
+                            heatmapColor: heatmap?.color,
+                            heatmapTooltip: heatmap?.tooltip,
+                            isHighlighted: highlighted,
                         },
                     });
                 });
             });
         }
 
-        const layoutNodes = boundaryNodes.map(node => ({
-            id: node.id,
-            width: 260,
-            height: 140,
-        }));
-
         const applyLayout = async () => {
             try {
+                const layoutNodes = boundaryNodes.map(n => ({ id: n.id, width: 260, height: 140 }));
                 const { nodes: positions } = await elkLayout(layoutNodes, [], 'layered');
-                const layoutedBoundaries = boundaryNodes.map(node => {
-                    const pos = positions.get(node.id) || { x: 0, y: 0 };
-                    return { ...node, position: pos };
-                });
+
+                const layoutedBoundaries = boundaryNodes.map(node => ({
+                    ...node,
+                    position: positions.get(node.id) || { x: 0, y: 0 }
+                }));
 
                 setNodes([...layoutedBoundaries, ...fileNodes]);
                 setEdges([]);
             } catch (err) {
                 console.error('Layout failed:', err);
-                setError('Failed to calculate layout for boundary diagram.');
+                setError('Failed to calculate layout');
             }
         };
 
@@ -418,43 +360,30 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
             <div className="diagram-header">
                 <div>
                     <h2>Boundary Diagram</h2>
-                    <p>Grouped view of detected module boundaries.</p>
+                    <p>Visualizing detected module and service boundaries.</p>
                 </div>
                 <div className="diagram-filters">
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.physical}
-                            onChange={() => setFilters(prev => ({ ...prev, physical: !prev.physical }))}
-                        />
-                        Physical
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.logical}
-                            onChange={() => setFilters(prev => ({ ...prev, logical: !prev.logical }))}
-                        />
-                        Logical
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={filters.architectural}
-                            onChange={() => setFilters(prev => ({ ...prev, architectural: !prev.architectural }))}
-                        />
-                        Architectural
-                    </label>
+                    {['physical', 'logical', 'architectural'].map(type => (
+                        <label key={type}>
+                            <input
+                                type="checkbox"
+                                checked={(filters as any)[type]}
+                                onChange={() => setFilters(prev => ({ ...prev, [type]: !(prev as any)[type] }))}
+                            />
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </label>
+                    ))}
                     <label>
                         <input
                             type="checkbox"
                             checked={filters.showFiles}
                             onChange={() => setFilters(prev => ({ ...prev, showFiles: !prev.showFiles }))}
                         />
-                        Show files
+                        Files
                     </label>
                 </div>
             </div>
+
             {heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (
                 <HeatmapLegend
                     mode={heatmapMode}
@@ -465,37 +394,38 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
 
             {isLoading && <div className="diagram-state">Loading boundaries...</div>}
             {error && <div className="diagram-state diagram-error">{error}</div>}
-            {
-                !isLoading && !error && !repoId && (
-                    <div className="diagram-state">
-                        Backend repository context is not available. Run backend analysis first.
-                    </div>
-                )
-            }
-            {
-                !isLoading && !error && !!repoId && boundaryData && boundaryData.boundaries.length === 0 && (
-                    <div className="diagram-state">No boundaries were returned for this repository.</div>
-                )
-            }
+            {!isLoading && !error && !repoId && <div className="diagram-state">Missing repository context.</div>}
+            {!isLoading && !error && !!repoId && boundaryData?.boundaries.length === 0 && (
+                <div className="diagram-state">No boundaries found.</div>
+            )}
 
-            {
-                !isLoading && !error && !!repoId && (
-                    <ReactFlowProvider>
-                        <div className="diagram-flow">
-                            <ReactFlow
-                                nodes={nodes}
-                                edges={edges}
-                                nodeTypes={boundaryNodeTypes}
-                                fitView
-                                fitViewOptions={{ padding: 0.2 }}
-                            >
-                                <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
-                            </ReactFlow>
-                        </div>
-                    </ReactFlowProvider>
-                )
-            }
+            {!isLoading && !error && !!repoId && (
+                <ReactFlowProvider>
+                    <div className="diagram-flow">
+                        <ReactFlow
+                            nodes={nodes}
+                            edges={edges}
+                            nodeTypes={boundaryNodeTypes}
+                            fitView
+                            fitViewOptions={{ padding: 0.2 }}
+                        >
+                            <Background variant={BackgroundVariant.Dots} gap={16} size={0.8} />
+                        </ReactFlow>
+                    </div>
+                </ReactFlowProvider>
+            )}
         </div>
     );
 };
 
+function getBoundaryHeatmap(boundary: ModuleBoundary, heatmapState: HeatmapState) {
+    let hottest: any = null;
+    boundary.files.forEach(file => {
+        const entry = findHeatmapEntry(heatmapState, file);
+        if (!entry) return;
+        if (!hottest || entry.metric > hottest.metric) {
+            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
+        }
+    });
+    return hottest;
+}

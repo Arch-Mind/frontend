@@ -7,6 +7,7 @@ import { LocalParser } from './analyzer/localParser';
 import { AnalysisService } from './services/analysisService';
 import { DependencyCodeLensProvider } from './providers/DependencyCodeLensProvider';
 import { FingerprintService } from './services/fingerprintService';
+import { GitAnalysisService } from './services/gitAnalysisService';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('ArchMind VS Code Extension is now active!');
@@ -716,6 +717,34 @@ class ArchitecturePanel {
             // Add source indicator
             const enrichedData = { ...data, source: 'local' };
             this._panel.webview.postMessage({ command: 'architectureData', data: enrichedData });
+
+            // Fetch and send Git contributions data
+            this._panel.webview.postMessage({
+                command: 'loading',
+                message: 'Analyzing git history...'
+            });
+
+            const gitService = GitAnalysisService.getInstance();
+            const gitStats = await gitService.getRepoStats(rootPath);
+
+            // Transform to ContributionsResponse format
+            const contributions = {
+                repo_id: 'local',
+                contributions: gitStats.map(stat => ({
+                    file_path: stat.filePath,
+                    commit_count: stat.commitCount,
+                    last_commit_date: new Date(stat.lastModified).toISOString(),
+                    primary_author: stat.authors[0]?.name || 'Unknown',
+                    contributors: stat.authors.map(a => ({
+                        name: a.name,
+                        email: a.email,
+                        commit_count: a.count
+                    }))
+                }))
+            };
+
+            this._panel.webview.postMessage({ command: 'contributions', data: contributions });
+
         } catch (error) {
             console.error(error);
             this._sendError('Failed to analyze workspace locally');

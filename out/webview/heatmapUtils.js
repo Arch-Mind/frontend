@@ -6,6 +6,7 @@ exports.normalizePath = normalizePath;
 exports.getMetric = getMetric;
 exports.formatHeatmapTooltip = formatHeatmapTooltip;
 exports.formatHeatmapMetric = formatHeatmapMetric;
+exports.findHeatmapEntry = findHeatmapEntry;
 function buildHeatmap(contributions, mode) {
     if (mode === 'off') {
         return { mode, entries: new Map(), maxMetric: 0, minMetric: 0 };
@@ -89,5 +90,31 @@ function parseTimestamp(value) {
         return 0;
     const timestamp = Date.parse(value);
     return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+function findHeatmapEntry(state, filePath) {
+    // 1. Try exact match
+    const normalized = normalizePath(filePath);
+    if (state.entries.has(normalized)) {
+        return state.entries.get(normalized);
+    }
+    // 2. Try matching by suffix if filePath is absolute and entry is relative
+    // We iterate over entries? That's O(N). But N is number of modified files (usually small-ish).
+    // Better: strip common prefixes from filePath until match found?
+    // Simple heuristic: check if filePath ends with any key in entries?
+    // Reverse: iterate entries and check if filePath ends with key.
+    // Optimization: most entries are relative paths.
+    for (const [key, entry] of state.entries) {
+        // key is relative path (e.g. "src/utils/foo.ts")
+        // filePath is potentially absolute (e.g. "/Users/user/project/src/utils/foo.ts")
+        if (normalized.endsWith(key) || key.endsWith(normalized)) {
+            // potential match. Verify boundary (must be preceded by / or start of string)
+            const longer = normalized.length > key.length ? normalized : key;
+            const shorter = normalized.length > key.length ? key : normalized;
+            if (longer.endsWith('/' + shorter) || longer === shorter) {
+                return entry;
+            }
+        }
+    }
+    return undefined;
 }
 //# sourceMappingURL=heatmapUtils.js.map

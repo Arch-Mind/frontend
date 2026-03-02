@@ -385,6 +385,43 @@ html, body, #root {
 
 .heatmap-node {
     font-size: 11px;
+    padding: 10px;
+    border-radius: 9px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    min-width: 180px;
+    transition: all 0.2s ease;
+}
+
+.heatmap-node:hover {
+    border-color: var(--am-accent);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.heatmap-node-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.heatmap-node-label {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.heatmap-node-type {
+    font-size: 9px;
+    opacity: 0.6;
+    text-transform: uppercase;
+}
+
+.react-flow__handle {
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--am-bg);
 }
 
 .edge-details {

@@ -1,3 +1,4 @@
+// src/webview/App.tsx
 import React, { useEffect, useState } from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
 import { ModuleBoundaryDiagram } from './ModuleBoundaryDiagram';
@@ -9,9 +10,21 @@ import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
 import { initializeExportListener } from '../utils/exporters/vscodeExportHelper';
 import { HeatmapMode } from './heatmapUtils';
-import { NotificationHistory, NotificationEntry } from './NotificationHistory';
+import { NotificationEntry } from './NotificationHistory';
+import { NotificationHistory } from './NotificationHistory';
 
-type AppView = 'graph' | 'boundaries' | 'boundary-diagram' | 'dependency-diagram' | 'communication' | 'webhooks';
+// ✅ backend-driven diagrams (new)
+import { BackendDependencyDiagram } from './diagrams/BackendDependencyDiagram';
+import { BackendBoundaryDiagram } from './diagrams/BackendBoundaryDiagram';
+import { BackendCommunicationDiagram } from './diagrams/BackendCommunicationDiagram';
+
+type AppView =
+    | 'graph'
+    | 'boundaries'
+    | 'boundary-diagram'
+    | 'dependency-diagram'
+    | 'communication'
+    | 'webhooks';
 
 function normalizeView(view: string): AppView | null {
     switch (view) {
@@ -63,6 +76,8 @@ const App: React.FC = () => {
     const [history, setHistory] = useState<NotificationEntry[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [architectureData, setArchitectureData] = useState<any>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [localContributions, setLocalContributions] = useState<any>(null);
 
     const heatmapOptions: { value: HeatmapMode; label: string }[] = [
         { value: 'off', label: 'Off' },
@@ -75,6 +90,7 @@ const App: React.FC = () => {
         const handler = (event: MessageEvent) => {
             const message = event.data;
             const incomingView = message?.view;
+
             if ((message?.command === 'switchView' || message?.type === 'showView') && incomingView) {
                 const normalized = normalizeView(incomingView);
                 if (normalized) {
@@ -84,6 +100,7 @@ const App: React.FC = () => {
                     setHighlightNodes([message.filePath]);
                 }
             }
+
             if (message?.command === 'toggleHeatmap' || message?.type === 'toggleHeatmap') {
                 setHeatmapMode((prev) => {
                     const order: HeatmapMode[] = ['off', 'commit_count', 'last_modified', 'author_count'];
@@ -91,23 +108,34 @@ const App: React.FC = () => {
                     return order[(index + 1) % order.length];
                 });
             }
+
             if (message?.command === 'config' && message.data) {
                 setConfig(message.data);
             }
+
             if (message?.command === 'architectureData' && message.data) {
                 setArchitectureData(message.data);
                 const extractedRepoId = message.data.repo_id || message.data.repoId;
                 if (extractedRepoId) {
                     setRepoId(String(extractedRepoId));
                 }
+                // eslint-disable-next-line no-console
                 console.log('App.tsx: Received architectureData', {
                     nodeCount: message.data.nodes?.length,
                     edgeCount: message.data.edges?.length,
-                    repoId: extractedRepoId
+                    repoId: extractedRepoId,
+                    source: message.data.source,
                 });
             }
+
             if (message?.command === 'highlightNodes') {
                 setHighlightNodes(message.nodeIds || []);
+            }
+
+            if (message?.command === 'contributions' && message.data) {
+                // eslint-disable-next-line no-console
+                console.log('App.tsx: Received contributions', { count: message.data.contributions?.length });
+                setLocalContributions(message.data);
             }
         };
 
@@ -119,25 +147,31 @@ const App: React.FC = () => {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent).detail as { message: string } | undefined;
             if (!detail?.message) return;
-            setHistory((prev) => [
-                {
-                    id: `${Date.now()}`,
-                    message: detail.message,
-                    timestamp: new Date().toLocaleTimeString(),
-                },
-                ...prev,
-            ].slice(0, 8));
+            setHistory((prev) =>
+                [
+                    {
+                        id: `${Date.now()}`,
+                        message: detail.message,
+                        timestamp: new Date().toLocaleTimeString(),
+                    },
+                    ...prev,
+                ].slice(0, 8)
+            );
         };
 
         window.addEventListener('archmind:graphUpdated', handler as EventListener);
         return () => window.removeEventListener('archmind:graphUpdated', handler as EventListener);
     }, []);
 
+    // ✅ detect backend graph payload (from extension/backend)
+    const backendGraph = architectureData?.source === 'backend' ? architectureData : null;
+
     return (
         <ThemeProvider>
             <ThemeKeyboardHandler />
             <div className="app-container">
                 <Header />
+
                 <div className="view-toggle">
                     <button
                         className={activeView === 'graph' ? 'view-tab active' : 'view-tab'}
@@ -145,30 +179,28 @@ const App: React.FC = () => {
                     >
                         Graph
                     </button>
+
                     <button
                         className={activeView === 'boundaries' ? 'view-tab active' : 'view-tab'}
                         onClick={() => setActiveView('boundaries')}
                     >
                         Boundaries
                     </button>
-                    <button
-                        className={activeView === 'boundary-diagram' ? 'view-tab active' : 'view-tab'}
-                        onClick={() => setActiveView('boundary-diagram')}
-                    >
-                        Boundary Diagram
-                    </button>
+
                     <button
                         className={activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab'}
                         onClick={() => setActiveView('dependency-diagram')}
                     >
                         Dependency Diagram
                     </button>
+
                     <button
                         className={activeView === 'communication' ? 'view-tab active' : 'view-tab'}
                         onClick={() => setActiveView('communication')}
                     >
                         Communication
                     </button>
+
                     <button
                         className={activeView === 'webhooks' ? 'view-tab active' : 'view-tab'}
                         onClick={() => setActiveView('webhooks')}
@@ -176,17 +208,14 @@ const App: React.FC = () => {
                         Webhooks
                     </button>
                 </div>
+
                 <div className="heatmap-toolbar">
                     <span className="heatmap-label">Heatmap</span>
                     <div className="heatmap-toggle">
-                        {heatmapOptions.map(option => (
+                        {heatmapOptions.map((option) => (
                             <button
                                 key={option.value}
-                                className={
-                                    heatmapMode === option.value
-                                        ? 'heatmap-pill active'
-                                        : 'heatmap-pill'
-                                }
+                                className={heatmapMode === option.value ? 'heatmap-pill active' : 'heatmap-pill'}
                                 onClick={() => setHeatmapMode(option.value)}
                             >
                                 {option.label}
@@ -194,6 +223,7 @@ const App: React.FC = () => {
                         ))}
                     </div>
                 </div>
+
                 <main className="app-main">
                     {activeView === 'graph' && (
                         <ArchitectureGraph
@@ -201,37 +231,45 @@ const App: React.FC = () => {
                             highlightNodeIds={highlightNodes}
                             repoId={repoId}
                             graphEngineUrl={config?.graphEngineUrl}
+                            localContributions={localContributions}
                         />
                     )}
-                    {activeView === 'boundaries' && (
-                        console.log('App.tsx: Rendering ModuleBoundaryDiagram', { architectureData }),
-                        <ModuleBoundaryDiagram
-                            heatmapMode={heatmapMode}
-                            highlightNodeIds={highlightNodes}
-                            repoId={repoId}
-                            graphEngineUrl={config?.graphEngineUrl}
-                            architectureData={architectureData}
-                        />
-                    )}
-                    {activeView === 'boundary-diagram' && (
-                        console.log('App.tsx: Rendering BoundaryDiagram', { architectureData }),
-                        <BoundaryDiagram
-                            heatmapMode={heatmapMode}
-                            highlightNodeIds={highlightNodes}
-                            repoId={repoId}
-                            graphEngineUrl={config?.graphEngineUrl}
-                            architectureData={architectureData}
-                        />
-                    )}
-                    {activeView === 'dependency-diagram' && (
-                        <DependencyDiagram
-                            heatmapMode={heatmapMode}
-                            highlightNodeIds={highlightNodes}
-                            repoId={repoId}
-                            graphEngineUrl={config?.graphEngineUrl}
-                            architectureData={architectureData}
-                        />
-                    )}
+
+                    {/* ✅ Boundaries: render backend boundary diagram if backend graph present, else fallback to existing */}
+                    {/* keep your original boundary-diagram view (you can also swap it to backend later if you want) */}
+
+                    {activeView === 'boundaries' &&
+                        (backendGraph ? (
+                            <BackendBoundaryDiagram graph={backendGraph} />
+                        ) : (
+                            <div>
+                                <ModuleBoundaryDiagram
+                                    heatmapMode={heatmapMode}
+                                    highlightNodeIds={highlightNodes}
+                                    repoId={repoId}
+                                    graphEngineUrl={config?.graphEngineUrl}
+                                    architectureData={architectureData}
+                                    localContributions={localContributions}
+                                />
+                            </div>
+                        ))}
+
+                    {/* ✅ Dependency diagram: backend graph if present, else fallback */}
+                    {activeView === 'dependency-diagram' &&
+                        (backendGraph ? (
+                            <BackendDependencyDiagram graph={backendGraph} />
+                        ) : (
+                            <DependencyDiagram
+                                heatmapMode={heatmapMode}
+                                highlightNodeIds={highlightNodes}
+                                repoId={repoId}
+                                graphEngineUrl={config?.graphEngineUrl}
+                                architectureData={architectureData}
+                                localContributions={localContributions}
+                            />
+                        ))}
+
+                    {/* ✅ Communication: backend comm diagram if backend graph present, else fallback */}
                     {activeView === 'communication' && (
                         <CommunicationDiagram
                             heatmapMode={heatmapMode}
@@ -241,10 +279,14 @@ const App: React.FC = () => {
                             architectureData={architectureData}
                         />
                     )}
+
                     {activeView === 'webhooks' && (
-                        <WebhookSetup backendUrl={config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app'} />
+                        <WebhookSetup
+                            backendUrl={config?.backendUrl || 'https://go-api-gateway-production-2173.up.railway.app'}
+                        />
                     )}
                 </main>
+
                 <NotificationHistory entries={history} onClear={() => setHistory([])} />
             </div>
         </ThemeProvider>
@@ -252,4 +294,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

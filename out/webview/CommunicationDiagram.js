@@ -43,7 +43,7 @@ const HeatmapLegend_1 = require("./HeatmapLegend");
 const HeatmapNode_1 = require("./HeatmapNode");
 const heatmapUtils_1 = require("./heatmapUtils");
 const vscodeApi_1 = require("../utils/vscodeApi");
-const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, }) => {
+const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, localContributions, }) => {
     console.log('CommunicationDiagram: Mounted', { repoId: initialRepoId, hasArchData: !!architectureData });
     const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
@@ -51,7 +51,7 @@ const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: init
     const [isLoading, setIsLoading] = (0, react_1.useState)(false);
     const [error, setError] = (0, react_1.useState)(null);
     const [data, setData] = (0, react_1.useState)(null);
-    const [contributions, setContributions] = (0, react_1.useState)(null);
+    const [contributions, setContributions] = (0, react_1.useState)(localContributions || null);
     const [nodes, setNodes] = (0, react_1.useState)([]);
     const [edges, setEdges] = (0, react_1.useState)([]);
     const [edgeDetails, setEdgeDetails] = (0, react_1.useState)(null);
@@ -75,7 +75,6 @@ const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: init
                 }
             }
         };
-        window.addEventListener('message', handler);
         window.addEventListener('message', handler);
         if (vscode) {
             vscode.postMessage({ command: 'requestArchitecture' });
@@ -116,26 +115,35 @@ const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: init
                     if (architectureData && architectureData.nodes) {
                         console.log('CommunicationDiagram: Deriving from nodes', architectureData.nodes.length);
                         const endpoints = [];
-                        // Infer endpoints from graph nodes if they have specific metadata
-                        // OR if we just visualize the raw graph as communication? No, structure expects specific format.
-                        // Let's look for nodes with type 'endpoint' or 'route' if any...
-                        // Or look for edges with type 'http' / 'rpc'
-                        // For now, let's create a minimal derived set if possible.
-                        // If no specific 'http' edges exist in raw graph, we might not show much.
-                        architectureData.edges?.forEach((e) => {
-                            if (e.type === 'http' || e.type === 'rpc' || e.type === 'queue') {
-                                // We found some relevant edges!
-                                // Construct a minimal response
-                                // ... (Implementation of heuristic mapping)
+                        const rpcServices = [];
+                        const nodeMap = new Map();
+                        architectureData.nodes.forEach((n) => {
+                            nodeMap.set(n.id, n.filePath || n.id);
+                        });
+                        // Heuristic: If we have 'calls' edges, we can visualize them as a form of communication
+                        // We'll treat files that call each other as communicating services for the sake of the local view
+                        const communicationEdges = architectureData.edges?.filter((e) => e.type === 'calls') || [];
+                        const callersByTarget = new Map();
+                        communicationEdges.forEach((e) => {
+                            const targetPath = nodeMap.get(e.target);
+                            const sourcePath = nodeMap.get(e.source);
+                            if (targetPath && sourcePath && targetPath !== sourcePath) {
+                                if (!callersByTarget.has(targetPath))
+                                    callersByTarget.set(targetPath, new Set());
+                                callersByTarget.get(targetPath)?.add(sourcePath);
                             }
                         });
-                        // If we didn't find anything specific, we might just have to show empty or 
-                        // simple "Service" nodes for directories?
-                        // Let's at least populate 'compose_services' if we can guess them from 'service' nodes
+                        // Create pseudo-endpoints for local visualization
+                        callersByTarget.forEach((callers, target) => {
+                            endpoints.push({
+                                method: 'CALL',
+                                url: target,
+                                callers: Array.from(callers),
+                                services: []
+                            });
+                        });
                         const services = architectureData.nodes
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             .filter((n) => n.type === 'service' || n.type === 'container')
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             .map((n) => ({
                             name: n.label,
                             image: '',
@@ -144,10 +152,10 @@ const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: init
                             depends_on: []
                         }));
                         setData({
-                            endpoints: [],
+                            endpoints,
                             rpc_services: [],
                             queues: [],
-                            compose_services: services, // At least show services
+                            compose_services: services,
                             repo_id: repoId
                         });
                     }
@@ -173,6 +181,10 @@ const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: init
         };
     }, [apiClient, repoId, architectureData]);
     (0, react_1.useEffect)(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -195,7 +207,7 @@ const CommunicationDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: init
         return () => {
             active = false;
         };
-    }, [apiClient, repoId, heatmapMode]);
+    }, [apiClient, repoId, heatmapMode, localContributions]);
     (0, react_1.useEffect)(() => {
         if (!data)
             return;
