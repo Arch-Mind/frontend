@@ -387,6 +387,43 @@ body,
 
 .heatmap-node {
     font-size: 11px;
+    padding: 10px;
+    border-radius: 9px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    min-width: 180px;
+    transition: all 0.2s ease;
+}
+
+.heatmap-node:hover {
+    border-color: var(--am-accent);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.heatmap-node-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.heatmap-node-label {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.heatmap-node-type {
+    font-size: 9px;
+    opacity: 0.6;
+    text-transform: uppercase;
+}
+
+.react-flow__handle {
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--am-bg);
 }
 
 .edge-details {
@@ -417,6 +454,136 @@ body,
     color: var(--am-fg);
     cursor: pointer;
     font-size: 14px;
+}
+
+.commit-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.commit-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.commit-section h3 {
+    margin: 0;
+    font-size: 13px;
+    color: var(--am-fg);
+}
+
+.commit-contributor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.commit-contributor-card {
+    padding: 10px;
+    border: 1px solid var(--am-border);
+    border-radius: 10px;
+    background: var(--am-panel-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.commit-contributor-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.commit-contributor-email {
+    font-size: 11px;
+    color: var(--am-desc);
+    word-break: break-all;
+}
+
+.commit-contributor-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--am-fg);
+}
+
+.commit-contributor-time {
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.commit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 520px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.commit-card {
+    padding: 10px;
+    border: 1px solid var(--am-border);
+    border-radius: 10px;
+    background: var(--am-panel-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.commit-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--am-desc);
+    gap: 8px;
+}
+
+.commit-card-header code {
+    background: var(--am-kbd-bg);
+    border: 1px solid var(--am-kbd-border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--am-fg);
+}
+
+.commit-message {
+    font-size: 12px;
+    color: var(--am-fg);
+    word-break: break-word;
+}
+
+.commit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--am-desc);
+}
+
+.commit-files summary {
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--am-accent);
+}
+
+.commit-files ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.commit-files li {
+    font-size: 11px;
+    color: var(--am-fg);
+    word-break: break-word;
 }
 
 .boundary-diagram-node {
@@ -2999,4 +3166,3 @@ html:has(.fullscreen-graph),
     white-space: nowrap;
     border-width: 0;
 }
-

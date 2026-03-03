@@ -68,7 +68,7 @@
       },
       {
         "command": "archmind.configureWebhook",
-        "title": "ArchMind: Configure GitHub Webhook"
+        "title": "ArchMind: View Repository Commits"
       },
       {
         "command": "archmind.showInBoundaryDiagram",

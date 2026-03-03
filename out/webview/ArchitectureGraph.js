@@ -83,9 +83,59 @@ const ExportModal_1 = require("../components/ExportModal");
 const HeatmapLegend_1 = require("./HeatmapLegend");
 const heatmapUtils_1 = require("./heatmapUtils");
 const vscodeApi_1 = require("../utils/vscodeApi");
+const ModuleBoxNode = ({ data }) => {
+    const { label, nodeSubType, childCount, isExpanded, onToggle } = data;
+    const isModule = nodeSubType === 'module' || nodeSubType === 'directory';
+    const accentColor = isModule ? exports.NODE_COLORS.module : exports.NODE_COLORS.directory;
+    const childLabel = isModule
+        ? (childCount === 1 ? 'file' : 'files')
+        : (childCount === 1 ? 'symbol' : 'symbols');
+    return (react_1.default.createElement("div", { style: {
+            padding: '10px 14px',
+            background: isModule ? 'rgba(39,174,96,0.14)' : 'rgba(74,158,255,0.12)',
+            border: `2px solid ${accentColor}`,
+            borderRadius: 8,
+            minWidth: 160,
+            maxWidth: 230,
+            userSelect: 'none',
+            fontFamily: 'var(--vscode-font-family, monospace)',
+            cursor: 'pointer',
+        } },
+        react_1.default.createElement(reactflow_1.Handle, { type: "target", position: reactflow_1.Position.Left, style: { background: '#555' }, isConnectable: false }),
+        react_1.default.createElement("div", { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            react_1.default.createElement("span", { style: { fontSize: 14 } }, isModule ? '📦' : '📄'),
+            react_1.default.createElement("span", { style: {
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: 'var(--vscode-foreground, #ccc)',
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                } }, label),
+            childCount > 0 && (react_1.default.createElement("button", { onClick: (e) => { e.stopPropagation(); onToggle(); }, title: isExpanded ? 'Collapse' : 'Expand', style: {
+                    background: accentColor,
+                    border: 'none',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    color: '#fff',
+                    padding: '2px 7px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    lineHeight: 1.5,
+                    flexShrink: 0,
+                } }, isExpanded ? '▲' : '▼'))),
+        react_1.default.createElement("div", { style: { fontSize: 10, color: '#888', marginTop: 4 } }, childCount > 0
+            ? isExpanded
+                ? `▾ ${childCount} ${childLabel} expanded`
+                : `▸ ${childCount} ${childLabel} — click ▼ or double-click`
+            : isModule ? 'Empty module' : 'No symbols'),
+        react_1.default.createElement(reactflow_1.Handle, { type: "source", position: reactflow_1.Position.Right, style: { background: '#555' }, isConnectable: false })));
+};
 // Custom node types for ReactFlow
 const nodeTypes = {
     clusterNode: ClusterNode_1.ClusterNode,
+    moduleBox: ModuleBoxNode,
 };
 // Debounce hook for performant search on large graphs
 function useDebounce(value, delay) {
@@ -237,6 +287,9 @@ function createStyledNode(node, position, isMatching, isSelected) {
     return {
         id: node.id,
         data: {
+            // Spread raw properties first (provides _nodeKind, _childCount, _isExpanded etc.)
+            ...(node.properties || {}),
+            // Then override with definitive node-level fields
             label: node.label + (isChanged ? ` (${node.status})` : ''),
             type: node.type,
             language: node.language,
@@ -244,7 +297,7 @@ function createStyledNode(node, position, isMatching, isSelected) {
             filePath: node.filePath || node.id,
             lineNumber: node.lineNumber,
             endLineNumber: node.endLineNumber,
-            status: node.status, // Pass status to data
+            status: node.status,
         },
         position,
         style: {
@@ -364,6 +417,198 @@ function recalculateStats(nodes) {
         totalClasses: classes.length,
         filesByLanguage,
     };
+}
+// ---------------------------------------------------------------------------
+// Path helpers for directory-based grouping
+// ---------------------------------------------------------------------------
+/** Returns the first path segment (top-level directory) of a relative path. */
+function getTopLevelDir(filePath) {
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    return parts.length > 1 ? parts[0] : '__root__';
+}
+/** Returns the first two path segments of a relative path. */
+function getTwoLevelDir(filePath) {
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    if (parts.length > 2) {
+        return `${parts[0]}/${parts[1]}`;
+    }
+    if (parts.length === 2) {
+        return parts[0];
+    }
+    return '__root__';
+}
+/**
+ * Build a map of virtual directory modules → their file and symbol children.
+ *
+ * Strategy (no backend changes needed):
+ *  1. Ignore Module nodes from Neo4j — they represent external libraries (react,
+ *     axios…), NOT source directories. They cannot be used for visual grouping.
+ *  2. Group File nodes by the directory prefix derived from their relative path IDs.
+ *     Top-level segment first; if all files share one root, drill one level deeper.
+ *  3. Map files → symbols via DEFINES/CONTAINS edges AND the "path::name" ID
+ *     convention used by the normalizer.
+ */
+function buildModuleGroups(rawData) {
+    const groups = new Map();
+    const fileNodes = rawData.nodes.filter(n => n.type === 'file');
+    const symbolNodes = rawData.nodes.filter(n => n.type === 'function' || n.type === 'class');
+    // ---- Step 1: Build file → symbol mapping --------------------------------
+    const fileToSymbolIds = new Map();
+    rawData.edges.forEach(edge => {
+        // Accept DEFINES (File->Function/Class) which client.ts remaps to 'contains',
+        // and any literal 'CONTAINS'/'contains' edges that exist.
+        if (edge.type !== 'contains' && edge.type !== 'CONTAINS' &&
+            edge.type !== 'defines' && edge.type !== 'DEFINES')
+            return;
+        const src = rawData.nodes.find(n => n.id === edge.source);
+        const tgt = rawData.nodes.find(n => n.id === edge.target);
+        if (!src || !tgt)
+            return;
+        if (src.type === 'file' && (tgt.type === 'function' || tgt.type === 'class')) {
+            const s = fileToSymbolIds.get(src.id) || new Set();
+            s.add(tgt.id);
+            fileToSymbolIds.set(src.id, s);
+        }
+    });
+    // Fallback: IDs use "filePath::symbolName" convention from normalizeNodeId()
+    fileNodes.forEach(file => {
+        symbolNodes.forEach(sym => {
+            if (sym.id.startsWith(file.id + '::')) {
+                const s = fileToSymbolIds.get(file.id) || new Set();
+                s.add(sym.id);
+                fileToSymbolIds.set(file.id, s);
+            }
+        });
+    });
+    // ---- Step 2: Bucket files into top-level directories --------------------
+    const dirToFiles = new Map();
+    fileNodes.forEach(file => {
+        const key = getTopLevelDir(file.id);
+        const arr = dirToFiles.get(key) || [];
+        arr.push(file);
+        dirToFiles.set(key, arr);
+    });
+    // If all files share one top-level directory, drill one level deeper so
+    // the user gets meaningful groups instead of one giant collapsed box.
+    if (dirToFiles.size === 1) {
+        const [[, onlyFiles]] = [...dirToFiles.entries()];
+        dirToFiles.clear();
+        onlyFiles.forEach(file => {
+            const key = getTwoLevelDir(file.id);
+            const arr = dirToFiles.get(key) || [];
+            arr.push(file);
+            dirToFiles.set(key, arr);
+        });
+    }
+    // ---- Step 3: Build ModuleGroup for each directory bucket ----------------
+    dirToFiles.forEach((files, dirKey) => {
+        const label = dirKey.replace('__root__', 'root').split('/').pop() || dirKey;
+        const groupId = `__dir__${dirKey}`;
+        const modNode = { id: groupId, label, type: 'directory', depth: 0 };
+        const fileChildMap = new Map();
+        files.forEach(file => {
+            const symIds = Array.from(fileToSymbolIds.get(file.id) || []);
+            const symbols = symIds
+                .map(id => rawData.nodes.find(n => n.id === id))
+                .filter(Boolean);
+            fileChildMap.set(file.id, symbols);
+        });
+        groups.set(groupId, { moduleNode: modNode, files, fileToChildren: fileChildMap });
+    });
+    return groups;
+}
+/**
+ * Produce only the nodes/edges that should be visible based on which
+ * modules and files are currently expanded.
+ *
+ * Visibility rules:
+ *  - Module nodes  → always visible (show child count)
+ *  - File nodes    → visible only when their parent module is expanded
+ *  - Symbol nodes  → visible only when their parent file is expanded
+ *  - CONTAINS edges are hidden (they're implied by the box hierarchy)
+ *  - All other edges shown only when both endpoints are visible
+ */
+function getVisibleNodesAndEdges(rawData, moduleGroups, expandedModules, expandedFiles) {
+    const visibleNodes = [];
+    const visibleIds = new Set();
+    moduleGroups.forEach((group, moduleId) => {
+        const fileCount = group.files.length;
+        // Stash metadata in properties so upgradeToModuleBoxNodes can read it
+        visibleNodes.push({
+            ...group.moduleNode,
+            label: fileCount > 0 ? `${group.moduleNode.label} (${fileCount})` : group.moduleNode.label,
+            properties: {
+                ...(group.moduleNode.properties || {}),
+                _childCount: fileCount,
+                _isExpanded: expandedModules.has(moduleId),
+                _nodeKind: 'module',
+            },
+        });
+        visibleIds.add(moduleId);
+        if (expandedModules.has(moduleId)) {
+            group.files.forEach(file => {
+                const symbols = group.fileToChildren.get(file.id) || [];
+                const symCount = symbols.length;
+                visibleNodes.push({
+                    ...file,
+                    label: symCount > 0 ? `${file.label} (${symCount})` : file.label,
+                    properties: {
+                        ...(file.properties || {}),
+                        _childCount: symCount,
+                        _isExpanded: expandedFiles.has(file.id),
+                        _nodeKind: 'file',
+                    },
+                });
+                visibleIds.add(file.id);
+                if (expandedFiles.has(file.id)) {
+                    symbols.forEach(sym => {
+                        visibleNodes.push({
+                            ...sym,
+                            properties: {
+                                ...(sym.properties || {}),
+                                _nodeKind: 'symbol',
+                            },
+                        });
+                        visibleIds.add(sym.id);
+                    });
+                }
+            });
+        }
+    });
+    // Only show non-CONTAINS edges where both endpoints are visible
+    const visibleEdges = rawData.edges.filter(e => {
+        if (e.type === 'contains' || e.type === 'CONTAINS')
+            return false;
+        return visibleIds.has(e.source) && visibleIds.has(e.target);
+    });
+    return { nodes: visibleNodes, edges: visibleEdges };
+}
+/**
+ * Post-process ReactFlow nodes produced by the layout algorithms:
+ * any node tagged with _nodeKind='module' or 'file' is converted
+ * to the custom 'moduleBox' type with expand/collapse wired up.
+ */
+function upgradeToModuleBoxNodes(layoutedNodes, expandedModules, expandedFiles, onToggle) {
+    return layoutedNodes.map(node => {
+        const kind = node.data?._nodeKind;
+        if (!kind || kind === 'symbol')
+            return node;
+        const isModule = kind === 'module';
+        const childCount = Number(node.data?._childCount ?? 0);
+        const isExpanded = isModule ? expandedModules.has(node.id) : expandedFiles.has(node.id);
+        return {
+            ...node,
+            type: 'moduleBox',
+            style: { ...node.style, minWidth: 160 },
+            data: {
+                ...node.data,
+                nodeSubType: isModule ? 'module' : 'file',
+                childCount,
+                isExpanded,
+                onToggle: () => onToggle(node.id, isModule ? 'module' : 'file'),
+            },
+        };
+    });
 }
 // Hierarchical layout algorithm (original built-in)
 function calculateHierarchicalLayout(nodes, edges, filters, selectedNodeId) {
@@ -828,7 +1073,7 @@ const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, on
             react_1.default.createElement("kbd", null, "L"),
             " to toggle layout panel")));
 };
-const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, }) => {
+const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, localContributions, }) => {
     // VS Code API reference - memoized to call only once
     // ... other imports ...
     // Inside component
@@ -844,7 +1089,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const [errorMessage, setErrorMessage] = (0, react_1.useState)(null);
     const [dataSource, setDataSource] = (0, react_1.useState)('local');
     const [selectedNode, setSelectedNode] = (0, react_1.useState)(null);
-    const [contributions, setContributions] = (0, react_1.useState)(null);
+    const [contributions, setContributions] = (0, react_1.useState)(localContributions || null);
     const heatmapState = (0, react_1.useMemo)(() => (0, heatmapUtils_1.buildHeatmap)(contributions?.contributions || [], heatmapMode), [contributions, heatmapMode]);
     // Search and filter state - initialized from persistence
     const [searchVisible, setSearchVisible] = (0, react_1.useState)(false);
@@ -866,6 +1111,31 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     // Store raw data for re-filtering
     const [rawData, setRawData] = (0, react_1.useState)(null);
     const [matchingNodeIds, setMatchingNodeIds] = (0, react_1.useState)(new Set());
+    // Module expand/collapse state for drill-down view
+    const [expandedModules, setExpandedModules] = (0, react_1.useState)(new Set());
+    const [expandedFiles, setExpandedFiles] = (0, react_1.useState)(new Set());
+    // Stable refs so node-box callbacks always see the latest expansion state
+    // without causing the layout effect to re-run via dependency changes.
+    const expandedModulesRef = (0, react_1.useRef)(new Set());
+    const expandedFilesRef = (0, react_1.useRef)(new Set());
+    // True when a full fit-view should fire after the next layout run
+    // (set when new rawData arrives; cleared after first fitView).
+    const fitPendingRef = (0, react_1.useRef)(true);
+    expandedModulesRef.current = expandedModules;
+    expandedFilesRef.current = expandedFiles;
+    // Derive module groups (module → files → symbols) from raw data
+    const moduleGroups = (0, react_1.useMemo)(() => {
+        if (!rawData)
+            return new Map();
+        return buildModuleGroups(rawData);
+    }, [rawData]);
+    // Derive the subset of nodes/edges that should actually be rendered,
+    // based on which module/file boxes are currently expanded.
+    const visibleData = (0, react_1.useMemo)(() => {
+        if (!rawData)
+            return null;
+        return getVisibleNodesAndEdges(rawData, moduleGroups, expandedModules, expandedFiles);
+    }, [rawData, moduleGroups, expandedModules, expandedFiles]);
     // Local Outline State
     const [localSymbols, setLocalSymbols] = (0, react_1.useState)([]);
     const [localFileName, setLocalFileName] = (0, react_1.useState)('');
@@ -927,12 +1197,19 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const onNodeClick = (0, react_1.useCallback)((event, node) => {
         setSelectedNode(node.id);
         setContextMenuNode(null);
-        // Open file in VS Code
-        if (vscodeRef.current && node.data.type !== 'directory') {
+        // Only open files for leaf symbol nodes (function/class).
+        // Module-box nodes (moduleBox type) cover both directory groups and
+        // file boxes — clicking them should only select, not open a file.
+        const isModuleBox = node.type === 'moduleBox';
+        const isDirectory = node.data?.type === 'directory';
+        if (vscodeRef.current && !isModuleBox && !isDirectory) {
+            const fp = node.data?.filePath;
+            // Guard against the string "undefined" that can come from client.ts
+            const safePath = (!fp || fp === 'undefined') ? node.id : fp;
             vscodeRef.current.postMessage({
                 command: 'openFile',
-                filePath: node.data.filePath || node.id,
-                lineNumber: node.data.lineNumber,
+                filePath: safePath,
+                lineNumber: node.data?.lineNumber,
             });
         }
     }, []);
@@ -950,6 +1227,27 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     }, []);
     const onNodeMouseLeave = (0, react_1.useCallback)(() => {
         setHoveredNode(null);
+    }, []);
+    // Handle node double-click – expand/collapse module/file box nodes
+    const onNodeDoubleClick = (0, react_1.useCallback)((_event, node) => {
+        const subType = node.data?.nodeSubType;
+        if (subType === 'module' || subType === 'directory') {
+            setExpandedModules(prev => {
+                const next = new Set(prev);
+                next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+                return next;
+            });
+        }
+        else if (subType === 'file') {
+            const symCount = Number(node.data?.childCount ?? 0);
+            if (symCount > 0) {
+                setExpandedFiles(prev => {
+                    const next = new Set(prev);
+                    next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+                    return next;
+                });
+            }
+        }
     }, []);
     // Handle context menu actions
     const handleContextMenuAction = (0, react_1.useCallback)((action) => {
@@ -1095,32 +1393,58 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [toggleFullscreen, isFullscreen]);
-    // Update graph when debounced filters, layout type, or selection change
-    // ... (same as before)
+    // Update graph when visibleData, filters, layout type, or selection change.
+    // visibleData already recomputes when expandedModules/expandedFiles change,
+    // so those don't need to be separate deps here.
     (0, react_1.useEffect)(() => {
-        // ... (runLayout implementation)
-        if (!rawData)
+        if (!visibleData)
             return;
-        const { nodes: rawNodes, edges: rawEdges } = rawData;
-        // Use async layout calculation
+        const { nodes: rawNodes, edges: rawEdges } = visibleData;
         const runLayout = async () => {
             setIsLayouting(true);
             try {
                 const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(layoutType, rawNodes, rawEdges, debouncedFilters, selectedNode);
+                // Upgrade module/file nodes to ModuleBoxNode with expand/collapse
+                const finalNodes = upgradeToModuleBoxNodes(layoutedNodes, expandedModulesRef.current, expandedFilesRef.current, (nodeId, kind) => {
+                    if (kind === 'module') {
+                        setExpandedModules(prev => {
+                            const next = new Set(prev);
+                            next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
+                            return next;
+                        });
+                    }
+                    else {
+                        setExpandedFiles(prev => {
+                            const next = new Set(prev);
+                            next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
+                            return next;
+                        });
+                    }
+                });
                 const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
-                setNodes(layoutedNodes);
+                setNodes(finalNodes);
                 setEdges(formattedEdges);
                 setMatchingNodeIds(newMatchingIds);
+                setIsLoading(false);
+                // Fit view only when fresh data loaded (not on every expand/collapse)
+                if (fitPendingRef.current) {
+                    fitPendingRef.current = false;
+                    // Small timeout lets ReactFlow measure node dimensions first
+                    setTimeout(() => {
+                        reactFlowInstance.fitView({ padding: 0.2, duration: 300 });
+                    }, 50);
+                }
             }
             catch (error) {
                 console.error('Layout calculation failed:', error);
+                setIsLoading(false);
             }
             finally {
                 setIsLayouting(false);
             }
         };
         runLayout();
-    }, [debouncedFilters, selectedNode, rawData, layoutType, setNodes, setEdges]);
+    }, [debouncedFilters, selectedNode, visibleData, layoutType, setNodes, setEdges]);
     // Message handling
     (0, react_1.useEffect)(() => {
         const handleMessage = (event) => {
@@ -1148,45 +1472,29 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
             if (message.command === 'architectureData') {
                 setErrorMessage(null);
                 const data = message.data;
-                setRawData(data);
-                setDataSource(data.source || 'local');
-                // Extract and store repo_id for WebSocket connection (support both naming conventions)
+                // Extract and store repo_id for WebSocket connection
                 const extractedRepoId = data.repo_id || data.repoId;
                 if (extractedRepoId) {
                     setRepoId(extractedRepoId);
                 }
-                const { nodes: rawNodes, edges: rawEdges, stats: graphStats } = data;
-                // Preprocess nodes if coming from backend to ensure hierarchy/depth exists
-                // This fixes the issue where repo analysis looks unstructured compared to local analysis
-                let processedNodes = rawNodes;
-                let processedEdges = rawEdges;
+                // Preprocess backend data to ensure hierarchy/depth exists
+                let processed = data;
                 if (data.source === 'backend') {
-                    const hasDepth = rawNodes.some(n => n.depth > 0);
-                    const hasDirectories = rawNodes.some(n => n.type === 'directory');
+                    const hasDepth = data.nodes.some(n => n.depth > 0);
+                    const hasDirectories = data.nodes.some(n => n.type === 'directory');
                     if (!hasDepth || !hasDirectories) {
-                        const { nodes: newNodes, edges: newEdges } = (0, hierarchyUtils_1.reconstructHierarchy)(rawNodes, rawEdges);
-                        processedNodes = newNodes;
-                        processedEdges = newEdges;
+                        const { nodes: newNodes, edges: newEdges } = (0, hierarchyUtils_1.reconstructHierarchy)(data.nodes, data.edges);
+                        processed = { ...data, nodes: newNodes, edges: newEdges };
                     }
                 }
-                let formattedEdges = []; // Declare outside
-                // Apply initial layout asynchronously
-                const initLayout = async () => {
-                    try {
-                        const { layoutedNodes, matchingNodeIds: newMatchingIds } = await calculateLayout(layoutType, processedNodes, processedEdges, debouncedFilters, selectedNode);
-                        formattedEdges = formatEdges(processedEdges, selectedNode, newMatchingIds);
-                        setNodes(layoutedNodes);
-                        setEdges(formattedEdges);
-                        setStats(graphStats);
-                        setMatchingNodeIds(newMatchingIds);
-                        setIsLoading(false);
-                    }
-                    catch (error) {
-                        console.error('Initial layout failed:', error);
-                        setIsLoading(false);
-                    }
-                };
-                initLayout();
+                // Setting rawData triggers visibleData recompute → layout useEffect
+                fitPendingRef.current = true; // request a fit-view for this fresh load
+                setRawData(processed);
+                setDataSource(processed.source || 'local');
+                setStats(processed.stats);
+                // Reset expansion state so each new analysis starts collapsed
+                setExpandedModules(new Set());
+                setExpandedFiles(new Set());
             }
             if (message.command === 'config' && message.data?.backendUrl) {
                 setBackendUrl(message.data.backendUrl);
@@ -1213,6 +1521,10 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         };
     }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
     (0, react_1.useEffect)(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -1235,7 +1547,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         return () => {
             active = false;
         };
-    }, [apiClient, repoId, heatmapMode]);
+    }, [apiClient, repoId, heatmapMode, localContributions]);
     (0, react_1.useEffect)(() => {
         if (!nodes.length)
             return;
@@ -1489,7 +1801,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         !layoutPanelVisible && (react_1.default.createElement("button", { className: "layout-toggle-btn", onClick: () => setLayoutPanelVisible(true), title: "Layout Algorithm (Ctrl+L)" }, "\uD83D\uDCD0")),
         !exportMenuVisible && (react_1.default.createElement("button", { className: "export-toggle-btn", onClick: () => setExportMenuVisible(true), title: "Export Graph (Ctrl+E)" }, "\uD83D\uDCE5")),
         react_1.default.createElement("button", { className: "fullscreen-toggle-btn", onClick: toggleFullscreen, title: isFullscreen ? "Exit Fullscreen (F11 or Esc)" : "Enter Fullscreen (F11)" }, isFullscreen ? '🗗' : '⛶'),
-        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, nodeTypes: nodeTypes, fitView: true, fitViewOptions: { padding: 0.2 }, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
+        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, onNodesChange: onNodesChange, onEdgesChange: onEdgesChange, onConnect: onConnect, onNodeClick: onNodeClick, onNodeContextMenu: onNodeContextMenu, onNodeMouseEnter: onNodeMouseEnter, onNodeMouseLeave: onNodeMouseLeave, onNodeDoubleClick: onNodeDoubleClick, nodeTypes: nodeTypes, minZoom: 0.1, maxZoom: 2, defaultEdgeOptions: {
                 type: 'smoothstep',
             }, style: { background: 'var(--am-bg)' } },
             react_1.default.createElement(EnhancedMiniMap_1.EnhancedMiniMap, { selectedNodeId: selectedNode, hoveredNodeId: hoveredNode?.id || null, nodeColors: exports.NODE_COLORS, onNodeClick: handleMiniMapNodeClick }),
@@ -1530,9 +1842,9 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         react_1.default.createElement(LocalOutline_1.LocalOutline, { fileName: localFileName, symbols: localSymbols, isVisible: localOutlineVisible, onClose: () => setLocalOutlineVisible(false), onSymbolClick: (line) => console.log('Jump to line', line) })));
 };
 // Wrapper component with ReactFlowProvider
-const ArchitectureGraph = ({ heatmapMode, highlightNodeIds, repoId, graphEngineUrl, }) => {
+const ArchitectureGraph = ({ heatmapMode, highlightNodeIds, repoId, graphEngineUrl, localContributions, }) => {
     return (react_1.default.createElement(reactflow_1.ReactFlowProvider, null,
-        react_1.default.createElement(ArchitectureGraphInner, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodeIds, repoId: repoId, graphEngineUrl: graphEngineUrl })));
+        react_1.default.createElement(ArchitectureGraphInner, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodeIds, repoId: repoId, graphEngineUrl: graphEngineUrl, localContributions: localContributions })));
 };
 exports.default = ArchitectureGraph;
 //# sourceMappingURL=ArchitectureGraph.js.map

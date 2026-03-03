@@ -48,22 +48,6 @@ const boundaryColors = {
     architectural: '#f59e0b',
 };
 const defaultBoundaryColor = '#94a3b8';
-const boundaryNodeTypes = {
-    boundaryNode: BoundaryNode,
-    fileDot: FileNode,
-};
-function getBoundaryHeatmap(boundary, heatmapState) {
-    let hottest = null;
-    boundary.files.forEach((file) => {
-        const entry = heatmapState.entries.get((0, heatmapUtils_1.normalizePath)(file));
-        if (!entry)
-            return;
-        if (!hottest || entry.metric > hottest.metric) {
-            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
-        }
-    });
-    return hottest;
-}
 function BoundaryNode({ data }) {
     const color = boundaryColors[data.boundary.type] || defaultBoundaryColor;
     const ring = data.isHighlighted ? '0 0 0 3px rgba(249, 115, 22, 0.75)' : undefined;
@@ -72,7 +56,7 @@ function BoundaryNode({ data }) {
             boxShadow: ring || (data.heatmapColor ? `0 0 0 2px ${data.heatmapColor}` : undefined),
         }, title: data.heatmapTooltip || data.summary || '' },
         react_1.default.createElement("div", { className: "boundary-node-header", style: { color } },
-            react_1.default.createElement("span", null, data.boundary.name),
+            react_1.default.createElement("span", { className: "boundary-node-name" }, data.boundary.name),
             data.boundary.layer && (react_1.default.createElement("span", { className: "boundary-layer-pill" }, data.boundary.layer))),
         data.boundary.path && react_1.default.createElement("div", { className: "boundary-node-path" }, data.boundary.path),
         react_1.default.createElement("div", { className: "boundary-node-meta" },
@@ -85,9 +69,11 @@ function FileNode({ data }) {
             boxShadow: data?.isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.75)' : undefined,
         }, title: data?.heatmapTooltip || '' }));
 }
-const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, }) => {
-    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
-    console.log('BoundaryDiagram: Mounted', { repoId: initialRepoId, hasArchitectureData: !!architectureData });
+const boundaryNodeTypes = {
+    boundaryNode: BoundaryNode,
+    fileDot: FileNode,
+};
+const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, localContributions, }) => {
     const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
     const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
     const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
@@ -95,7 +81,7 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
     const [error, setError] = (0, react_1.useState)(null);
     const [boundaryData, setBoundaryData] = (0, react_1.useState)(null);
     const [insights, setInsights] = (0, react_1.useState)(null);
-    const [contributions, setContributions] = (0, react_1.useState)(null);
+    const [contributions, setContributions] = (0, react_1.useState)(localContributions || null);
     const [nodes, setNodes] = (0, react_1.useState)([]);
     const [edges, setEdges] = (0, react_1.useState)([]);
     const [highlightBoundaryId, setHighlightBoundaryId] = (0, react_1.useState)(null);
@@ -126,7 +112,6 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
             }
         };
         window.addEventListener('message', handler);
-        window.addEventListener('message', handler);
         if (vscode) {
             vscode.postMessage({ command: 'requestArchitecture' });
         }
@@ -145,8 +130,6 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
             try {
                 setIsLoading(true);
                 setError(null);
-                console.log('BoundaryDiagram: Attempting to load boundaries', { repoId });
-                // Try fetching boundaries from the backend
                 try {
                     const [boundaries, analysis] = await Promise.all([
                         apiClient.getModuleBoundaries(repoId),
@@ -163,24 +146,30 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
                     }
                 }
                 catch (backendError) {
-                    console.warn('BoundaryDiagram: Backend fetch failed, trying fallback', backendError);
                     if (!active)
                         return;
-                    // Fallback: Derive from architectureData if available
+                    console.warn('BoundaryDiagram: Fallback to derived boundaries', backendError);
                     if (architectureData && architectureData.nodes) {
-                        console.log('BoundaryDiagram: Deriving from architectureData', { nodeCount: architectureData.nodes.length });
                         const files = architectureData.nodes.filter((n) => n.type === 'file');
-                        // Group by directory
+                        // Group by directory - use a more robust multi-level grouping or just top-level folders
                         const dirMap = new Map();
                         files.forEach((node) => {
-                            const pathParts = (node.filePath || node.id).split('/');
-                            const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                            const pathStr = node.filePath || node.id;
+                            // Simplify: use first two levels of directory as the "boundary"
+                            const parts = pathStr.split('/');
+                            let dir = 'root';
+                            if (parts.length > 2) {
+                                dir = parts.slice(0, 2).join('/');
+                            }
+                            else if (parts.length > 1) {
+                                dir = parts[0];
+                            }
                             if (!dirMap.has(dir))
                                 dirMap.set(dir, []);
-                            dirMap.get(dir)?.push(node.filePath || node.id);
+                            dirMap.get(dir)?.push(pathStr);
                         });
-                        const derivedBoundaries = Array.from(dirMap.entries()).map(([dir, files], index) => ({
-                            id: `physical-${index}`,
+                        const derived = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                            id: `local-${dir.replace(/[\/\.]/g, '-')}`,
                             name: dir,
                             path: dir,
                             type: 'physical',
@@ -189,14 +178,12 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
                             layer: 'Unknown'
                         }));
                         setBoundaryData({
-                            boundaries: derivedBoundaries,
-                            total_boundaries: derivedBoundaries.length,
+                            boundaries: derived,
+                            total_boundaries: derived.length,
                             repo_id: repoId
                         });
                     }
                     else {
-                        console.error('BoundaryDiagram: No architectureData available for fallback');
-                        // If no graph data either, bubble the error
                         throw backendError;
                     }
                 }
@@ -207,17 +194,18 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
                 setError(err instanceof Error ? err.message : 'Failed to load boundaries');
             }
             finally {
-                if (active) {
+                if (active)
                     setIsLoading(false);
-                }
             }
         };
         load();
-        return () => {
-            active = false;
-        };
+        return () => { active = false; };
     }, [apiClient, repoId, architectureData]);
     (0, react_1.useEffect)(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
         if (!repoId || heatmapMode === 'off') {
             setContributions(null);
             return;
@@ -226,21 +214,17 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
         const load = async () => {
             try {
                 const response = await apiClient.getContributions(repoId);
-                if (active) {
+                if (active)
                     setContributions(response);
-                }
             }
             catch {
-                if (active) {
+                if (active)
                     setContributions(null);
-                }
             }
         };
         load();
-        return () => {
-            active = false;
-        };
-    }, [apiClient, repoId, heatmapMode]);
+        return () => { active = false; };
+    }, [apiClient, repoId, heatmapMode, localContributions]);
     const summaryByBoundary = (0, react_1.useMemo)(() => {
         const map = new Map();
         if (!insights?.insights)
@@ -256,89 +240,76 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
     (0, react_1.useEffect)(() => {
         if (!boundaryData)
             return;
-        const filteredBoundaries = boundaryData.boundaries.filter(boundary => {
-            if (boundary.type === 'physical')
+        const filtered = boundaryData.boundaries.filter(b => {
+            if (b.type === 'physical')
                 return filters.physical;
-            if (boundary.type === 'logical')
+            if (b.type === 'logical')
                 return filters.logical;
-            if (boundary.type === 'architectural')
+            if (b.type === 'architectural')
                 return filters.architectural;
             return true;
         });
-        const boundaryNodes = filteredBoundaries.map(boundary => {
-            const hottest = getBoundaryHeatmap(boundary, heatmapState);
-            const isHighlighted = highlightBoundaryId === boundary.id ||
-                boundary.files.some(file => highlightSet.has((0, heatmapUtils_1.normalizePath)(file)));
+        const boundaryNodes = filtered.map(b => {
+            const heatmap = getBoundaryHeatmap(b, heatmapState);
+            const isHighlighted = highlightBoundaryId === b.id ||
+                b.files.some(file => highlightSet.has((0, heatmapUtils_1.normalizePath)(file)));
             return {
-                id: `boundary:${boundary.id}`,
+                id: `boundary:${b.id}`,
                 type: 'boundaryNode',
                 position: { x: 0, y: 0 },
                 data: {
-                    boundary,
-                    summary: summaryByBoundary.get(boundary.name) || '',
-                    heatmapColor: hottest?.color,
-                    heatmapTooltip: hottest?.tooltip,
+                    boundary: b,
+                    summary: summaryByBoundary.get(b.name) || '',
+                    heatmapColor: heatmap?.color,
+                    heatmapTooltip: heatmap?.tooltip,
                     isHighlighted,
                 },
-                draggable: false,
-                selectable: true,
-                style: {
-                    width: 260,
-                    height: 120,
-                    boxShadow: isHighlighted ? '0 0 12px rgba(249, 115, 22, 0.6)' : undefined,
-                },
+                style: { width: 260, height: 120 },
             };
         });
         const fileNodes = [];
         if (filters.showFiles) {
-            filteredBoundaries.forEach(boundary => {
-                const parentId = `boundary:${boundary.id}`;
-                const files = boundary.files || [];
+            filtered.forEach(b => {
+                const parentId = `boundary:${b.id}`;
+                const files = b.files || [];
                 const columns = Math.max(3, Math.ceil(Math.sqrt(files.length)));
                 files.forEach((file, index) => {
                     const row = Math.floor(index / columns);
                     const col = index % columns;
-                    const entry = heatmapState.entries.get((0, heatmapUtils_1.normalizePath)(file));
-                    const isHighlighted = highlightSet.has((0, heatmapUtils_1.normalizePath)(file));
+                    const heatmap = (0, heatmapUtils_1.findHeatmapEntry)(heatmapState, file);
+                    const highlighted = highlightSet.has((0, heatmapUtils_1.normalizePath)(file));
                     fileNodes.push({
-                        id: `file:${boundary.id}:${index}`,
+                        id: `file:${b.id}:${index}`,
                         type: 'fileDot',
-                        position: {
-                            x: 16 + col * 14,
-                            y: 44 + row * 12,
-                        },
+                        position: { x: 16 + col * 14, y: 44 + row * 12 },
                         parentNode: parentId,
                         extent: 'parent',
                         draggable: false,
                         selectable: false,
                         data: {
                             file,
-                            heatmapColor: entry?.color,
-                            heatmapTooltip: entry?.tooltip,
-                            isHighlighted,
+                            heatmapColor: heatmap?.color,
+                            heatmapTooltip: heatmap?.tooltip,
+                            isHighlighted: highlighted,
                         },
                     });
                 });
             });
         }
-        const layoutNodes = boundaryNodes.map(node => ({
-            id: node.id,
-            width: 260,
-            height: 140,
-        }));
         const applyLayout = async () => {
             try {
+                const layoutNodes = boundaryNodes.map(n => ({ id: n.id, width: 260, height: 140 }));
                 const { nodes: positions } = await (0, layoutAlgorithms_1.elkLayout)(layoutNodes, [], 'layered');
-                const layoutedBoundaries = boundaryNodes.map(node => {
-                    const pos = positions.get(node.id) || { x: 0, y: 0 };
-                    return { ...node, position: pos };
-                });
+                const layoutedBoundaries = boundaryNodes.map(node => ({
+                    ...node,
+                    position: positions.get(node.id) || { x: 0, y: 0 }
+                }));
                 setNodes([...layoutedBoundaries, ...fileNodes]);
                 setEdges([]);
             }
             catch (err) {
                 console.error('Layout failed:', err);
-                setError('Failed to calculate layout for boundary diagram.');
+                setError('Failed to calculate layout');
             }
         };
         applyLayout();
@@ -347,29 +318,35 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
         react_1.default.createElement("div", { className: "diagram-header" },
             react_1.default.createElement("div", null,
                 react_1.default.createElement("h2", null, "Boundary Diagram"),
-                react_1.default.createElement("p", null, "Grouped view of detected module boundaries.")),
+                react_1.default.createElement("p", null, "Visualizing detected module and service boundaries.")),
             react_1.default.createElement("div", { className: "diagram-filters" },
-                react_1.default.createElement("label", null,
-                    react_1.default.createElement("input", { type: "checkbox", checked: filters.physical, onChange: () => setFilters(prev => ({ ...prev, physical: !prev.physical })) }),
-                    "Physical"),
-                react_1.default.createElement("label", null,
-                    react_1.default.createElement("input", { type: "checkbox", checked: filters.logical, onChange: () => setFilters(prev => ({ ...prev, logical: !prev.logical })) }),
-                    "Logical"),
-                react_1.default.createElement("label", null,
-                    react_1.default.createElement("input", { type: "checkbox", checked: filters.architectural, onChange: () => setFilters(prev => ({ ...prev, architectural: !prev.architectural })) }),
-                    "Architectural"),
+                ['physical', 'logical', 'architectural'].map(type => (react_1.default.createElement("label", { key: type },
+                    react_1.default.createElement("input", { type: "checkbox", checked: filters[type], onChange: () => setFilters(prev => ({ ...prev, [type]: !prev[type] })) }),
+                    type.charAt(0).toUpperCase() + type.slice(1)))),
                 react_1.default.createElement("label", null,
                     react_1.default.createElement("input", { type: "checkbox", checked: filters.showFiles, onChange: () => setFilters(prev => ({ ...prev, showFiles: !prev.showFiles })) }),
-                    "Show files"))),
+                    "Files"))),
         heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (react_1.default.createElement(HeatmapLegend_1.HeatmapLegend, { mode: heatmapMode, minMetric: heatmapState.minMetric, maxMetric: heatmapState.maxMetric })),
         isLoading && react_1.default.createElement("div", { className: "diagram-state" }, "Loading boundaries..."),
         error && react_1.default.createElement("div", { className: "diagram-state diagram-error" }, error),
-        !isLoading && !error && !repoId && (react_1.default.createElement("div", { className: "diagram-state" }, "Backend repository context is not available. Run backend analysis first.")),
-        !isLoading && !error && !!repoId && boundaryData && boundaryData.boundaries.length === 0 && (react_1.default.createElement("div", { className: "diagram-state" }, "No boundaries were returned for this repository.")),
+        !isLoading && !error && !repoId && react_1.default.createElement("div", { className: "diagram-state" }, "Missing repository context."),
+        !isLoading && !error && !!repoId && boundaryData?.boundaries.length === 0 && (react_1.default.createElement("div", { className: "diagram-state" }, "No boundaries found.")),
         !isLoading && !error && !!repoId && (react_1.default.createElement(reactflow_1.ReactFlowProvider, null,
             react_1.default.createElement("div", { className: "diagram-flow" },
                 react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, nodeTypes: boundaryNodeTypes, fitView: true, fitViewOptions: { padding: 0.2 } },
                     react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 16, size: 0.8 })))))));
 };
 exports.BoundaryDiagram = BoundaryDiagram;
+function getBoundaryHeatmap(boundary, heatmapState) {
+    let hottest = null;
+    boundary.files.forEach(file => {
+        const entry = (0, heatmapUtils_1.findHeatmapEntry)(heatmapState, file);
+        if (!entry)
+            return;
+        if (!hottest || entry.metric > hottest.metric) {
+            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
+        }
+    });
+    return hottest;
+}
 //# sourceMappingURL=BoundaryDiagram.js.map

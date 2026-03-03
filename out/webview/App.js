@@ -42,23 +42,30 @@ const ModuleBoundaryDiagram_1 = require("./ModuleBoundaryDiagram");
 const BoundaryDiagram_1 = require("./BoundaryDiagram");
 const DependencyDiagram_1 = require("./DependencyDiagram");
 const CommunicationDiagram_1 = require("./CommunicationDiagram");
-const WebhookSetup_1 = require("./WebhookSetup");
+const CommitDetails_1 = require("./CommitDetails");
 const ThemeContext_1 = require("./ThemeContext");
 const ThemeToggle_1 = require("./ThemeToggle");
 const vscodeExportHelper_1 = require("../utils/exporters/vscodeExportHelper");
 const NotificationHistory_1 = require("./NotificationHistory");
+const WebhookSetup_1 = require("./WebhookSetup");
 const vscodeApi_1 = require("../utils/vscodeApi");
+// ✅ backend-driven diagrams
+const BackendDependencyDiagram_1 = require("./diagrams/BackendDependencyDiagram");
+const BackendBoundaryDiagram_1 = require("./diagrams/BackendBoundaryDiagram");
+const BackendCommunicationDiagram_1 = require("./diagrams/BackendCommunicationDiagram");
 function normalizeView(view) {
     switch (view) {
-        case "graph":
-        case "boundaries":
-        case "boundary-diagram":
-        case "dependency-diagram":
-        case "communication":
-        case "webhooks":
+        case 'graph':
+        case 'boundaries':
+        case 'boundary-diagram':
+        case 'dependency-diagram':
+        case 'communication':
+        case 'commits':
             return view;
-        case "dependencies":
-            return "dependency-diagram";
+        case 'webhooks':
+            return 'webhooks';
+        case 'dependencies':
+            return 'dependency-diagram';
         default:
             return null;
     }
@@ -80,26 +87,27 @@ const App = () => {
     (0, react_1.useEffect)(() => {
         (0, vscodeExportHelper_1.initializeExportListener)();
     }, []);
-    const [activeView, setActiveView] = (0, react_1.useState)("graph");
-    const [heatmapMode, setHeatmapMode] = (0, react_1.useState)("off");
+    const [activeView, setActiveView] = (0, react_1.useState)('graph');
+    const [heatmapMode, setHeatmapMode] = (0, react_1.useState)('off');
     const [config, setConfig] = (0, react_1.useState)(null);
     const [repoId, setRepoId] = (0, react_1.useState)(null);
     const [highlightNodes, setHighlightNodes] = (0, react_1.useState)([]);
     const [history, setHistory] = (0, react_1.useState)([]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [architectureData, setArchitectureData] = (0, react_1.useState)(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [localContributions, setLocalContributions] = (0, react_1.useState)(null);
     const heatmapOptions = [
-        { value: "off", label: "Off" },
-        { value: "commit_count", label: "Commit Count" },
-        { value: "last_modified", label: "Last Modified" },
-        { value: "author_count", label: "Author Count" },
+        { value: 'off', label: 'Off' },
+        { value: 'commit_count', label: 'Commit Count' },
+        { value: 'last_modified', label: 'Last Modified' },
+        { value: 'author_count', label: 'Author Count' },
     ];
     (0, react_1.useEffect)(() => {
         const handler = (event) => {
             const message = event.data;
             const incomingView = message?.view;
-            if ((message?.command === "switchView" || message?.type === "showView") &&
-                incomingView) {
+            if ((message?.command === 'switchView' || message?.type === 'showView') && incomingView) {
                 const normalized = normalizeView(incomingView);
                 if (normalized) {
                     setActiveView(normalized);
@@ -108,45 +116,46 @@ const App = () => {
                     setHighlightNodes([message.filePath]);
                 }
             }
-            if (message?.command === "toggleHeatmap" ||
-                message?.type === "toggleHeatmap") {
+            if (message?.command === 'toggleHeatmap' || message?.type === 'toggleHeatmap') {
                 setHeatmapMode((prev) => {
-                    const order = [
-                        "off",
-                        "commit_count",
-                        "last_modified",
-                        "author_count",
-                    ];
+                    const order = ['off', 'commit_count', 'last_modified', 'author_count'];
                     const index = order.indexOf(prev);
                     return order[(index + 1) % order.length];
                 });
             }
-            if (message?.command === "config" && message.data) {
+            if (message?.command === 'config' && message.data) {
                 setConfig(message.data);
             }
-            if (message?.command === "architectureData" && message.data) {
+            if (message?.command === 'architectureData' && message.data) {
                 setArchitectureData(message.data);
                 const extractedRepoId = message.data.repo_id || message.data.repoId;
                 if (extractedRepoId) {
                     setRepoId(String(extractedRepoId));
                 }
-                console.log("App.tsx: Received architectureData", {
+                // eslint-disable-next-line no-console
+                console.log('App.tsx: Received architectureData', {
                     nodeCount: message.data.nodes?.length,
                     edgeCount: message.data.edges?.length,
                     repoId: extractedRepoId,
+                    source: message.data.source,
                 });
             }
-            if (message?.command === "highlightNodes") {
+            if (message?.command === 'highlightNodes') {
                 setHighlightNodes(message.nodeIds || []);
             }
+            if (message?.command === 'contributions' && message.data) {
+                // eslint-disable-next-line no-console
+                console.log('App.tsx: Received contributions', { count: message.data.contributions?.length });
+                setLocalContributions(message.data);
+            }
         };
-        window.addEventListener("message", handler);
+        window.addEventListener('message', handler);
         // Request initial configuration
         const vscode = (0, vscodeApi_1.getVsCodeApi)();
         if (vscode) {
-            vscode.postMessage({ command: "requestConfig" });
+            vscode.postMessage({ command: 'requestConfig' });
         }
-        return () => window.removeEventListener("message", handler);
+        return () => window.removeEventListener('message', handler);
     }, []);
     (0, react_1.useEffect)(() => {
         const handler = (event) => {
@@ -162,42 +171,37 @@ const App = () => {
                 ...prev,
             ].slice(0, 8));
         };
-        window.addEventListener("archmind:graphUpdated", handler);
-        return () => window.removeEventListener("archmind:graphUpdated", handler);
+        window.addEventListener('archmind:graphUpdated', handler);
+        return () => window.removeEventListener('archmind:graphUpdated', handler);
     }, []);
+    // ✅ detect backend graph payload (from extension/backend)
+    const backendGraph = architectureData?.source === 'backend' ? architectureData : null;
     return (react_1.default.createElement(ThemeContext_1.ThemeProvider, null,
         react_1.default.createElement(ThemeKeyboardHandler, null),
         react_1.default.createElement("div", { className: "app-container" },
             react_1.default.createElement(Header, null),
             react_1.default.createElement("div", { className: "view-toggle" },
-                react_1.default.createElement("button", { className: activeView === "graph" ? "view-tab active" : "view-tab", onClick: () => setActiveView("graph") }, "Graph"),
-                react_1.default.createElement("button", { className: activeView === "boundaries" ? "view-tab active" : "view-tab", onClick: () => setActiveView("boundaries") }, "Boundaries"),
-                react_1.default.createElement("button", { className: activeView === "boundary-diagram" ? "view-tab active" : "view-tab", onClick: () => setActiveView("boundary-diagram") }, "Boundary Diagram"),
-                react_1.default.createElement("button", { className: activeView === "dependency-diagram"
-                        ? "view-tab active"
-                        : "view-tab", onClick: () => setActiveView("dependency-diagram") }, "Dependency Diagram"),
-                react_1.default.createElement("button", { className: activeView === "communication" ? "view-tab active" : "view-tab", onClick: () => setActiveView("communication") }, "Communication"),
-                react_1.default.createElement("button", { className: activeView === "webhooks" ? "view-tab active" : "view-tab", onClick: () => setActiveView("webhooks") }, "Webhooks")),
+                react_1.default.createElement("button", { className: activeView === 'graph' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('graph') }, "Graph"),
+                react_1.default.createElement("button", { className: activeView === 'boundaries' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('boundaries') }, "Boundaries"),
+                react_1.default.createElement("button", { className: activeView === 'boundary-diagram' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('boundary-diagram') }, "Boundary Diagram"),
+                react_1.default.createElement("button", { className: activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('dependency-diagram') }, "Dependency Diagram"),
+                react_1.default.createElement("button", { className: activeView === 'communication' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('communication') }, "Communication"),
+                react_1.default.createElement("button", { className: activeView === 'commits' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('commits') }, "Commits"),
+                react_1.default.createElement("button", { className: activeView === 'webhooks' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('webhooks') }, "Webhooks")),
             react_1.default.createElement("div", { className: "heatmap-toolbar" },
                 react_1.default.createElement("span", { className: "heatmap-label" }, "Heatmap"),
-                react_1.default.createElement("div", { className: "heatmap-toggle" }, heatmapOptions.map((option) => (react_1.default.createElement("button", { key: option.value, className: heatmapMode === option.value
-                        ? "heatmap-pill active"
-                        : "heatmap-pill", onClick: () => setHeatmapMode(option.value) }, option.label))))),
+                react_1.default.createElement("div", { className: "heatmap-toggle" }, heatmapOptions.map((option) => (react_1.default.createElement("button", { key: option.value, className: heatmapMode === option.value ? 'heatmap-pill active' : 'heatmap-pill', onClick: () => setHeatmapMode(option.value) }, option.label))))),
             react_1.default.createElement("main", { className: "app-main" },
-                activeView === "graph" && (react_1.default.createElement(ArchitectureGraph_1.default, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })),
-                activeView === "boundaries" &&
-                    (console.log("App.tsx: Rendering ModuleBoundaryDiagram", {
-                        architectureData,
-                    }),
-                        (react_1.default.createElement(ModuleBoundaryDiagram_1.ModuleBoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData }))),
-                activeView === "boundary-diagram" &&
-                    (console.log("App.tsx: Rendering BoundaryDiagram", {
-                        architectureData,
-                    }),
-                        (react_1.default.createElement(BoundaryDiagram_1.BoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData }))),
-                activeView === "dependency-diagram" && (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
-                activeView === "communication" && (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
-                activeView === "webhooks" && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || "http://localhost:8080" }))),
+                activeView === 'graph' && (react_1.default.createElement(ArchitectureGraph_1.default, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, localContributions: localContributions })),
+                activeView === 'boundaries' &&
+                    (backendGraph ? (react_1.default.createElement(BackendBoundaryDiagram_1.BackendBoundaryDiagram, { graph: backendGraph })) : (react_1.default.createElement(ModuleBoundaryDiagram_1.ModuleBoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData, localContributions: localContributions }))),
+                activeView === 'boundary-diagram' && (react_1.default.createElement(BoundaryDiagram_1.BoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData })),
+                activeView === 'dependency-diagram' &&
+                    (backendGraph ? (react_1.default.createElement(BackendDependencyDiagram_1.BackendDependencyDiagram, { graph: backendGraph })) : (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData, localContributions: localContributions }))),
+                activeView === 'communication' &&
+                    (backendGraph ? (react_1.default.createElement(BackendCommunicationDiagram_1.BackendCommunicationDiagram, { graph: backendGraph })) : (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData }))),
+                activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'http://localhost:8080' })),
+                activeView === 'commits' && (react_1.default.createElement(CommitDetails_1.CommitDetails, { backendUrl: config?.backendUrl || 'http://localhost:8080', repoId: repoId }))),
             react_1.default.createElement(NotificationHistory_1.NotificationHistory, { entries: history, onClear: () => setHistory([]) }))));
 };
 exports.default = App;
