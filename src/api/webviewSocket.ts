@@ -25,7 +25,7 @@ export class ArchMindWebSocketClient {
     private type: 'job' | 'repo';
     private id: string;
 
-    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'https://go-api-gateway-production-2173.up.railway.app') {
+    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'http://localhost:8080') {
         this.type = type;
         this.id = id;
 

@@ -67,6 +67,7 @@ const clustering_1 = require("./clustering");
 const ClusterNode_1 = require("./ClusterNode");
 // Impact Analysis imports (#15)
 const ImpactAnalysis_1 = require("./ImpactAnalysis");
+const ReverseImpactAnalysis_1 = require("./ReverseImpactAnalysis");
 const LocalOutline_1 = require("./LocalOutline");
 // Keyboard Navigation imports (#18)
 const KeyboardNavigation_1 = require("./KeyboardNavigation");
@@ -805,6 +806,7 @@ const ContextMenu = ({ node, position, onAction, onClose }) => {
         react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('copyPath') }, "\uD83D\uDCCB Copy Path"),
         react_1.default.createElement("div", { className: "context-menu-divider" }),
         react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('analyzeImpact') }, "\uD83D\uDCA5 Analyze Impact"),
+        react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('analyzeReverseImpact') }, "\uD83C\uDFAF Reverse Impact"),
         react_1.default.createElement("button", { className: "context-menu-item", onClick: () => onAction('showRelationships') }, "\uD83D\uDD17 Show Relationships")));
 };
 const LayoutPanel = ({ currentLayout, onLayoutChange, isLayouting, isVisible, onClose, }) => {
@@ -883,6 +885,8 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     // Impact Analysis state (#15)
     const [impactData, setImpactData] = (0, react_1.useState)(null);
     const [impactVisible, setImpactVisible] = (0, react_1.useState)(false);
+    const [reverseImpactVisible, setReverseImpactVisible] = (0, react_1.useState)(false);
+    const [reverseImpactPath, setReverseImpactPath] = (0, react_1.useState)(null);
     // Keyboard Navigation state (#18)
     const [keyboardHelpVisible, setKeyboardHelpVisible] = (0, react_1.useState)(false);
     // Relationship Visualizer state (#21)
@@ -897,7 +901,7 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const wsClientRef = (0, react_1.useRef)(null);
     const [wsConnected, setWsConnected] = (0, react_1.useState)(false);
     const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
-    const [backendUrl, setBackendUrl] = (0, react_1.useState)('https://go-api-gateway-production-2173.up.railway.app');
+    const [backendUrl, setBackendUrl] = (0, react_1.useState)('http://localhost:8080');
     // ReactFlow instance for programmatic control
     const reactFlowInstance = (0, reactflow_1.useReactFlow)();
     (0, react_1.useEffect)(() => {
@@ -1027,6 +1031,10 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
             case 'showRelationships':
                 setSelectedNode(contextMenuNode.id);
                 setRelationshipVisible(true);
+                break;
+            case 'analyzeReverseImpact':
+                setReverseImpactPath(contextMenuNode.id);
+                setReverseImpactVisible(true);
                 break;
         }
         setContextMenuNode(null);
@@ -1497,6 +1505,13 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         react_1.default.createElement(NodeTooltip, { node: hoveredNode, position: tooltipPosition }),
         react_1.default.createElement(ContextMenu, { node: contextMenuNode, position: contextMenuPosition, onAction: handleContextMenuAction, onClose: () => setContextMenuNode(null) }),
         impactVisible && (react_1.default.createElement(ImpactAnalysis_1.ImpactAnalysisPanel, { data: impactData, onClose: () => { setImpactVisible(false); setImpactData(null); }, onNodeClick: (nodeId) => {
+                setSelectedNode(nodeId);
+                const node = nodes.find(n => n.id === nodeId);
+                if (node) {
+                    reactFlowInstance.setCenter(node.position.x + (NODE_WIDTH / 2), node.position.y + (NODE_HEIGHT / 2), { zoom: 1, duration: 300 });
+                }
+            } })),
+        reverseImpactVisible && (react_1.default.createElement(ReverseImpactAnalysis_1.ReverseImpactAnalysisPanel, { filePath: reverseImpactPath, backendUrl: backendUrl, repoId: repoId, onClose: () => { setReverseImpactVisible(false); setReverseImpactPath(null); }, onNodeClick: (nodeId) => {
                 setSelectedNode(nodeId);
                 const node = nodes.find(n => n.id === nodeId);
                 if (node) {

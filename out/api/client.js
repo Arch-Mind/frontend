@@ -52,7 +52,7 @@ class ArchMindApiClient {
     loadConfig() {
         const config = vscode.workspace.getConfiguration('archmind');
         return {
-            gatewayUrl: config.get('backendUrl', 'https://go-api-gateway-production-2173.up.railway.app'),
+            gatewayUrl: config.get('backendUrl', 'http://localhost:8080'),
             graphEngineUrl: config.get('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app'),
             authToken: config.get('authToken', ''),
             timeout: config.get('requestTimeout', 30000),
@@ -139,6 +139,13 @@ class ArchMindApiClient {
         return this.request(this.config.gatewayUrl, '/health');
     }
     /**
+     * Get reverse impact analysis for a file
+     * GET /api/analyze/impact?file_path={path}
+     */
+    async getReverseImpactAnalysis(filePath) {
+        return this.request(this.config.gatewayUrl, `/api/analyze/impact?file_path=${encodeURIComponent(filePath)}`);
+    }
+    /**
      * Trigger repository analysis
      * POST /api/v1/analyze
      */
@@ -217,46 +224,27 @@ class ArchMindApiClient {
     // High-level Operations
     // =========================================================================
     /**
-     * Poll job status until completion or failure
-     * @param jobId - The job ID to poll
-     * @param onProgress - Optional callback for progress updates
-     * @param pollInterval - Polling interval in ms (default: 2000)
-     * @param maxAttempts - Maximum polling attempts (default: 60 = 2 minutes)
-     */
-    async pollJobUntilComplete(jobId, onProgress, pollInterval = 2000, maxAttempts = 60) {
-        let attempts = 0;
-        while (attempts < maxAttempts) {
-            const job = await this.getJobStatus(jobId);
-            if (onProgress) {
-                onProgress(job);
-            }
-            if (job.status === 'COMPLETED') {
-                return job;
-            }
-            if (job.status === 'FAILED') {
-                throw new ApiRequestError(job.error_message || 'Analysis job failed', 500, `/api/v1/jobs/${jobId}`);
-            }
-            // Wait before next poll
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-            attempts++;
-        }
-        throw new ApiRequestError('Analysis job timed out after maximum polling attempts', 408, `/api/v1/jobs/${jobId}`);
-    }
-    /**
      * Analyze repository and fetch graph data
-     * Complete workflow: trigger analysis -> poll status -> fetch graph
+     * Complete workflow: trigger analysis -> fetch graph
      */
     async analyzeAndFetchGraph(repoUrl, branch = 'main', onProgress) {
-        // Step 1: Trigger analysis
-        onProgress?.('Triggering analysis...');
+        // Step 1: Trigger analysis (now completely synchronous and blocking on backend)
+        onProgress?.('Triggering analysis (this may take a few minutes)...');
         const analyzeResponse = await this.triggerAnalysis({
             repo_url: repoUrl,
             branch,
         });
-        const jobId = analyzeResponse.job_id;
-        const repoId = analyzeResponse.repo_id || jobId;
-        // Step 2: Poll for completion
-        const completedJob = await this.pollJobUntilComplete(jobId, (job) => onProgress?.(`Job status: ${job.status}`, job));
+        // Backend will block HTTP connection and return success only when job finishes
+        // Check if the backend responded with a failure.
+        // We handle fields mapped roughly from AnalysisJob as the backend now sends it
+        const finalStatus = analyzeResponse.status;
+        if (finalStatus === 'FAILED' || finalStatus === 'ERROR') {
+            throw new ApiRequestError(analyzeResponse.error_message || analyzeResponse.error || 'Analysis job failed', 500, '/api/v1/analyze');
+        }
+        const repoId = analyzeResponse.repo_id || analyzeResponse.job_id || analyzeResponse.repository_id || analyzeResponse.id;
+        if (!repoId) {
+            throw new ApiRequestError('Invalid response from backend: missing repository ID', 500, '/api/v1/analyze');
+        }
         // Step 4: Fetch graph and metrics
         onProgress?.('Fetching graph data...');
         const [graphData, metrics] = await Promise.all([
@@ -563,7 +551,7 @@ exports.ApiRequestError = ApiRequestError;
  * WebSocket client for real-time updates
  */
 class ArchMindWebSocketClient {
-    constructor(type, id, gatewayUrl = 'https://go-api-gateway-production-2173.up.railway.app') {
+    constructor(type, id, gatewayUrl = 'http://localhost:8080') {
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;

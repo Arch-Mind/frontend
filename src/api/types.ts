@@ -140,6 +140,25 @@ export interface ImpactAnalysisResponse {
 }
 
 /**
+ * Reverse impact analysis response
+ */
+export interface ReverseImpactAnalysisResponse {
+    impact_count: number;
+    metrics: {
+        churn: number;
+        pagerank: number;
+    };
+    severity_score: number;
+    severity_tier: 'Critical' | 'High' | 'Medium' | 'Low';
+    target_file: string;
+    upstream_dependencies: {
+        id: string;
+        type: string;
+        depth: number;
+    }[];
+}
+
+/**
  * PageRank analysis response
  */
 export interface PageRankResponse {
