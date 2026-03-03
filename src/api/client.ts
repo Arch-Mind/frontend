@@ -37,8 +37,8 @@ export class ArchMindApiClient {
     private loadConfig(): ApiClientConfig {
         const config = vscode.workspace.getConfiguration('archmind');
         return {
-            gatewayUrl: config.get<string>('backendUrl', 'http://localhost:8080'),
-            graphEngineUrl: config.get<string>('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app'),
+            gatewayUrl: (config.get<string>('backendUrl', 'http://localhost:8080') ?? '').replace(/\/+$/, ''),
+            graphEngineUrl: (config.get<string>('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app') ?? '').replace(/\/+$/, ''),
             authToken: config.get<string>('authToken', ''),
             timeout: config.get<number>('requestTimeout', 30000),
         };

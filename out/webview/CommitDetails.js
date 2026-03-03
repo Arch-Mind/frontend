@@ -60,7 +60,8 @@ const CommitDetails = ({ backendUrl, repoId }) => {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${backendUrl}/api/v1/commits/${encodeURIComponent(repoId)}?limit=200`);
+            const normalizedUrl = (backendUrl ?? '').replace(/\/+$/, '');
+            const response = await fetch(`${normalizedUrl}/api/v1/commits/${encodeURIComponent(repoId)}?limit=200`);
             if (!response.ok) {
                 const text = await response.text();
                 let message = `Failed to load commit history (${response.status})`;

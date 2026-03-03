@@ -78,7 +78,7 @@ const WebhookSetup = ({ backendUrl }) => {
         try {
             const payload = {
                 repo_url: repoUrl,
-                url: `${backendUrl}/webhooks/github`,
+                url: `${(backendUrl ?? '').replace(/\/+$/, '')}/webhooks/github`,
                 secret,
                 events,
             };
@@ -165,6 +165,7 @@ exports.WebhookSetup = WebhookSetup;
 class WebhookApiClient {
     constructor(baseUrl) {
         this.baseUrl = baseUrl;
+        this.baseUrl = (baseUrl ?? '').replace(/\/+$/, '');
     }
     async request(path, options = {}) {
         const response = await fetch(`${this.baseUrl}${path}`, {

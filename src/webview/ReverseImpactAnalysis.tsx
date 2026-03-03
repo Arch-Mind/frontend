@@ -198,7 +198,8 @@ export function useReverseImpactAnalysis(
 
         try {
             const relativeUnixPath = formatToRelativeUnixPath(targetPath);
-            let url = `${backendUrl}/api/v1/analyze/impact?file_path=${encodeURIComponent(relativeUnixPath)}`;
+            const normalizedBackendUrl = (backendUrl ?? '').replace(/\/+$/, '');
+            let url = `${normalizedBackendUrl}/api/v1/analyze/impact?file_path=${encodeURIComponent(relativeUnixPath)}`;
 
             if (repoId) {
                 url += `&repo_id=${encodeURIComponent(repoId)}`;

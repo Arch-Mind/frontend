@@ -56,7 +56,7 @@ export const WebhookSetup: React.FC<WebhookSetupProps> = ({ backendUrl }) => {
         try {
             const payload: WebhookRequest = {
                 repo_url: repoUrl,
-                url: `${backendUrl}/webhooks/github`,
+                url: `${(backendUrl ?? '').replace(/\/+$/, '')}/webhooks/github`,
                 secret,
                 events,
             };
@@ -203,7 +203,9 @@ export const WebhookSetup: React.FC<WebhookSetupProps> = ({ backendUrl }) => {
 };
 
 class WebhookApiClient {
-    constructor(private baseUrl: string) { }
+    constructor(private baseUrl: string) {
+        this.baseUrl = (baseUrl ?? '').replace(/\/+$/, '');
+    }
 
     async request<T>(path: string, options: RequestInit = {}): Promise<T> {
         const response = await fetch(`${this.baseUrl}${path}`, {

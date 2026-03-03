@@ -45,8 +45,9 @@ export const CommitDetails: React.FC<CommitDetailsProps> = ({ backendUrl, repoId
         setIsLoading(true);
         setError(null);
         try {
+            const normalizedUrl = (backendUrl ?? '').replace(/\/+$/, '');
             const response = await fetch(
-                `${backendUrl}/api/v1/commits/${encodeURIComponent(repoId)}?limit=200`
+                `${normalizedUrl}/api/v1/commits/${encodeURIComponent(repoId)}?limit=200`
             );
             if (!response.ok) {
                 const text = await response.text();
