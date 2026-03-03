@@ -575,7 +575,7 @@ function getTwoLevelDir(filePath: string): string {
  */
 function buildModuleGroups(rawData: ArchitectureData): Map<string, ModuleGroup> {
     const groups = new Map<string, ModuleGroup>();
-    const fileNodes   = rawData.nodes.filter(n => n.type === 'file');
+    const fileNodes = rawData.nodes.filter(n => n.type === 'file');
     const symbolNodes = rawData.nodes.filter(n => n.type === 'function' || n.type === 'class');
 
     // ---- Step 1: Build file → symbol mapping --------------------------------
@@ -585,7 +585,7 @@ function buildModuleGroups(rawData: ArchitectureData): Map<string, ModuleGroup> 
         // Accept DEFINES (File->Function/Class) which client.ts remaps to 'contains',
         // and any literal 'CONTAINS'/'contains' edges that exist.
         if (edge.type !== 'contains' && edge.type !== 'CONTAINS' &&
-            edge.type !== 'defines'  && edge.type !== 'DEFINES') return;
+            edge.type !== 'defines' && edge.type !== 'DEFINES') return;
         const src = rawData.nodes.find(n => n.id === edge.source);
         const tgt = rawData.nodes.find(n => n.id === edge.target);
         if (!src || !tgt) return;
@@ -636,7 +636,7 @@ function buildModuleGroups(rawData: ArchitectureData): Map<string, ModuleGroup> 
         const modNode: RawNode = { id: groupId, label, type: 'directory', depth: 0 };
         const fileChildMap = new Map<string, RawNode[]>();
         files.forEach(file => {
-            const symIds  = Array.from(fileToSymbolIds.get(file.id) || []);
+            const symIds = Array.from(fileToSymbolIds.get(file.id) || []);
             const symbols = symIds
                 .map(id => rawData.nodes.find(n => n.id === id))
                 .filter(Boolean) as RawNode[];
@@ -666,7 +666,7 @@ function getVisibleNodesAndEdges(
     expandedFiles: Set<string>,
 ): { nodes: RawNode[]; edges: RawEdge[] } {
     const visibleNodes: RawNode[] = [];
-    const visibleIds  = new Set<string>();
+    const visibleIds = new Set<string>();
 
     moduleGroups.forEach((group, moduleId) => {
         const fileCount = group.files.length;
@@ -685,7 +685,7 @@ function getVisibleNodesAndEdges(
 
         if (expandedModules.has(moduleId)) {
             group.files.forEach(file => {
-                const symbols  = group.fileToChildren.get(file.id) || [];
+                const symbols = group.fileToChildren.get(file.id) || [];
                 const symCount = symbols.length;
                 visibleNodes.push({
                     ...file,
@@ -739,7 +739,7 @@ function upgradeToModuleBoxNodes(
         const kind = (node.data as any)?._nodeKind as string | undefined;
         if (!kind || kind === 'symbol') return node;
 
-        const isModule   = kind === 'module';
+        const isModule = kind === 'module';
         const childCount = Number((node.data as any)?._childCount ?? 0);
         const isExpanded = isModule ? expandedModules.has(node.id) : expandedFiles.has(node.id);
 
@@ -1608,9 +1608,9 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [stats, setStats] = useState<GraphStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [loadingMessage, setLoadingMessage] = useState<string>('Analyzing workspace structure...');
+    const [loadingMessage, setLoadingMessage] = useState<string>('Initializing backend analysis...');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const [dataSource, setDataSource] = useState<'local' | 'backend'>('local');
+    const [dataSource, setDataSource] = useState<'local' | 'backend'>('backend');
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
     const [contributions, setContributions] = useState<ContributionsResponse | null>(localContributions || null);
 
@@ -1646,18 +1646,18 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
 
     // Module expand/collapse state for drill-down view
     const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
-    const [expandedFiles, setExpandedFiles]     = useState<Set<string>>(new Set());
+    const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
     // Stable refs so node-box callbacks always see the latest expansion state
     // without causing the layout effect to re-run via dependency changes.
     const expandedModulesRef = useRef<Set<string>>(new Set());
-    const expandedFilesRef   = useRef<Set<string>>(new Set());
+    const expandedFilesRef = useRef<Set<string>>(new Set());
 
     // True when a full fit-view should fire after the next layout run
     // (set when new rawData arrives; cleared after first fitView).
     const fitPendingRef = useRef<boolean>(true);
     expandedModulesRef.current = expandedModules;
-    expandedFilesRef.current   = expandedFiles;
+    expandedFilesRef.current = expandedFiles;
 
     // Derive module groups (module → files → symbols) from raw data
     const moduleGroups = useMemo(() => {
@@ -2049,15 +2049,26 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
 
             // Handle error state
             if (message.command === 'error') {
-                setIsLoading(false);
-                setErrorMessage(message.message || 'An error occurred');
+                // Only show error if we aren't waiting for backend analysis
+                if (dataSource !== 'backend') {
+                    setIsLoading(false);
+                    setErrorMessage(message.message || 'An error occurred');
+                } else {
+                    console.warn('ArchitectureGraph: error received during backend analysis', message.message);
+                }
                 return;
             }
 
             // Handle no data state
             if (message.command === 'noData') {
-                setIsLoading(false);
-                setErrorMessage(message.message || 'No data available');
+                // Only show error if we aren't waiting for backend analysis
+                if (dataSource !== 'backend') {
+                    setIsLoading(false);
+                    setErrorMessage(message.message || 'No data available');
+                } else {
+                    console.log('ArchitectureGraph: noData received, waiting for backend analysis results...');
+                    setLoadingMessage('Waiting for backend analysis results...');
+                }
                 return;
             }
 
@@ -2116,6 +2127,9 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
         // Request data (using stable vscode instance)
         vscode.postMessage({ command: 'requestArchitecture' });
         vscode.postMessage({ command: 'requestConfig' });
+
+        // Trigger backend analysis on start as requested
+        vscode.postMessage({ command: 'analyzeRepository' });
 
         return () => {
             window.removeEventListener('message', handleMessage);
@@ -2383,24 +2397,8 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
         return Object.keys(stats.filesByLanguage).sort();
     }, [stats]);
 
-    // Show error state
-    if (errorMessage) {
-        return (
-            <div className="error-container">
-                <div className="error-icon">⚠️</div>
-                <h3>Error</h3>
-                <p className="error-message">{errorMessage}</p>
-                <div className="error-actions">
-                    <button className="retry-button" onClick={handleRetry}>
-                        Retry Local Analysis
-                    </button>
-                    <button className="backend-button" onClick={handleAnalyzeWithBackend}>
-                        Analyze with Backend
-                    </button>
-                </div>
-            </div>
-        );
-    }
+    // Error state - removed full-screen error container to allow persistent loading
+    // Errors are now logged to console or can be shown as small notifications
 
     if (isLoading) {
         return (
