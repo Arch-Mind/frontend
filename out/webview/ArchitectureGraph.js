@@ -1085,9 +1085,9 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     const [edges, setEdges, onEdgesChange] = (0, reactflow_1.useEdgesState)([]);
     const [stats, setStats] = (0, react_1.useState)(null);
     const [isLoading, setIsLoading] = (0, react_1.useState)(true);
-    const [loadingMessage, setLoadingMessage] = (0, react_1.useState)('Analyzing workspace structure...');
+    const [loadingMessage, setLoadingMessage] = (0, react_1.useState)('Initializing backend analysis...');
     const [errorMessage, setErrorMessage] = (0, react_1.useState)(null);
-    const [dataSource, setDataSource] = (0, react_1.useState)('local');
+    const [dataSource, setDataSource] = (0, react_1.useState)('backend');
     const [selectedNode, setSelectedNode] = (0, react_1.useState)(null);
     const [contributions, setContributions] = (0, react_1.useState)(localContributions || null);
     const heatmapState = (0, react_1.useMemo)(() => (0, heatmapUtils_1.buildHeatmap)(contributions?.contributions || [], heatmapMode), [contributions, heatmapMode]);
@@ -1459,14 +1459,27 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
             }
             // Handle error state
             if (message.command === 'error') {
-                setIsLoading(false);
-                setErrorMessage(message.message || 'An error occurred');
+                // Only show error if we aren't waiting for backend analysis
+                if (dataSource !== 'backend') {
+                    setIsLoading(false);
+                    setErrorMessage(message.message || 'An error occurred');
+                }
+                else {
+                    console.warn('ArchitectureGraph: error received during backend analysis', message.message);
+                }
                 return;
             }
             // Handle no data state
             if (message.command === 'noData') {
-                setIsLoading(false);
-                setErrorMessage(message.message || 'No data available');
+                // Only show error if we aren't waiting for backend analysis
+                if (dataSource !== 'backend') {
+                    setIsLoading(false);
+                    setErrorMessage(message.message || 'No data available');
+                }
+                else {
+                    console.log('ArchitectureGraph: noData received, waiting for backend analysis results...');
+                    setLoadingMessage('Waiting for backend analysis results...');
+                }
                 return;
             }
             if (message.command === 'architectureData') {
@@ -1516,6 +1529,8 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
         // Request data (using stable vscode instance)
         vscode.postMessage({ command: 'requestArchitecture' });
         vscode.postMessage({ command: 'requestConfig' });
+        // Trigger backend analysis on start as requested
+        vscode.postMessage({ command: 'analyzeRepository' });
         return () => {
             window.removeEventListener('message', handleMessage);
         };
@@ -1771,16 +1786,8 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
             return [];
         return Object.keys(stats.filesByLanguage).sort();
     }, [stats]);
-    // Show error state
-    if (errorMessage) {
-        return (react_1.default.createElement("div", { className: "error-container" },
-            react_1.default.createElement("div", { className: "error-icon" }, "\u26A0\uFE0F"),
-            react_1.default.createElement("h3", null, "Error"),
-            react_1.default.createElement("p", { className: "error-message" }, errorMessage),
-            react_1.default.createElement("div", { className: "error-actions" },
-                react_1.default.createElement("button", { className: "retry-button", onClick: handleRetry }, "Retry Local Analysis"),
-                react_1.default.createElement("button", { className: "backend-button", onClick: handleAnalyzeWithBackend }, "Analyze with Backend"))));
-    }
+    // Error state - removed full-screen error container to allow persistent loading
+    // Errors are now logged to console or can be shown as small notifications
     if (isLoading) {
         return (react_1.default.createElement("div", { className: "loading-container" },
             react_1.default.createElement("div", { className: "loading-spinner" }),
