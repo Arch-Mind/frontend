@@ -66,6 +66,7 @@ import { ClusterNode, ClusterNodeData } from './ClusterNode';
 
 // Impact Analysis imports (#15)
 import { ImpactAnalysisPanel, ImpactAnalysisData, useImpactAnalysis } from './ImpactAnalysis';
+import { ReverseImpactAnalysisPanel } from './ReverseImpactAnalysis';
 import { LocalOutline, LocalSymbol } from './LocalOutline';
 
 // Keyboard Navigation imports (#18)
@@ -1509,6 +1510,9 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ node, position, onAction, onC
             <button className="context-menu-item" onClick={() => onAction('analyzeImpact')}>
                 💥 Analyze Impact
             </button>
+            <button className="context-menu-item" onClick={() => onAction('analyzeReverseImpact')}>
+                🎯 Reverse Impact
+            </button>
             <button className="context-menu-item" onClick={() => onAction('showRelationships')}>
                 🔗 Show Relationships
             </button>
@@ -1691,6 +1695,8 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     // Impact Analysis state (#15)
     const [impactData, setImpactData] = useState<ImpactAnalysisData | null>(null);
     const [impactVisible, setImpactVisible] = useState(false);
+    const [reverseImpactVisible, setReverseImpactVisible] = useState(false);
+    const [reverseImpactPath, setReverseImpactPath] = useState<string | null>(null);
 
     // Keyboard Navigation state (#18)
     const [keyboardHelpVisible, setKeyboardHelpVisible] = useState(false);
@@ -1710,7 +1716,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
     const wsClientRef = useRef<ArchMindWebSocketClient | null>(null);
     const [wsConnected, setWsConnected] = useState(false);
     const [repoId, setRepoId] = useState<string | null>(initialRepoId);
-    const [backendUrl, setBackendUrl] = useState<string>('https://go-api-gateway-production-2173.up.railway.app');
+    const [backendUrl, setBackendUrl] = useState<string>('http://localhost:8080');
 
     // ReactFlow instance for programmatic control
     const reactFlowInstance = useReactFlow();
@@ -1892,6 +1898,10 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
             case 'showRelationships':
                 setSelectedNode(contextMenuNode.id);
                 setRelationshipVisible(true);
+                break;
+            case 'analyzeReverseImpact':
+                setReverseImpactPath(contextMenuNode.id);
+                setReverseImpactVisible(true);
                 break;
         }
 
@@ -2552,6 +2562,27 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                 <ImpactAnalysisPanel
                     data={impactData}
                     onClose={() => { setImpactVisible(false); setImpactData(null); }}
+                    onNodeClick={(nodeId) => {
+                        setSelectedNode(nodeId);
+                        const node = nodes.find(n => n.id === nodeId);
+                        if (node) {
+                            reactFlowInstance.setCenter(
+                                node.position.x + (NODE_WIDTH / 2),
+                                node.position.y + (NODE_HEIGHT / 2),
+                                { zoom: 1, duration: 300 }
+                            );
+                        }
+                    }}
+                />
+            )}
+
+            {/* Reverse Impact Analysis Panel */}
+            {reverseImpactVisible && (
+                <ReverseImpactAnalysisPanel
+                    filePath={reverseImpactPath}
+                    backendUrl={backendUrl}
+                    repoId={repoId}
+                    onClose={() => { setReverseImpactVisible(false); setReverseImpactPath(null); }}
                     onNodeClick={(nodeId) => {
                         setSelectedNode(nodeId);
                         const node = nodes.find(n => n.id === nodeId);

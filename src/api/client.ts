@@ -16,6 +16,7 @@ import {
     TransformedNode,
     TransformedEdge,
     ModuleBoundariesResponse,
+    ReverseImpactAnalysisResponse,
 } from './types';
 
 /**
@@ -36,7 +37,7 @@ export class ArchMindApiClient {
     private loadConfig(): ApiClientConfig {
         const config = vscode.workspace.getConfiguration('archmind');
         return {
-            gatewayUrl: config.get<string>('backendUrl', 'https://go-api-gateway-production-2173.up.railway.app'),
+            gatewayUrl: config.get<string>('backendUrl', 'http://localhost:8080'),
             graphEngineUrl: config.get<string>('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app'),
             authToken: config.get<string>('authToken', ''),
             timeout: config.get<number>('requestTimeout', 30000),
@@ -113,11 +114,11 @@ export class ArchMindApiClient {
             return await response.json() as T;
         } catch (error) {
             clearTimeout(timeoutId);
-            
+
             if (error instanceof ApiRequestError) {
                 throw error;
             }
-            
+
             if (error instanceof Error) {
                 if (error.name === 'AbortError') {
                     throw new ApiRequestError('Request timed out', 408, endpoint);
@@ -128,7 +129,7 @@ export class ArchMindApiClient {
                     endpoint
                 );
             }
-            
+
             throw new ApiRequestError('Unknown error occurred', 0, endpoint);
         }
     }
@@ -144,6 +145,17 @@ export class ArchMindApiClient {
         return this.request<HealthCheckResponse>(
             this.config.gatewayUrl,
             '/health'
+        );
+    }
+
+    /**
+     * Get reverse impact analysis for a file
+     * GET /api/analyze/impact?file_path={path}
+     */
+    public async getReverseImpactAnalysis(filePath: string): Promise<ReverseImpactAnalysisResponse> {
+        return this.request<ReverseImpactAnalysisResponse>(
+            this.config.gatewayUrl,
+            `/api/analyze/impact?file_path=${encodeURIComponent(filePath)}`
         );
     }
 
@@ -269,75 +281,41 @@ export class ArchMindApiClient {
     // =========================================================================
 
     /**
-     * Poll job status until completion or failure
-     * @param jobId - The job ID to poll
-     * @param onProgress - Optional callback for progress updates
-     * @param pollInterval - Polling interval in ms (default: 2000)
-     * @param maxAttempts - Maximum polling attempts (default: 60 = 2 minutes)
-     */
-    public async pollJobUntilComplete(
-        jobId: string,
-        onProgress?: (job: AnalysisJob) => void,
-        pollInterval: number = 2000,
-        maxAttempts: number = 60
-    ): Promise<AnalysisJob> {
-        let attempts = 0;
-
-        while (attempts < maxAttempts) {
-            const job = await this.getJobStatus(jobId);
-            
-            if (onProgress) {
-                onProgress(job);
-            }
-
-            if (job.status === 'COMPLETED') {
-                return job;
-            }
-
-            if (job.status === 'FAILED') {
-                throw new ApiRequestError(
-                    job.error_message || 'Analysis job failed',
-                    500,
-                    `/api/v1/jobs/${jobId}`
-                );
-            }
-
-            // Wait before next poll
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-            attempts++;
-        }
-
-        throw new ApiRequestError(
-            'Analysis job timed out after maximum polling attempts',
-            408,
-            `/api/v1/jobs/${jobId}`
-        );
-    }
-
-    /**
      * Analyze repository and fetch graph data
-     * Complete workflow: trigger analysis -> poll status -> fetch graph
+     * Complete workflow: trigger analysis -> fetch graph
      */
     public async analyzeAndFetchGraph(
         repoUrl: string,
         branch: string = 'main',
         onProgress?: (status: string, job?: AnalysisJob) => void
     ): Promise<TransformedGraphData> {
-        // Step 1: Trigger analysis
-        onProgress?.('Triggering analysis...');
+        // Step 1: Trigger analysis (now completely synchronous and blocking on backend)
+        onProgress?.('Triggering analysis (this may take a few minutes)...');
         const analyzeResponse = await this.triggerAnalysis({
             repo_url: repoUrl,
             branch,
         });
 
-        const jobId = analyzeResponse.job_id;
-        const repoId = analyzeResponse.repo_id || jobId;
-        
-        // Step 2: Poll for completion
-        const completedJob = await this.pollJobUntilComplete(
-            jobId,
-            (job) => onProgress?.(`Job status: ${job.status}`, job)
-        );
+        // Backend will block HTTP connection and return success only when job finishes
+        // Check if the backend responded with a failure.
+        // We handle fields mapped roughly from AnalysisJob as the backend now sends it
+        const finalStatus = (analyzeResponse as any).status;
+        if (finalStatus === 'FAILED' || finalStatus === 'ERROR') {
+            throw new ApiRequestError(
+                (analyzeResponse as any).error_message || (analyzeResponse as any).error || 'Analysis job failed',
+                500,
+                '/api/v1/analyze'
+            );
+        }
+
+        const repoId = analyzeResponse.repo_id || analyzeResponse.job_id || (analyzeResponse as any).repository_id || (analyzeResponse as any).id;
+        if (!repoId) {
+            throw new ApiRequestError(
+                'Invalid response from backend: missing repository ID',
+                500,
+                '/api/v1/analyze'
+            );
+        }
 
         // Step 4: Fetch graph and metrics
         onProgress?.('Fetching graph data...');
@@ -414,19 +392,19 @@ export class ArchMindApiClient {
         // Maps various ID formats (full paths, function names) to normalized IDs
         const idMapping = new Map<string, string>();
         const nameToIdMap = new Map<string, string[]>(); // Multiple nodes can have same name
-        
+
         // First pass: normalize IDs and build mappings
         graphData.nodes.forEach(node => {
             const props = node.properties || {};
             const filePath = String(props['file_path'] || props['path'] || props['file'] || '');
             const name = String(props['name'] || node.label || '');
-            
+
             // Normalize ID to relative path (remove temp directories)
             const normalizedId = this.normalizeNodeId(node.id, filePath, name, node.type);
-            
+
             // Store original -> normalized mapping
             idMapping.set(node.id, normalizedId);
-            
+
             // Store name -> ID mapping for edge resolution
             if (name) {
                 const existing = nameToIdMap.get(name) || [];
@@ -439,17 +417,17 @@ export class ArchMindApiClient {
         const nodes: TransformedNode[] = graphData.nodes.map((node, index) => {
             const props = node.properties || {};
             const nodeType = typeMapping[node.type] || 'module';
-            
+
             // FIX 3: Calculate depth properly based on node type hierarchy
             let depth = depthByType[node.type];
             if (depth === undefined) {
                 // Fallback: try from properties, or use type-based default
                 depth = Number(props['depth']) || this.getDefaultDepth(nodeType);
             }
-            
+
             // Get normalized ID
             const normalizedId = idMapping.get(node.id) || node.id;
-            
+
             // Normalize parent ID if present
             let parentId: string | undefined = String(props['parent_id'] || '');
             if (parentId && idMapping.has(parentId)) {
@@ -457,7 +435,7 @@ export class ArchMindApiClient {
             } else if (!parentId) {
                 parentId = undefined;
             }
-            
+
             return {
                 id: normalizedId,
                 label: node.label || String(props['name']) || normalizedId,
@@ -479,7 +457,7 @@ export class ArchMindApiClient {
                 // Resolve source and target using ID mapping
                 let source = idMapping.get(edge.source) || edge.source;
                 let target = idMapping.get(edge.target) || edge.target;
-                
+
                 // If source/target not found, try name-based lookup
                 if (!idMapping.has(edge.source)) {
                     const matches = nameToIdMap.get(edge.source);
@@ -487,14 +465,14 @@ export class ArchMindApiClient {
                         source = matches[0]; // Use first match
                     }
                 }
-                
+
                 if (!idMapping.has(edge.target)) {
                     const matches = nameToIdMap.get(edge.target);
                     if (matches && matches.length > 0) {
                         target = matches[0]; // Use first match
                     }
                 }
-                
+
                 return {
                     id: `e-${source}-${target}-${index}`,
                     source: source,
@@ -539,7 +517,7 @@ export class ArchMindApiClient {
             }
             return name || id;
         }
-        
+
         // For file nodes, extract relative path
         if (type === 'File' && filePath) {
             // Remove temp directories like /tmp/archmind-xxx/
@@ -549,7 +527,7 @@ export class ArchMindApiClient {
                 .replace(/\\/g, '/'); // Normalize path separators
             return normalized;
         }
-        
+
         // For directory/module nodes
         if (filePath) {
             return filePath
@@ -557,7 +535,7 @@ export class ArchMindApiClient {
                 .replace(/^C:\\Users\\[^\\]+\\AppData\\Local\\Temp\\[^\\]+\\/, '')
                 .replace(/\\/g, '/');
         }
-        
+
         // Fallback: use ID as-is
         return id;
     }
@@ -581,7 +559,7 @@ export class ArchMindApiClient {
      */
     private inferLanguage(extension?: string): string | undefined {
         if (!extension) return undefined;
-        
+
         const languageMap: Record<string, string> = {
             'ts': 'typescript',
             'tsx': 'typescript',
@@ -606,7 +584,7 @@ export class ArchMindApiClient {
      */
     private countFilesByLanguage(nodes: TransformedNode[]): Record<string, number> {
         const counts: Record<string, number> = {};
-        
+
         for (const node of nodes) {
             if (node.type === 'file' && node.language) {
                 counts[node.language] = (counts[node.language] || 0) + 1;
@@ -718,10 +696,10 @@ export class ArchMindWebSocketClient {
     private type: 'job' | 'repo';
     private id: string;
 
-    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'https://go-api-gateway-production-2173.up.railway.app') {
+    constructor(type: 'job' | 'repo', id: string, gatewayUrl: string = 'http://localhost:8080') {
         this.type = type;
         this.id = id;
-        
+
         // Convert http(s) to ws(s)
         const wsProtocol = gatewayUrl.startsWith('https') ? 'wss' : 'ws';
         const baseUrl = gatewayUrl.replace(/^https?:\/\//, '');
@@ -867,7 +845,7 @@ export class ArchMindWebSocketClient {
      */
     public disconnect(): void {
         this.isIntentionallyClosed = true;
-        
+
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
