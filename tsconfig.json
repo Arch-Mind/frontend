@@ -8,7 +8,7 @@
         ],
         "outDir": "out",
         "sourceMap": true,
-        "rootDir": "src",
+        "rootDir": ".",
         "strict": true,
         "jsx": "react",
         "esModuleInterop": true,
@@ -26,6 +26,11 @@
             ]
         }
     },
+    "include": [
+        "src/**/*",
+        "e2e/**/*",
+        "playwright.config.ts"
+    ],
     "exclude": [
         "node_modules",
         ".vscode-test",

@@ -1753,16 +1753,39 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
         [setEdges]
     );
 
-    // Handle node click - open file in VS Code
+    // Handle node click - open file in VS Code OR expand/collapse
     const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
         setSelectedNode(node.id);
         setContextMenuNode(null);
 
-        // Only open files for leaf symbol nodes (function/class).
-        // Module-box nodes (moduleBox type) cover both directory groups and
-        // file boxes — clicking them should only select, not open a file.
+        // Handle expansion for module/directory/file boxes on single click
+        const subType = (node.data as any)?.nodeSubType as string | undefined;
+        if (subType === 'module' || subType === 'directory') {
+            setExpandedModules(prev => {
+                const next = new Set(prev);
+                next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+                return next;
+            });
+            return; // Don't try to open as file
+        } else if (subType === 'file') {
+            const symCount = Number((node.data as any)?.childCount ?? 0);
+            if (symCount > 0) {
+                setExpandedFiles(prev => {
+                    const next = new Set(prev);
+                    next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+                    return next;
+                });
+            }
+            // For files, we might still want to open them if they are selected?
+            // But the user said "open the subsections if i click like what happens when i click on the arrow"
+            // So we focus on expansion. If it's a file with no symbols, it might not expand.
+            // Let's keep the openFile logic for leaf nodes only.
+        }
+
+        // Only open files for leaf symbol nodes (function/class) or files that aren't moduleBoxes.
         const isModuleBox = node.type === 'moduleBox';
         const isDirectory = node.data?.type === 'directory';
+
         if (vscodeRef.current && !isModuleBox && !isDirectory) {
             const fp = node.data?.filePath;
             // Guard against the string "undefined" that can come from client.ts
@@ -1773,7 +1796,7 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
                 lineNumber: node.data?.lineNumber,
             });
         }
-    }, []);
+    }, [setExpandedModules, setExpandedFiles]);
 
     // ... (rest of handlers)
 
@@ -2128,13 +2151,18 @@ const ArchitectureGraphInner: React.FC<ArchitectureGraphProps> = ({
         vscode.postMessage({ command: 'requestArchitecture' });
         vscode.postMessage({ command: 'requestConfig' });
 
-        // Trigger backend analysis on start as requested
-        vscode.postMessage({ command: 'analyzeRepository' });
-
         return () => {
             window.removeEventListener('message', handleMessage);
         };
-    }, [setNodes, setEdges, vscode, debouncedFilters, layoutType, selectedNode]);
+    }, [setNodes, setEdges, vscode, debouncedFilters, layoutType]);
+
+    // Separate useEffect to trigger initial backend analysis ONLY ONCE
+    // This prevents re-triggering analysis when UI state (like selectedNode) changes
+    useEffect(() => {
+        if (vscode) {
+            vscode.postMessage({ command: 'analyzeRepository' });
+        }
+    }, [vscode]);
 
     useEffect(() => {
         if (localContributions) {

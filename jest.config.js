@@ -6,6 +6,10 @@ module.exports = {
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   setupFilesAfterEnv: ['<rootDir>/node_modules/@testing-library/jest-dom/dist/index.js'],
-  testMatch: ['<rootDir>/src/**/__tests__/**/*.{ts,tsx}', '<rootDir>/src/**/*.{spec,test}.{ts,tsx}'],
-  testPathIgnorePatterns: ['/node_modules/', '/out/', '/dist/', '\\.js$'],
+  testMatch: [
+    '<rootDir>/src/**/__tests__/**/*.{ts,tsx}',
+    '<rootDir>/src/**/*.{spec,test}.{ts,tsx}',
+    '<rootDir>/src/**/*.int.test.{ts,tsx}'
+  ],
+  testPathIgnorePatterns: ['/node_modules/', '/out/', '/dist/', '/e2e/', '\\.js$'],
 };

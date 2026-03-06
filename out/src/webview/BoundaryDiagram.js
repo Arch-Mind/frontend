@@ -1,0 +1,352 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BoundaryDiagram = void 0;
+const react_1 = __importStar(require("react"));
+const reactflow_1 = __importStar(require("reactflow"));
+require("reactflow/dist/style.css");
+const layoutAlgorithms_1 = require("./layoutAlgorithms");
+const webviewClient_1 = require("../api/webviewClient");
+const HeatmapLegend_1 = require("./HeatmapLegend");
+const heatmapUtils_1 = require("./heatmapUtils");
+const vscodeApi_1 = require("../utils/vscodeApi");
+const boundaryColors = {
+    physical: '#3b82f6',
+    logical: '#22c55e',
+    architectural: '#f59e0b',
+};
+const defaultBoundaryColor = '#94a3b8';
+function BoundaryNode({ data }) {
+    const color = boundaryColors[data.boundary.type] || defaultBoundaryColor;
+    const ring = data.isHighlighted ? '0 0 0 3px rgba(249, 115, 22, 0.75)' : undefined;
+    return (react_1.default.createElement("div", { className: "boundary-diagram-node", style: {
+            borderColor: color,
+            boxShadow: ring || (data.heatmapColor ? `0 0 0 2px ${data.heatmapColor}` : undefined),
+        }, title: data.heatmapTooltip || data.summary || '' },
+        react_1.default.createElement("div", { className: "boundary-node-header", style: { color } },
+            react_1.default.createElement("span", { className: "boundary-node-name" }, data.boundary.name),
+            data.boundary.layer && (react_1.default.createElement("span", { className: "boundary-layer-pill" }, data.boundary.layer))),
+        data.boundary.path && react_1.default.createElement("div", { className: "boundary-node-path" }, data.boundary.path),
+        react_1.default.createElement("div", { className: "boundary-node-meta" },
+            data.boundary.file_count,
+            " files")));
+}
+function FileNode({ data }) {
+    return (react_1.default.createElement("div", { className: "boundary-file-dot", style: {
+            backgroundColor: data?.heatmapColor || undefined,
+            boxShadow: data?.isHighlighted ? '0 0 0 2px rgba(249, 115, 22, 0.75)' : undefined,
+        }, title: data?.heatmapTooltip || '' }));
+}
+const boundaryNodeTypes = {
+    boundaryNode: BoundaryNode,
+    fileDot: FileNode,
+};
+const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRepoId = null, graphEngineUrl, architectureData, localContributions, }) => {
+    const vscode = (0, react_1.useMemo)(() => (0, vscodeApi_1.getVsCodeApi)(), []);
+    const apiClient = (0, react_1.useMemo)(() => new webviewClient_1.ArchMindWebviewApiClient(graphEngineUrl || 'https://graph-engine-production-90f5.up.railway.app'), [graphEngineUrl]);
+    const [repoId, setRepoId] = (0, react_1.useState)(initialRepoId);
+    const [isLoading, setIsLoading] = (0, react_1.useState)(false);
+    const [error, setError] = (0, react_1.useState)(null);
+    const [boundaryData, setBoundaryData] = (0, react_1.useState)(null);
+    const [insights, setInsights] = (0, react_1.useState)(null);
+    const [contributions, setContributions] = (0, react_1.useState)(localContributions || null);
+    const [nodes, setNodes] = (0, react_1.useState)([]);
+    const [edges, setEdges] = (0, react_1.useState)([]);
+    const [highlightBoundaryId, setHighlightBoundaryId] = (0, react_1.useState)(null);
+    const [filters, setFilters] = (0, react_1.useState)({
+        physical: true,
+        logical: true,
+        architectural: true,
+        showFiles: true,
+    });
+    const heatmapState = (0, react_1.useMemo)(() => (0, heatmapUtils_1.buildHeatmap)(contributions?.contributions || [], heatmapMode), [contributions, heatmapMode]);
+    const highlightSet = (0, react_1.useMemo)(() => new Set(highlightNodeIds.map((id) => (0, heatmapUtils_1.normalizePath)(id.replace(/^file:/, '')))), [highlightNodeIds]);
+    (0, react_1.useEffect)(() => {
+        const handler = (event) => {
+            const message = event.data;
+            if (message?.command === 'architectureData') {
+                const extractedRepoId = message.data?.repo_id || message.data?.repoId;
+                if (extractedRepoId) {
+                    setRepoId(String(extractedRepoId));
+                }
+            }
+            if (message?.command === 'revealBoundaryFile' && message.filePath && boundaryData) {
+                const normalized = (0, heatmapUtils_1.normalizePath)(message.filePath);
+                const match = boundaryData.boundaries.find(boundary => boundary.files.some(file => (0, heatmapUtils_1.normalizePath)(file) === normalized));
+                if (match) {
+                    setHighlightBoundaryId(match.id);
+                }
+                setFilters(prev => ({ ...prev, showFiles: true }));
+            }
+        };
+        window.addEventListener('message', handler);
+        if (vscode) {
+            vscode.postMessage({ command: 'requestArchitecture' });
+        }
+        return () => window.removeEventListener('message', handler);
+    }, [vscode, boundaryData]);
+    (0, react_1.useEffect)(() => {
+        if (initialRepoId) {
+            setRepoId(initialRepoId);
+        }
+    }, [initialRepoId]);
+    (0, react_1.useEffect)(() => {
+        if (!repoId)
+            return;
+        let active = true;
+        const load = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
+                try {
+                    const [boundaries, analysis] = await Promise.all([
+                        apiClient.getModuleBoundaries(repoId),
+                        apiClient.getArchitectureInsights(repoId).catch(() => null),
+                    ]);
+                    if (!active)
+                        return;
+                    if (boundaries && boundaries.boundaries.length > 0) {
+                        setBoundaryData(boundaries);
+                        setInsights(analysis);
+                    }
+                    else {
+                        throw new Error('No boundaries returned from backend');
+                    }
+                }
+                catch (backendError) {
+                    if (!active)
+                        return;
+                    console.warn('BoundaryDiagram: Fallback to derived boundaries', backendError);
+                    if (architectureData && architectureData.nodes) {
+                        const files = architectureData.nodes.filter((n) => n.type === 'file');
+                        // Group by directory - use a more robust multi-level grouping or just top-level folders
+                        const dirMap = new Map();
+                        files.forEach((node) => {
+                            const pathStr = node.filePath || node.id;
+                            // Simplify: use first two levels of directory as the "boundary"
+                            const parts = pathStr.split('/');
+                            let dir = 'root';
+                            if (parts.length > 2) {
+                                dir = parts.slice(0, 2).join('/');
+                            }
+                            else if (parts.length > 1) {
+                                dir = parts[0];
+                            }
+                            if (!dirMap.has(dir))
+                                dirMap.set(dir, []);
+                            dirMap.get(dir)?.push(pathStr);
+                        });
+                        const derived = Array.from(dirMap.entries()).map(([dir, files], index) => ({
+                            id: `local-${dir.replace(/[\/\.]/g, '-')}`,
+                            name: dir,
+                            path: dir,
+                            type: 'physical',
+                            files: files,
+                            file_count: files.length,
+                            layer: 'Unknown'
+                        }));
+                        setBoundaryData({
+                            boundaries: derived,
+                            total_boundaries: derived.length,
+                            repo_id: repoId
+                        });
+                    }
+                    else {
+                        throw backendError;
+                    }
+                }
+            }
+            catch (err) {
+                if (!active)
+                    return;
+                setError(err instanceof Error ? err.message : 'Failed to load boundaries');
+            }
+            finally {
+                if (active)
+                    setIsLoading(false);
+            }
+        };
+        load();
+        return () => { active = false; };
+    }, [apiClient, repoId, architectureData]);
+    (0, react_1.useEffect)(() => {
+        if (localContributions) {
+            setContributions(localContributions);
+            return;
+        }
+        if (!repoId || heatmapMode === 'off') {
+            setContributions(null);
+            return;
+        }
+        let active = true;
+        const load = async () => {
+            try {
+                const response = await apiClient.getContributions(repoId);
+                if (active)
+                    setContributions(response);
+            }
+            catch {
+                if (active)
+                    setContributions(null);
+            }
+        };
+        load();
+        return () => { active = false; };
+    }, [apiClient, repoId, heatmapMode, localContributions]);
+    const summaryByBoundary = (0, react_1.useMemo)(() => {
+        const map = new Map();
+        if (!insights?.insights)
+            return map;
+        insights.insights.forEach(item => {
+            if (item.pattern_type?.startsWith('module_summary:')) {
+                const name = item.pattern_type.replace('module_summary:', '').trim();
+                map.set(name, item.summary);
+            }
+        });
+        return map;
+    }, [insights]);
+    (0, react_1.useEffect)(() => {
+        if (!boundaryData)
+            return;
+        const filtered = boundaryData.boundaries.filter(b => {
+            if (b.type === 'physical')
+                return filters.physical;
+            if (b.type === 'logical')
+                return filters.logical;
+            if (b.type === 'architectural')
+                return filters.architectural;
+            return true;
+        });
+        const boundaryNodes = filtered.map(b => {
+            const heatmap = getBoundaryHeatmap(b, heatmapState);
+            const isHighlighted = highlightBoundaryId === b.id ||
+                b.files.some(file => highlightSet.has((0, heatmapUtils_1.normalizePath)(file)));
+            return {
+                id: `boundary:${b.id}`,
+                type: 'boundaryNode',
+                position: { x: 0, y: 0 },
+                data: {
+                    boundary: b,
+                    summary: summaryByBoundary.get(b.name) || '',
+                    heatmapColor: heatmap?.color,
+                    heatmapTooltip: heatmap?.tooltip,
+                    isHighlighted,
+                },
+                style: { width: 260, height: 120 },
+            };
+        });
+        const fileNodes = [];
+        if (filters.showFiles) {
+            filtered.forEach(b => {
+                const parentId = `boundary:${b.id}`;
+                const files = b.files || [];
+                const columns = Math.max(3, Math.ceil(Math.sqrt(files.length)));
+                files.forEach((file, index) => {
+                    const row = Math.floor(index / columns);
+                    const col = index % columns;
+                    const heatmap = (0, heatmapUtils_1.findHeatmapEntry)(heatmapState, file);
+                    const highlighted = highlightSet.has((0, heatmapUtils_1.normalizePath)(file));
+                    fileNodes.push({
+                        id: `file:${b.id}:${index}`,
+                        type: 'fileDot',
+                        position: { x: 16 + col * 14, y: 44 + row * 12 },
+                        parentNode: parentId,
+                        extent: 'parent',
+                        draggable: false,
+                        selectable: false,
+                        data: {
+                            file,
+                            heatmapColor: heatmap?.color,
+                            heatmapTooltip: heatmap?.tooltip,
+                            isHighlighted: highlighted,
+                        },
+                    });
+                });
+            });
+        }
+        const applyLayout = async () => {
+            try {
+                const layoutNodes = boundaryNodes.map(n => ({ id: n.id, width: 260, height: 140 }));
+                const { nodes: positions } = await (0, layoutAlgorithms_1.elkLayout)(layoutNodes, [], 'layered');
+                const layoutedBoundaries = boundaryNodes.map(node => ({
+                    ...node,
+                    position: positions.get(node.id) || { x: 0, y: 0 }
+                }));
+                setNodes([...layoutedBoundaries, ...fileNodes]);
+                setEdges([]);
+            }
+            catch (err) {
+                console.error('Layout failed:', err);
+                setError('Failed to calculate layout');
+            }
+        };
+        applyLayout();
+    }, [boundaryData, filters, summaryByBoundary, heatmapState, highlightBoundaryId, highlightSet]);
+    return (react_1.default.createElement("div", { className: "diagram-container" },
+        react_1.default.createElement("div", { className: "diagram-header" },
+            react_1.default.createElement("div", null,
+                react_1.default.createElement("h2", null, "Boundary Diagram"),
+                react_1.default.createElement("p", null, "Visualizing detected module and service boundaries.")),
+            react_1.default.createElement("div", { className: "diagram-filters" },
+                ['physical', 'logical', 'architectural'].map(type => (react_1.default.createElement("label", { key: type },
+                    react_1.default.createElement("input", { type: "checkbox", checked: filters[type], onChange: () => setFilters(prev => ({ ...prev, [type]: !prev[type] })) }),
+                    type.charAt(0).toUpperCase() + type.slice(1)))),
+                react_1.default.createElement("label", null,
+                    react_1.default.createElement("input", { type: "checkbox", checked: filters.showFiles, onChange: () => setFilters(prev => ({ ...prev, showFiles: !prev.showFiles })) }),
+                    "Files"))),
+        heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (react_1.default.createElement(HeatmapLegend_1.HeatmapLegend, { mode: heatmapMode, minMetric: heatmapState.minMetric, maxMetric: heatmapState.maxMetric })),
+        isLoading && react_1.default.createElement("div", { className: "diagram-state" }, "Loading boundaries..."),
+        error && react_1.default.createElement("div", { className: "diagram-state diagram-error" }, error),
+        !isLoading && !error && !repoId && react_1.default.createElement("div", { className: "diagram-state" }, "Missing repository context."),
+        !isLoading && !error && !!repoId && boundaryData?.boundaries.length === 0 && (react_1.default.createElement("div", { className: "diagram-state" }, "No boundaries found.")),
+        !isLoading && !error && !!repoId && (react_1.default.createElement(reactflow_1.ReactFlowProvider, null,
+            react_1.default.createElement("div", { className: "diagram-flow" },
+                react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, nodeTypes: boundaryNodeTypes, fitView: true, fitViewOptions: { padding: 0.2 } },
+                    react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 16, size: 0.8 })))))));
+};
+exports.BoundaryDiagram = BoundaryDiagram;
+function getBoundaryHeatmap(boundary, heatmapState) {
+    let hottest = null;
+    boundary.files.forEach(file => {
+        const entry = (0, heatmapUtils_1.findHeatmapEntry)(heatmapState, file);
+        if (!entry)
+            return;
+        if (!hottest || entry.metric > hottest.metric) {
+            hottest = { color: entry.color, tooltip: entry.tooltip, metric: entry.metric };
+        }
+    });
+    return hottest;
+}
+//# sourceMappingURL=BoundaryDiagram.js.map
