@@ -217,7 +217,7 @@ export function exportAsDOT(
             const type = node.data.type;
 
             // Customize appearance based on type
-            let attributes = [];
+            const attributes = [];
             switch (type) {
                 case 'directory':
                     attributes.push('shape=folder');

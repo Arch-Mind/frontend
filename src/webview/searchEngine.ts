@@ -101,11 +101,11 @@ function findMatchIndices(query: string, text: string, caseSensitive: boolean): 
     const searchQuery = caseSensitive ? query : query.toLowerCase();
 
     let index = 0;
-    while (true) {
-        const pos = searchText.indexOf(searchQuery, index);
-        if (pos === -1) break;
+    let pos = searchText.indexOf(searchQuery, index);
+    while (pos !== -1) {
         indices.push([pos, pos + searchQuery.length]);
         index = pos + 1;
+        pos = searchText.indexOf(searchQuery, index);
     }
 
     return indices;
@@ -144,7 +144,7 @@ export function searchNodes(
         if (opts.searchFields.includes('label')) {
             const text = opts.caseSensitive ? node.label : node.label.toLowerCase();
             const score = fuzzyScore(searchQuery, text, opts);
-            
+
             if (score >= opts.fuzzyThreshold) {
                 matchedFields.push('label');
                 totalScore += score * 2; // Label matches get higher weight
@@ -165,7 +165,7 @@ export function searchNodes(
         if (opts.searchFields.includes('filePath') && node.filePath) {
             const text = opts.caseSensitive ? node.filePath : node.filePath.toLowerCase();
             const score = fuzzyScore(searchQuery, text, opts);
-            
+
             if (score >= opts.fuzzyThreshold) {
                 matchedFields.push('filePath');
                 totalScore += score;

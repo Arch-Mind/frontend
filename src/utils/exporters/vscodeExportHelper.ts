@@ -13,7 +13,7 @@ type SaveFileResponse = {
     error?: string;
 };
 
-let pendingExports: Map<string, { resolve: (path: string) => void; reject: (error: Error) => void }> = new Map();
+const pendingExports: Map<string, { resolve: (path: string) => void; reject: (error: Error) => void }> = new Map();
 
 /**
  * Initialize export message listener (call once on app start)
