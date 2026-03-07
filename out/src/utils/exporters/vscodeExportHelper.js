@@ -8,7 +8,7 @@ exports.isVSCodeWebview = isVSCodeWebview;
  * Wraps postMessage with promises that resolve when extension responds
  */
 const vscodeApi_1 = require("../vscodeApi");
-let pendingExports = new Map();
+const pendingExports = new Map();
 /**
  * Initialize export message listener (call once on app start)
  */

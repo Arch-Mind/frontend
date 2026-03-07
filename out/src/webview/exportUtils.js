@@ -181,7 +181,7 @@ function exportAsDOT(nodes, edges, filename = 'architecture-graph.dot') {
             const label = escapeDot(node.data.label || node.id);
             const type = node.data.type;
             // Customize appearance based on type
-            let attributes = [];
+            const attributes = [];
             switch (type) {
                 case 'directory':
                     attributes.push('shape=folder');

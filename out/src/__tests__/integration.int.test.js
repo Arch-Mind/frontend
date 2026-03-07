@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-// Mocking the VS Code API for Jest
-jest.mock('vscode');
+// This is a sample integration test. For real VS Code testing, 
+// we'd use @vscode/test-electron, but for Jest, we mock the API.
 describe('Extension-Webview Bridge Integration', () => {
     it('should correctly handle messages from the webview', async () => {
         // Mock implementation of a message handler
