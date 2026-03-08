@@ -1,0 +1,41 @@
+
+> archmind-vscode-extension@0.0.1 test:e2e
+> playwright test
+
+
+Running 2 tests using 2 workers
+
+[1A[2K[1/2] [chromium] › e2e\webview.spec.ts:24:9 › ArchMind Webview E2E › should show loading state
+[1A[2K[2/2] [chromium] › e2e\webview.spec.ts:16:9 › ArchMind Webview E2E › should load the application root
+[1A[2K  1) [chromium] › e2e\webview.spec.ts:24:9 › ArchMind Webview E2E › should show loading state ──────
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\chiru\AppData\Local\ms-playwright\chromium_headless_shell-1208\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔═════════════════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright Test or Playwright was just installed or updated. ║
+    ║ Please run the following command to download new browsers:              ║
+    ║                                                                         ║
+    ║     npx playwright install                                              ║
+    ║                                                                         ║
+    ║ <3 Playwright Team                                                      ║
+    ╚═════════════════════════════════════════════════════════════════════════╝
+
+
+[1A[2K  2) [chromium] › e2e\webview.spec.ts:16:9 › ArchMind Webview E2E › should load the application root 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\chiru\AppData\Local\ms-playwright\chromium_headless_shell-1208\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔═════════════════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright Test or Playwright was just installed or updated. ║
+    ║ Please run the following command to download new browsers:              ║
+    ║                                                                         ║
+    ║     npx playwright install                                              ║
+    ║                                                                         ║
+    ║ <3 Playwright Team                                                      ║
+    ╚═════════════════════════════════════════════════════════════════════════╝
+
+
+[1A[2K  2 failed
+    [chromium] › e2e\webview.spec.ts:16:9 › ArchMind Webview E2E › should load the application root 
+    [chromium] › e2e\webview.spec.ts:24:9 › ArchMind Webview E2E › should show loading state ───────
+
+[36m  Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.[39m
+Terminate batch job (Y/N)? 
