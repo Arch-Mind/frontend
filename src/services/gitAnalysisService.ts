@@ -1,6 +1,5 @@
 import * as cp from 'child_process';
 import * as path from 'path';
-import * as vscode from 'vscode';
 
 export interface FileGitStats {
     filePath: string;
@@ -27,7 +26,7 @@ export class GitAnalysisService {
      */
     private async runGitCommand(args: string[], cwd: string): Promise<string> {
         return new Promise((resolve, reject) => {
-            cp.exec(`git ${args.join(' ')}`, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+            cp.exec(`git ${args.join(' ')}`, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, _stderr) => {
                 if (error) {
                     reject(error);
                 } else {
@@ -94,7 +93,7 @@ export class GitAnalysisService {
         try {
             // 1. Get all files tracked by git
             const filesOutput = await this.runGitCommand(['ls-files'], rootPath);
-            const files = filesOutput.split('\n').filter(f => f.trim() !== '');
+            // const files = filesOutput.split('\n').filter(f => f.trim() !== '');
 
             // For a large repo, doing per-file commands is too slow.
             // We'll use a simplified approach for bulk: 

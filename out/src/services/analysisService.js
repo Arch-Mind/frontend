@@ -89,7 +89,7 @@ class AnalysisService {
         // Or construct the ID if we know the convention
         const expectedId = `${filePath}#${functionName}`;
         // Check if node exists (optional, but good for validation)
-        const node = this.data.nodes.find(n => n.id === expectedId);
+        // const node = this.data.nodes.find(n => n.id === expectedId);
         // If we can't find by ID directly, we might need to search by properties
         // But assuming the convention from fileSystem.ts holds:
         return this.data.edges.filter(edge => edge.target === expectedId && edge.type === 'calls');

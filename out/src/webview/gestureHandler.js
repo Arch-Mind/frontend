@@ -86,7 +86,7 @@ function createGestureHandlers(callbacks, options = {}) {
             y: event.clientY,
         };
     };
-    const onMouseUp = (event) => {
+    const onMouseUp = (_event) => {
         if (!enableMousePan)
             return;
         if (state.isPanning) {

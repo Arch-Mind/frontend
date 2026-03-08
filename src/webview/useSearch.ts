@@ -13,7 +13,6 @@ import {
     SearchResult,
     SearchOptions,
     searchNodes,
-    filterSearchResults,
 } from './searchEngine';
 
 export interface UseSearchOptions extends SearchOptions {
@@ -76,7 +75,6 @@ export function useSearch(
         }
 
         return searchNodes(nodes, debouncedQuery, searchOptions);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nodes, debouncedQuery, minQueryLength, JSON.stringify(searchOptions)]);
 
     // Update derived states when results change

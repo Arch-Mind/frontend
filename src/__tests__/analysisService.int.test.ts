@@ -1,5 +1,5 @@
 import { AnalysisService } from '../services/analysisService';
-import * as vscode from 'vscode';
+
 
 // Mocking the VS Code API and our common client/gateway etc.
 jest.mock('vscode');

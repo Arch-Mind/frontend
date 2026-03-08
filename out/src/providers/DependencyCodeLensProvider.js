@@ -46,7 +46,7 @@ class DependencyCodeLensProvider {
             this._onDidChangeCodeLenses.fire();
         });
     }
-    async provideCodeLenses(document, token) {
+    async provideCodeLenses(document, _token) {
         // Only provide for supported languages
         const supportedLangs = ['typescript', 'javascript', 'python', 'rust', 'go'];
         if (!supportedLangs.includes(document.languageId))

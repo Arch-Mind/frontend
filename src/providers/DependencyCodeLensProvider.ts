@@ -1,6 +1,5 @@
 
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { LocalParser, LocalSymbol } from '../analyzer/localParser';
 import { AnalysisService } from '../services/analysisService';
 
@@ -15,7 +14,7 @@ export class DependencyCodeLensProvider implements vscode.CodeLensProvider {
         });
     }
 
-    public async provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): Promise<vscode.CodeLens[]> {
+    public async provideCodeLenses(document: vscode.TextDocument, _token: vscode.CancellationToken): Promise<vscode.CodeLens[]> {
         // Only provide for supported languages
         const supportedLangs = ['typescript', 'javascript', 'python', 'rust', 'go'];
         if (!supportedLangs.includes(document.languageId)) return [];

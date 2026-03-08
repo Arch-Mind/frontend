@@ -49,7 +49,7 @@ class GitAnalysisService {
      */
     async runGitCommand(args, cwd) {
         return new Promise((resolve, reject) => {
-            cp.exec(`git ${args.join(' ')}`, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+            cp.exec(`git ${args.join(' ')}`, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, _stderr) => {
                 if (error) {
                     reject(error);
                 }
@@ -110,7 +110,7 @@ class GitAnalysisService {
         try {
             // 1. Get all files tracked by git
             const filesOutput = await this.runGitCommand(['ls-files'], rootPath);
-            const files = filesOutput.split('\n').filter(f => f.trim() !== '');
+            // const files = filesOutput.split('\n').filter(f => f.trim() !== '');
             // For a large repo, doing per-file commands is too slow.
             // We'll use a simplified approach for bulk: 
             // - Get total commit count per file (git log --name-only --format="") -> rudimentary

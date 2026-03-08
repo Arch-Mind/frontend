@@ -21,7 +21,7 @@ function initializeExportListener() {
             message.command === 'fileSaveError' ||
             message.command === 'fileSaveCancelled') {
             // Resolve all pending exports
-            pendingExports.forEach(({ resolve, reject }, filename) => {
+            pendingExports.forEach(({ resolve, reject }, _filename) => {
                 if (message.command === 'fileSaveSuccess') {
                     resolve(message.path || 'File saved successfully');
                 }

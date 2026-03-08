@@ -3,7 +3,7 @@ import { getVsCodeApi } from '../vscodeApi';
 
 declare const acquireVsCodeApi: any;
 // Types from ReactFlow
-import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code environments
+
 
 // Options for tailoring the Markdown output
 export interface MarkdownExportOptions {
