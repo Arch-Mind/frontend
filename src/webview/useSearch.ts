@@ -13,7 +13,6 @@ import {
     SearchResult,
     SearchOptions,
     searchNodes,
-    filterSearchResults,
 } from './searchEngine';
 
 export interface UseSearchOptions extends SearchOptions {
@@ -72,19 +71,18 @@ export function useSearch(
     // Perform search when debouncedQuery changes
     const results = useMemo(() => {
         if (debouncedQuery.length < minQueryLength) {
-            setIsSearching(false);
             return [];
         }
 
-        setIsSearching(true);
-        const searchResults = searchNodes(nodes, debouncedQuery, searchOptions);
+        return searchNodes(nodes, debouncedQuery, searchOptions);
+    }, [nodes, debouncedQuery, minQueryLength, JSON.stringify(searchOptions)]);
+
+    // Update derived states when results change
+    useEffect(() => {
+        setIsSearching(true); // Technically synchronous, so this is just for UI if it was async
+        setSelectedIndex(results.length > 0 ? 0 : -1);
         setIsSearching(false);
-
-        // Reset selection when results change
-        setSelectedIndex(searchResults.length > 0 ? 0 : -1);
-
-        return searchResults;
-    }, [nodes, debouncedQuery, minQueryLength, searchOptions]);
+    }, [results]);
 
     // Select next result in the list
     const selectNext = useCallback(() => {

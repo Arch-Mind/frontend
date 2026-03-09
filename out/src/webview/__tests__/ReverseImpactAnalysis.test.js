@@ -81,6 +81,8 @@ describe('ReverseImpactAnalysisPanel', () => {
         expect(tierText).toHaveStyle({ color: '#2ecc71' });
     });
     it('handles error state gracefully', async () => {
+        // Suppress expected console.error output during this test
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
         mockFetch.mockResolvedValueOnce({
             ok: false,
             status: 500,
@@ -90,6 +92,7 @@ describe('ReverseImpactAnalysisPanel', () => {
         await (0, react_2.waitFor)(() => {
             expect(react_2.screen.getByText(/⚠️ HTTP 500: Internal Server Error/i)).toBeInTheDocument();
         });
+        consoleSpy.mockRestore();
     });
     it('calls onClose when close button is clicked', async () => {
         const mockData = {

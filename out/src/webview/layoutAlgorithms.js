@@ -177,7 +177,7 @@ exports.LAYOUT_OPTIONS = [
  * @param edges - Array of edges
  * @returns LayoutResult
  */
-function byFileLayout(nodes, edges) {
+function byFileLayout(nodes, _edges) {
     const result = new Map();
     // Group nodes by file
     const fileGroups = new Map();
@@ -222,7 +222,7 @@ function byFileLayout(nodes, edges) {
  * @param edges - Array of edges
  * @returns LayoutResult
  */
-function byModuleLayout(nodes, edges) {
+function byModuleLayout(nodes, _edges) {
     const result = new Map();
     const rootModule = {
         name: 'root',

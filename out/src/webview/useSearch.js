@@ -37,16 +37,16 @@ function useSearch(nodes, options = {}) {
     // Perform search when debouncedQuery changes
     const results = (0, react_1.useMemo)(() => {
         if (debouncedQuery.length < minQueryLength) {
-            setIsSearching(false);
             return [];
         }
-        setIsSearching(true);
-        const searchResults = (0, searchEngine_1.searchNodes)(nodes, debouncedQuery, searchOptions);
+        return (0, searchEngine_1.searchNodes)(nodes, debouncedQuery, searchOptions);
+    }, [nodes, debouncedQuery, minQueryLength, JSON.stringify(searchOptions)]);
+    // Update derived states when results change
+    (0, react_1.useEffect)(() => {
+        setIsSearching(true); // Technically synchronous, so this is just for UI if it was async
+        setSelectedIndex(results.length > 0 ? 0 : -1);
         setIsSearching(false);
-        // Reset selection when results change
-        setSelectedIndex(searchResults.length > 0 ? 0 : -1);
-        return searchResults;
-    }, [nodes, debouncedQuery, minQueryLength, searchOptions]);
+    }, [results]);
     // Select next result in the list
     const selectNext = (0, react_1.useCallback)(() => {
         if (results.length === 0)

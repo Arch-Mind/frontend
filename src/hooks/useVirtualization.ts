@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Node, Edge, Viewport } from 'reactflow';
 
 export interface VirtualizationOptions {

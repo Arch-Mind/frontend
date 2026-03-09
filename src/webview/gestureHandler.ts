@@ -133,7 +133,7 @@ export function createGestureHandlers(
         };
     };
 
-    const onMouseUp = (event: React.MouseEvent) => {
+    const onMouseUp = (_event: React.MouseEvent) => {
         if (!enableMousePan) return;
         
         if (state.isPanning) {

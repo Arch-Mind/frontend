@@ -1,7 +1,6 @@
 
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { Parser, Language, Tree, Node } from 'web-tree-sitter';
+import { Parser, Language, Node } from 'web-tree-sitter';
 
 // Supported languages map: extension -> grammar
 const LANGUAGE_MAP: Record<string, string> = {

@@ -205,7 +205,7 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js",
+    "test": "jest",
     "test:unit": "jest",
     "test:watch": "jest --watch",
     "build:webview": "webpack --mode production --config webpack.webview.js",

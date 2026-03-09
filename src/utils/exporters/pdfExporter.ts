@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'; // Library for generating PDF files
 import html2canvas from 'html2canvas'; // Library to capture DOM elements as images
 import { Node, Edge } from 'reactflow'; // Types from ReactFlow
-import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // Helper for VS Code environments
+
 import { getVsCodeApi } from '../vscodeApi';
 
 declare const acquireVsCodeApi: any;

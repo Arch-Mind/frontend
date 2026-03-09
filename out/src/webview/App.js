@@ -36,33 +36,29 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+// src/webview/App.tsx
 const react_1 = __importStar(require("react"));
 const ArchitectureGraph_1 = __importDefault(require("./ArchitectureGraph"));
-const ModuleBoundaryDiagram_1 = require("./ModuleBoundaryDiagram");
 const DependencyDiagram_1 = require("./DependencyDiagram");
-const CommunicationDiagram_1 = require("./CommunicationDiagram");
 const CommitDetails_1 = require("./CommitDetails");
 const ThemeContext_1 = require("./ThemeContext");
 const ThemeToggle_1 = require("./ThemeToggle");
 const vscodeExportHelper_1 = require("../utils/exporters/vscodeExportHelper");
 const NotificationHistory_1 = require("./NotificationHistory");
-const WebhookSetup_1 = require("./WebhookSetup");
 const vscodeApi_1 = require("../utils/vscodeApi");
 // ✅ backend-driven diagrams
 const BackendDependencyDiagram_1 = require("./diagrams/BackendDependencyDiagram");
-const BackendBoundaryDiagram_1 = require("./diagrams/BackendBoundaryDiagram");
 const BackendCommunicationDiagram_1 = require("./diagrams/BackendCommunicationDiagram");
+const CommunicationDiagram_1 = require("./CommunicationDiagram");
+const WebhookSetup_1 = require("./WebhookSetup");
 function normalizeView(view) {
     switch (view) {
         case 'graph':
-        case 'boundaries':
-        case 'boundary-diagram':
         case 'dependency-diagram':
         case 'communication':
+        case 'webhooks':
         case 'commits':
             return view;
-        case 'webhooks':
-            return 'webhooks';
         case 'dependencies':
             return 'dependency-diagram';
         default:
@@ -181,18 +177,15 @@ const App = () => {
             react_1.default.createElement(Header, null),
             react_1.default.createElement("div", { className: "view-toggle" },
                 react_1.default.createElement("button", { className: activeView === 'graph' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('graph') }, "Graph"),
-                react_1.default.createElement("button", { className: activeView === 'boundaries' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('boundaries') }, "Boundaries"),
                 react_1.default.createElement("button", { className: activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('dependency-diagram') }, "Dependency Diagram"),
                 react_1.default.createElement("button", { className: activeView === 'communication' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('communication') }, "Communication"),
-                react_1.default.createElement("button", { className: activeView === 'commits' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('commits') }, "Commits"),
-                react_1.default.createElement("button", { className: activeView === 'webhooks' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('webhooks') }, "Webhooks")),
+                react_1.default.createElement("button", { className: activeView === 'webhooks' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('webhooks') }, "Webhooks"),
+                react_1.default.createElement("button", { className: activeView === 'commits' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('commits') }, "Commits")),
             react_1.default.createElement("div", { className: "heatmap-toolbar" },
                 react_1.default.createElement("span", { className: "heatmap-label" }, "Heatmap"),
                 react_1.default.createElement("div", { className: "heatmap-toggle" }, heatmapOptions.map((option) => (react_1.default.createElement("button", { key: option.value, className: heatmapMode === option.value ? 'heatmap-pill active' : 'heatmap-pill', onClick: () => setHeatmapMode(option.value) }, option.label))))),
             react_1.default.createElement("main", { className: "app-main" },
                 activeView === 'graph' && (react_1.default.createElement(ArchitectureGraph_1.default, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, localContributions: localContributions })),
-                activeView === 'boundaries' &&
-                    (backendGraph ? (react_1.default.createElement(BackendBoundaryDiagram_1.BackendBoundaryDiagram, { graph: backendGraph })) : (react_1.default.createElement(ModuleBoundaryDiagram_1.ModuleBoundaryDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData, localContributions: localContributions }))),
                 activeView === 'dependency-diagram' &&
                     (backendGraph ? (react_1.default.createElement(BackendDependencyDiagram_1.BackendDependencyDiagram, { graph: backendGraph })) : (react_1.default.createElement(DependencyDiagram_1.DependencyDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData, localContributions: localContributions }))),
                 activeView === 'communication' &&

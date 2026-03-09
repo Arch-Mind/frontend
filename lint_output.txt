@@ -1,0 +1,32 @@
+
+> archmind-vscode-extension@0.0.1 lint
+> eslint src --ext ts
+
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\api\client.ts
+  417:69  warning  '_index' is defined but never used  @typescript-eslint/no-unused-vars
+  742:32  warning  '_event' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\extension.ts
+  822:30  warning  '_job' is defined but never used       @typescript-eslint/no-unused-vars
+  924:61  warning  '_mimeType' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\providers\DependencyCodeLensProvider.ts
+  17:67  warning  '_token' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\services\gitAnalysisService.ts
+  29:100  warning  '_stderr' is defined but never used               @typescript-eslint/no-unused-vars
+  95:19   warning  'filesOutput' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\utils\exporters\vscodeExportHelper.ts
+  32:58  warning  '_filename' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\webview\gestureHandler.ts
+  136:24  warning  '_event' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\webview\layoutAlgorithms.ts
+  231:5  warning  '_edges' is defined but never used  @typescript-eslint/no-unused-vars
+  286:5  warning  '_edges' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 11 problems (0 errors, 11 warnings)
+

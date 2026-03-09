@@ -38,14 +38,14 @@ exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const os = __importStar(require("os"));
 const api_1 = require("./api");
+const fileSystem_1 = require("./analyzer/fileSystem");
 const localParser_1 = require("./analyzer/localParser");
 const analysisService_1 = require("./services/analysisService");
 const DependencyCodeLensProvider_1 = require("./providers/DependencyCodeLensProvider");
 const fingerprintService_1 = require("./services/fingerprintService");
 const gitAnalysisService_1 = require("./services/gitAnalysisService");
-const os = __importStar(require("os"));
-const fileSystem_1 = require("./analyzer/fileSystem");
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
     // Initialize LocalParser
@@ -495,13 +495,8 @@ class ArchitecturePanel {
      * Opens a file in the editor and optionally navigates to a specific line
      */
     async _openFile(filePath, lineNumber) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to open file outside workspace: ${filePath}`);
-            return;
-        }
         try {
             const uri = vscode.Uri.file(filePath);
-            // ... (rest of the logic)
             // Check if it's a binary/image file that can't be opened as text
             const binaryExtensions = [
                 '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', '.svg',
@@ -538,10 +533,6 @@ class ArchitecturePanel {
      * Goes to the definition at the specified location
      */
     async _goToDefinition(filePath, lineNumber) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to go to definition outside workspace: ${filePath}`);
-            return;
-        }
         try {
             const uri = vscode.Uri.file(filePath);
             const document = await vscode.workspace.openTextDocument(uri);
@@ -562,10 +553,6 @@ class ArchitecturePanel {
      * Finds all references at the specified location
      */
     async _findReferences(filePath, lineNumber) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to find references outside workspace: ${filePath}`);
-            return;
-        }
         try {
             const uri = vscode.Uri.file(filePath);
             const document = await vscode.workspace.openTextDocument(uri);
@@ -587,10 +574,6 @@ class ArchitecturePanel {
      * Reveals the file in the Explorer sidebar
      */
     async _revealInExplorer(filePath) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to reveal file outside workspace: ${filePath}`);
-            return;
-        }
         try {
             const uri = vscode.Uri.file(filePath);
             await vscode.commands.executeCommand('revealInExplorer', uri);
@@ -604,10 +587,6 @@ class ArchitecturePanel {
      * Copies the file path to clipboard
      */
     async _copyPath(filePath) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to copy path outside workspace: ${filePath}`);
-            return;
-        }
         try {
             await vscode.env.clipboard.writeText(filePath);
             vscode.window.showInformationMessage(`Copied path: ${filePath}`);
@@ -752,7 +731,7 @@ class ArchitecturePanel {
                     message: 'Starting repository analysis...'
                 });
                 // Use analyzeAndFetchGraph for complete workflow
-                const data = await apiClient.analyzeAndFetchGraph(repoUrl, branch, (status, job) => {
+                const data = await apiClient.analyzeAndFetchGraph(repoUrl, branch, (status, _job) => {
                     progress.report({ message: status });
                     this._panel.webview.postMessage({
                         command: 'loading',
@@ -913,19 +892,6 @@ class ArchitecturePanel {
                 return { 'All Files': ['*'] };
         }
     }
-    /**
-     * Validates that a path is within the workspace folders
-     */
-    _isPathInWorkspace(filePath) {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders)
-            return false;
-        const normalizedPath = path.normalize(filePath).toLowerCase();
-        return workspaceFolders.some(folder => {
-            const folderPath = path.normalize(folder.uri.fsPath).toLowerCase();
-            return normalizedPath.startsWith(folderPath);
-        });
-    }
     dispose() {
         ArchitecturePanel.currentPanel = undefined;
         this._panel.dispose();
@@ -946,26 +912,11 @@ class ArchitecturePanel {
         const vendorsUri = webview.asWebviewUri(vendorsPath);
         const mainPath = vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'main.bundle.js');
         const mainUri = webview.asWebviewUri(mainPath);
-        const config = vscode.workspace.getConfiguration('archmind');
-        const backendUrl = config.get('backendUrl', 'http://localhost:8080');
-        const graphEngineUrl = config.get('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app');
-        // Extract domain for CSP
-        const getDomain = (url) => {
-            try {
-                return new URL(url).origin;
-            }
-            catch {
-                return '';
-            }
-        };
-        const backendDomain = getDomain(backendUrl);
-        const graphEngineDomain = getDomain(graphEngineUrl);
         return `<!DOCTYPE html>
 			<html lang="en">
 			<head>
 				<meta charset="UTF-8">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
-				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; script-src ${webview.cspSource} 'unsafe-inline'; style-src ${webview.cspSource} 'unsafe-inline'; connect-src ${backendDomain} ${graphEngineDomain} ws:; font-src ${webview.cspSource};">
 				<title>Architecture Intelligence</title>
 				<style>
 					body, html, #root {

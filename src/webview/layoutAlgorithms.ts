@@ -228,7 +228,7 @@ export const LAYOUT_OPTIONS: { value: LayoutType; label: string; description: st
  */
 export function byFileLayout(
     nodes: LayoutNode[],
-    edges: LayoutEdge[]
+    _edges: LayoutEdge[]
 ): LayoutResult {
     const result: Map<string, { x: number; y: number }> = new Map();
     
@@ -283,7 +283,7 @@ export function byFileLayout(
  */
 export function byModuleLayout(
     nodes: LayoutNode[],
-    edges: LayoutEdge[]
+    _edges: LayoutEdge[]
 ): LayoutResult {
     const result: Map<string, { x: number; y: number }> = new Map();
     

@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+
 // This is a sample integration test. For real VS Code testing, 
 // we'd use @vscode/test-electron, but for Jest, we mock the API.
 

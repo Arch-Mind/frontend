@@ -1,0 +1,62 @@
+
+> archmind-vscode-extension@0.0.1 pretest
+> npm run compile && npm run lint
+
+
+> archmind-vscode-extension@0.0.1 compile
+> tsc -p ./
+
+
+> archmind-vscode-extension@0.0.1 lint
+> eslint src --ext ts
+
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\api\client.ts
+  417:69  warning  '_index' is defined but never used  @typescript-eslint/no-unused-vars
+  742:32  warning  '_event' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\extension.ts
+  822:30  warning  '_job' is defined but never used       @typescript-eslint/no-unused-vars
+  924:61  warning  '_mimeType' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\providers\DependencyCodeLensProvider.ts
+  17:67  warning  '_token' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\services\gitAnalysisService.ts
+  29:100  warning  '_stderr' is defined but never used               @typescript-eslint/no-unused-vars
+  95:19   warning  'filesOutput' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\utils\exporters\vscodeExportHelper.ts
+  32:58  warning  '_filename' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\webview\gestureHandler.ts
+  136:24  warning  '_event' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\chiru\OneDrive\Documents\GitHub\frontend\src\webview\layoutAlgorithms.ts
+  231:5  warning  '_edges' is defined but never used  @typescript-eslint/no-unused-vars
+  286:5  warning  '_edges' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 11 problems (0 errors, 11 warnings)
+
+
+> archmind-vscode-extension@0.0.1 test
+> node ./out/test/runTest.js
+
+node:internal/modules/cjs/loader:1424
+  throw err;
+  ^
+
+Error: Cannot find module 'C:\Users\chiru\OneDrive\Documents\GitHub\frontend\out\test\runTest.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)
+    at Module._load (node:internal/modules/cjs/loader:1227:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v24.13.0

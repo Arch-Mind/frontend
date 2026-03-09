@@ -325,7 +325,7 @@ class ArchMindApiClient {
             }
         });
         // FIX 2: Transform nodes with normalized IDs and calculated depth
-        const nodes = graphData.nodes.map((node, index) => {
+        const nodes = graphData.nodes.map((node, _index) => {
             const props = node.properties || {};
             const nodeType = typeMapping[node.type] || 'module';
             // FIX 3: Calculate depth properly based on node type hierarchy
@@ -595,7 +595,7 @@ class ArchMindWebSocketClient {
             this.ws.onerror = (error) => {
                 console.error('⚠️  WebSocket error:', error);
             };
-            this.ws.onclose = (event) => {
+            this.ws.onclose = (_event) => {
                 console.log(`🔌 WebSocket closed (${this.type}: ${this.id})`);
                 this.ws = null;
                 if (!this.isIntentionallyClosed) {

@@ -3,7 +3,7 @@ import { getVsCodeApi } from '../vscodeApi';
 
 declare const acquireVsCodeApi: any;
 // ReactFlow types
-import { isVSCodeWebview, saveFileInVSCode } from './vscodeExportHelper'; // VS Code helper
+
 
 // Structure of the exported JSON file
 export interface ExportData {

@@ -1,15 +1,15 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { getApiClient, resetApiClient, ApiRequestError } from './api';
+import { analyzeWorkspace } from './analyzer/fileSystem';
 import { LocalParser } from './analyzer/localParser';
 
 import { AnalysisService } from './services/analysisService';
 import { DependencyCodeLensProvider } from './providers/DependencyCodeLensProvider';
 import { FingerprintService } from './services/fingerprintService';
 import { GitAnalysisService } from './services/gitAnalysisService';
-import * as os from 'os';
-import { analyzeWorkspace } from './analyzer/fileSystem';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('ArchMind VS Code Extension is now active!');
@@ -550,14 +550,8 @@ class ArchitecturePanel {
      * Opens a file in the editor and optionally navigates to a specific line
      */
     private async _openFile(filePath: string, lineNumber?: number) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to open file outside workspace: ${filePath}`);
-            return;
-        }
-
         try {
             const uri = vscode.Uri.file(filePath);
-            // ... (rest of the logic)
 
             // Check if it's a binary/image file that can't be opened as text
             const binaryExtensions = [
@@ -602,11 +596,6 @@ class ArchitecturePanel {
      * Goes to the definition at the specified location
      */
     private async _goToDefinition(filePath: string, lineNumber?: number) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to go to definition outside workspace: ${filePath}`);
-            return;
-        }
-
         try {
             const uri = vscode.Uri.file(filePath);
             const document = await vscode.workspace.openTextDocument(uri);
@@ -633,11 +622,6 @@ class ArchitecturePanel {
      * Finds all references at the specified location
      */
     private async _findReferences(filePath: string, lineNumber?: number) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to find references outside workspace: ${filePath}`);
-            return;
-        }
-
         try {
             const uri = vscode.Uri.file(filePath);
             const document = await vscode.workspace.openTextDocument(uri);
@@ -661,11 +645,6 @@ class ArchitecturePanel {
      * Reveals the file in the Explorer sidebar
      */
     private async _revealInExplorer(filePath: string) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to reveal file outside workspace: ${filePath}`);
-            return;
-        }
-
         try {
             const uri = vscode.Uri.file(filePath);
             await vscode.commands.executeCommand('revealInExplorer', uri);
@@ -679,11 +658,6 @@ class ArchitecturePanel {
      * Copies the file path to clipboard
      */
     private async _copyPath(filePath: string) {
-        if (!this._isPathInWorkspace(filePath)) {
-            vscode.window.showWarningMessage(`ArchMind: Blocked attempt to copy path outside workspace: ${filePath}`);
-            return;
-        }
-
         try {
             await vscode.env.clipboard.writeText(filePath);
             vscode.window.showInformationMessage(`Copied path: ${filePath}`);
@@ -845,7 +819,7 @@ class ArchitecturePanel {
                 const data = await apiClient.analyzeAndFetchGraph(
                     repoUrl,
                     branch,
-                    (status, job) => {
+                    (status, _job) => {
                         progress.report({ message: status });
                         this._panel.webview.postMessage({
                             command: 'loading',
@@ -1023,20 +997,6 @@ class ArchitecturePanel {
         }
     }
 
-    /**
-     * Validates that a path is within the workspace folders
-     */
-    private _isPathInWorkspace(filePath: string): boolean {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders) return false;
-
-        const normalizedPath = path.normalize(filePath).toLowerCase();
-        return workspaceFolders.some(folder => {
-            const folderPath = path.normalize(folder.uri.fsPath).toLowerCase();
-            return normalizedPath.startsWith(folderPath);
-        });
-    }
-
     public dispose() {
         ArchitecturePanel.currentPanel = undefined;
         this._panel.dispose();
@@ -1060,28 +1020,11 @@ class ArchitecturePanel {
         const mainPath = vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'main.bundle.js');
         const mainUri = webview.asWebviewUri(mainPath);
 
-        const config = vscode.workspace.getConfiguration('archmind');
-        const backendUrl = config.get<string>('backendUrl', 'http://localhost:8080');
-        const graphEngineUrl = config.get<string>('graphEngineUrl', 'https://graph-engine-production-90f5.up.railway.app');
-
-        // Extract domain for CSP
-        const getDomain = (url: string) => {
-            try {
-                return new URL(url).origin;
-            } catch {
-                return '';
-            }
-        };
-
-        const backendDomain = getDomain(backendUrl);
-        const graphEngineDomain = getDomain(graphEngineUrl);
-
         return `<!DOCTYPE html>
 			<html lang="en">
 			<head>
 				<meta charset="UTF-8">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
-				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; script-src ${webview.cspSource} 'unsafe-inline'; style-src ${webview.cspSource} 'unsafe-inline'; connect-src ${backendDomain} ${graphEngineDomain} ws:; font-src ${webview.cspSource};">
 				<title>Architecture Intelligence</title>
 				<style>
 					body, html, #root {
