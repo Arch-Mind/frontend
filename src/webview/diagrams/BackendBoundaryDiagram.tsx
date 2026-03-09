@@ -9,7 +9,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { BackendGraph } from "./backendGraphToReactFlow";
-import { toReactFlowWholeGraph } from "./backendGraphToReactFlow";
+import { toReactFlowWholeGraph, backendNodeTypes } from "./backendGraphToReactFlow";
 import { ZoomToolbar } from "./ZoomToolbar";
 
 function Inner({ graph }: { graph: BackendGraph | null }) {
@@ -19,6 +19,7 @@ function Inner({ graph }: { graph: BackendGraph | null }) {
         if (!graph) return { nodes: [], edges: [] };
         return toReactFlowWholeGraph(graph, {
             edgeFilter: (e) => e.type === "contains", // boundary edges
+            filterOrphans: true,
             // edgeCap: 300000, // optional safety cap
         });
     }, [graph]);
@@ -57,6 +58,7 @@ function Inner({ graph }: { graph: BackendGraph | null }) {
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
+                nodeTypes={backendNodeTypes}
                 fitView
                 onlyRenderVisibleElements
                 nodesDraggable={false}

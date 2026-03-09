@@ -197,12 +197,7 @@ const App: React.FC = () => {
             Boundaries
           </button>
 
-          <button
-            className={activeView === 'boundary-diagram' ? 'view-tab active' : 'view-tab'}
-            onClick={() => setActiveView('boundary-diagram')}
-          >
-            Boundary Diagram
-          </button>
+
 
           <button
             className={activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab'}
@@ -274,15 +269,7 @@ const App: React.FC = () => {
               />
             ))}
 
-          {activeView === 'boundary-diagram' && (
-            <BoundaryDiagram
-              heatmapMode={heatmapMode}
-              highlightNodeIds={highlightNodes}
-              repoId={repoId}
-              graphEngineUrl={config?.graphEngineUrl}
-              architectureData={architectureData}
-            />
-          )}
+
 
           {/* ✅ Dependency diagram: backend graph if present, else fallback */}
           {activeView === 'dependency-diagram' &&
@@ -299,10 +286,13 @@ const App: React.FC = () => {
               />
             ))}
 
-          {/* ✅ Communication: backend comm diagram if backend graph present, else fallback */}
           {activeView === 'communication' &&
             (backendGraph ? (
-              <BackendCommunicationDiagram graph={backendGraph} />
+              <BackendCommunicationDiagram
+                graph={backendGraph}
+                repoId={repoId}
+                graphEngineUrl={config?.graphEngineUrl}
+              />
             ) : (
               <CommunicationDiagram
                 heatmapMode={heatmapMode}

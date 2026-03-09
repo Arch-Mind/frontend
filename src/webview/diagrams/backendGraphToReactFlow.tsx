@@ -1,7 +1,16 @@
 // src/webview/diagrams/backendGraphToReactFlow.ts
-import type { Edge as RFEdge, Node as RFNode, Viewport } from "reactflow";
+import React from "react";
+import {
+    Edge as RFEdge,
+    Node as RFNode,
+    Viewport,
+    Handle,
+    Position,
+    NodeProps,
+    MarkerType
+} from "reactflow";
 
-export type BackendNodeType = "module" | "directory" | "file" | "class" | "function";
+export type BackendNodeType = "module" | "directory" | "file" | "class" | "function" | "endpoint" | "rpc" | "queue" | "service";
 export type BackendEdgeType = "contains" | "imports" | "calls" | "inherits";
 
 export type BackendNode = {
@@ -37,22 +46,48 @@ export type BackendGraph = {
     repo_id?: string;
 };
 
-export function makeNodeStyle(t: BackendNodeType) {
-    const base = {
-        padding: "8px 10px",
-        borderRadius: "12px",
-        border: "1px solid #334155",
-        background: "#0b1220",
-        color: "#e5e7eb",
-        fontSize: 12,
-        width: 240,
-    } as const;
+const typeIcons: Record<string, string> = {
+    service: "📦",
+    endpoint: "🌐",
+    rpc: "🔌",
+    queue: "📥",
+    module: "📂",
+    directory: "📁",
+    file: "📄",
+    class: "🏛️",
+    function: "ƒ",
+};
 
-    if (t === "module") return { ...base, border: "2px solid #22c55e", background: "rgba(34,197,94,0.10)" };
-    if (t === "directory") return { ...base, border: "2px solid #3b82f6", background: "rgba(59,130,246,0.10)" };
-    if (t === "function" || t === "class")
-        return { ...base, border: "1px solid #a78bfa", background: "rgba(167,139,250,0.08)" };
-    return base;
+export const BackendNodeComponent: React.FC<NodeProps<{ label: string; raw: BackendNode }>> = ({ data }) => {
+    const t = data.raw.type;
+    const icon = typeIcons[t] || "•";
+
+    return (
+        <div className= {`backend-node-v2 node-type-${t}`
+}>
+    <Handle type="target" position = { Position.Top } style = {{ visibility: "hidden" }} />
+        < div className = "node-icon" > { icon } </div>
+            < div className = "node-content" >
+                <div className="node-label" > { data.label } </div>
+                    < div className = "node-type-label" > { t } </div>
+                        </div>
+                        < Handle type = "source" position = { Position.Bottom } style = {{ visibility: "hidden" }} />
+                            </div>
+    );
+};
+
+export const backendNodeTypes = {
+    backendNode: BackendNodeComponent,
+};
+
+export function makeNodeStyle(t: BackendNodeType) {
+    return {
+        padding: 0,
+        borderRadius: "12px",
+        background: "transparent",
+        border: "none",
+        width: 240,
+    };
 }
 
 function hash32(s: string): number {
@@ -64,17 +99,13 @@ function hash32(s: string): number {
     return h >>> 0;
 }
 
-/**
- * Fast deterministic grid layout that scales to huge graphs.
- * Bands by node.type to keep some structure.
- */
 export function fastGridLayout(
     nodes: BackendNode[],
     {
         colWidth = 280,
-        rowHeight = 70,
-        columnsPerBand = 40,
-        bandGap = 220,
+        rowHeight = 100,
+        columnsPerBand = 15,
+        bandGap = 150,
     }: {
         colWidth?: number;
         rowHeight?: number;
@@ -83,6 +114,10 @@ export function fastGridLayout(
     } = {}
 ): Map<string, { x: number; y: number }> {
     const bands: Record<string, BackendNode[]> = {
+        service: [],
+        endpoint: [],
+        rpc: [],
+        queue: [],
         module: [],
         directory: [],
         file: [],
@@ -96,12 +131,14 @@ export function fastGridLayout(
         bands[k].sort((a, b) => hash32(a.id) - hash32(b.id));
     }
 
-    const bandOrder: BackendNodeType[] = ["module", "directory", "file", "class", "function"];
+    const bandOrder: BackendNodeType[] = ["service", "endpoint", "rpc", "queue", "module", "directory", "file", "class", "function"];
     const pos = new Map<string, { x: number; y: number }>();
 
     let yOffset = 0;
     for (const band of bandOrder) {
         const arr = bands[band] || [];
+        if (arr.length === 0) continue;
+
         for (let i = 0; i < arr.length; i++) {
             const col = i % columnsPerBand;
             const row = Math.floor(i / columnsPerBand);
@@ -120,10 +157,12 @@ export function toReactFlowWholeGraph(
         nodeFilter,
         edgeFilter,
         edgeCap,
+        filterOrphans,
     }: {
         nodeFilter?: (n: BackendNode) => boolean;
         edgeFilter?: (e: BackendEdge) => boolean;
         edgeCap?: number;
+        filterOrphans?: boolean;
     } = {}
 ): { nodes: RFNode[]; edges: RFEdge[]; initialViewport?: Viewport } {
     const nodes0 = (graph.nodes || []).filter((n) => (nodeFilter ? nodeFilter(n) : true));
@@ -140,14 +179,24 @@ export function toReactFlowWholeGraph(
             .slice(0, edgeCap);
     }
 
+    let finalNodes = nodes0;
+    if (filterOrphans) {
+        const activeNodeIds = new Set<string>();
+        edges0.forEach(e => {
+            activeNodeIds.add(e.source);
+            activeNodeIds.add(e.target);
+        });
+        finalNodes = nodes0.filter(n => activeNodeIds.has(n.id));
+    }
+
     let positionedCount = 0;
-    for (const n of nodes0) {
+    for (const n of finalNodes) {
         if (n.position || (typeof n.x === "number" && typeof n.y === "number")) positionedCount++;
     }
-    const useBackendPos = positionedCount / Math.max(nodes0.length, 1) > 0.6;
-    const grid = useBackendPos ? null : fastGridLayout(nodes0);
+    const useBackendPos = positionedCount / Math.max(finalNodes.length, 1) > 0.6;
+    const grid = useBackendPos ? null : fastGridLayout(finalNodes);
 
-    const rfNodes: RFNode[] = nodes0.map((n) => {
+    const rfNodes: RFNode[] = finalNodes.map((n) => {
         const p =
             n.position ??
             (typeof n.x === "number" && typeof n.y === "number" ? { x: n.x, y: n.y } : null) ??
@@ -157,22 +206,30 @@ export function toReactFlowWholeGraph(
         return {
             id: n.id,
             position: p,
+            type: "backendNode",
             data: { label: n.label, raw: n },
             style: makeNodeStyle(n.type),
         };
     });
 
-    const rfEdges: RFEdge[] = edges0.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        animated: false,
-        type: "smoothstep", // ✅ orthogonal/90-degree bends
-        style: {
-            strokeWidth: 1,
-            stroke: e.type === "imports" ? "#94a3b8" : "#6b7280",
-        },
-    }));
+    const rfEdges: RFEdge[] = edges0.map((e) => {
+        const isComm = e.type === "calls" || e.type === "imports";
+        return {
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            animated: isComm,
+            type: "smoothstep",
+            style: {
+                strokeWidth: isComm ? 2 : 1,
+                stroke: e.type === "imports" ? "#94a3b8" : isComm ? "#38bdf8" : "#6b7280",
+            },
+            markerEnd: isComm ? {
+                type: MarkerType.ArrowClosed,
+                color: "#38bdf8",
+            } : undefined,
+        };
+    });
 
     return { nodes: rfNodes, edges: rfEdges };
 }

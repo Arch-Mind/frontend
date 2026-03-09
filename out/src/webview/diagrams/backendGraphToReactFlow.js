@@ -1,25 +1,58 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.backendNodeTypes = exports.BackendNodeComponent = void 0;
 exports.makeNodeStyle = makeNodeStyle;
 exports.fastGridLayout = fastGridLayout;
 exports.toReactFlowWholeGraph = toReactFlowWholeGraph;
+// src/webview/diagrams/backendGraphToReactFlow.ts
+const react_1 = __importDefault(require("react"));
+const reactflow_1 = require("reactflow");
+const typeIcons = {
+    service: "📦",
+    endpoint: "🌐",
+    rpc: "🔌",
+    queue: "📥",
+    module: "📂",
+    directory: "📁",
+    file: "📄",
+    class: "🏛️",
+    function: "ƒ",
+};
+const BackendNodeComponent = ({ data }) => {
+    const t = data.raw.type;
+    const icon = typeIcons[t] || "•";
+    return (react_1.default.createElement("div", { className: `backend-node-v2 node-type-${t}` },
+        react_1.default.createElement(reactflow_1.Handle, { type: "target", position: reactflow_1.Position.Top, style: { visibility: "hidden" } }),
+        react_1.default.createElement("div", { className: "node-icon" },
+            " ",
+            icon,
+            " "),
+        react_1.default.createElement("div", { className: "node-content" },
+            react_1.default.createElement("div", { className: "node-label" },
+                " ",
+                data.label,
+                " "),
+            react_1.default.createElement("div", { className: "node-type-label" },
+                " ",
+                t,
+                " ")),
+        react_1.default.createElement(reactflow_1.Handle, { type: "source", position: reactflow_1.Position.Bottom, style: { visibility: "hidden" } })));
+};
+exports.BackendNodeComponent = BackendNodeComponent;
+exports.backendNodeTypes = {
+    backendNode: exports.BackendNodeComponent,
+};
 function makeNodeStyle(t) {
-    const base = {
-        padding: "8px 10px",
+    return {
+        padding: 0,
         borderRadius: "12px",
-        border: "1px solid #334155",
-        background: "#0b1220",
-        color: "#e5e7eb",
-        fontSize: 12,
+        background: "transparent",
+        border: "none",
         width: 240,
     };
-    if (t === "module")
-        return { ...base, border: "2px solid #22c55e", background: "rgba(34,197,94,0.10)" };
-    if (t === "directory")
-        return { ...base, border: "2px solid #3b82f6", background: "rgba(59,130,246,0.10)" };
-    if (t === "function" || t === "class")
-        return { ...base, border: "1px solid #a78bfa", background: "rgba(167,139,250,0.08)" };
-    return base;
 }
 function hash32(s) {
     let h = 2166136261;
@@ -29,12 +62,12 @@ function hash32(s) {
     }
     return h >>> 0;
 }
-/**
- * Fast deterministic grid layout that scales to huge graphs.
- * Bands by node.type to keep some structure.
- */
-function fastGridLayout(nodes, { colWidth = 280, rowHeight = 70, columnsPerBand = 40, bandGap = 220, } = {}) {
+function fastGridLayout(nodes, { colWidth = 280, rowHeight = 100, columnsPerBand = 15, bandGap = 150, } = {}) {
     const bands = {
+        service: [],
+        endpoint: [],
+        rpc: [],
+        queue: [],
         module: [],
         directory: [],
         file: [],
@@ -46,11 +79,13 @@ function fastGridLayout(nodes, { colWidth = 280, rowHeight = 70, columnsPerBand 
     for (const k of Object.keys(bands)) {
         bands[k].sort((a, b) => hash32(a.id) - hash32(b.id));
     }
-    const bandOrder = ["module", "directory", "file", "class", "function"];
+    const bandOrder = ["service", "endpoint", "rpc", "queue", "module", "directory", "file", "class", "function"];
     const pos = new Map();
     let yOffset = 0;
     for (const band of bandOrder) {
         const arr = bands[band] || [];
+        if (arr.length === 0)
+            continue;
         for (let i = 0; i < arr.length; i++) {
             const col = i % columnsPerBand;
             const row = Math.floor(i / columnsPerBand);
@@ -61,7 +96,7 @@ function fastGridLayout(nodes, { colWidth = 280, rowHeight = 70, columnsPerBand 
     }
     return pos;
 }
-function toReactFlowWholeGraph(graph, { nodeFilter, edgeFilter, edgeCap, } = {}) {
+function toReactFlowWholeGraph(graph, { nodeFilter, edgeFilter, edgeCap, filterOrphans, } = {}) {
     const nodes0 = (graph.nodes || []).filter((n) => (nodeFilter ? nodeFilter(n) : true));
     const nodeSet = new Set(nodes0.map((n) => n.id));
     let edges0 = (graph.edges || [])
@@ -73,14 +108,23 @@ function toReactFlowWholeGraph(graph, { nodeFilter, edgeFilter, edgeCap, } = {})
             .sort((a, b) => hash32(a.id) - hash32(b.id))
             .slice(0, edgeCap);
     }
+    let finalNodes = nodes0;
+    if (filterOrphans) {
+        const activeNodeIds = new Set();
+        edges0.forEach(e => {
+            activeNodeIds.add(e.source);
+            activeNodeIds.add(e.target);
+        });
+        finalNodes = nodes0.filter(n => activeNodeIds.has(n.id));
+    }
     let positionedCount = 0;
-    for (const n of nodes0) {
+    for (const n of finalNodes) {
         if (n.position || (typeof n.x === "number" && typeof n.y === "number"))
             positionedCount++;
     }
-    const useBackendPos = positionedCount / Math.max(nodes0.length, 1) > 0.6;
-    const grid = useBackendPos ? null : fastGridLayout(nodes0);
-    const rfNodes = nodes0.map((n) => {
+    const useBackendPos = positionedCount / Math.max(finalNodes.length, 1) > 0.6;
+    const grid = useBackendPos ? null : fastGridLayout(finalNodes);
+    const rfNodes = finalNodes.map((n) => {
         const p = n.position ??
             (typeof n.x === "number" && typeof n.y === "number" ? { x: n.x, y: n.y } : null) ??
             grid?.get(n.id) ??
@@ -88,21 +132,29 @@ function toReactFlowWholeGraph(graph, { nodeFilter, edgeFilter, edgeCap, } = {})
         return {
             id: n.id,
             position: p,
+            type: "backendNode",
             data: { label: n.label, raw: n },
             style: makeNodeStyle(n.type),
         };
     });
-    const rfEdges = edges0.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        animated: false,
-        type: "smoothstep", // ✅ orthogonal/90-degree bends
-        style: {
-            strokeWidth: 1,
-            stroke: e.type === "imports" ? "#94a3b8" : "#6b7280",
-        },
-    }));
+    const rfEdges = edges0.map((e) => {
+        const isComm = e.type === "calls" || e.type === "imports";
+        return {
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            animated: isComm,
+            type: "smoothstep",
+            style: {
+                strokeWidth: isComm ? 2 : 1,
+                stroke: e.type === "imports" ? "#94a3b8" : isComm ? "#38bdf8" : "#6b7280",
+            },
+            markerEnd: isComm ? {
+                type: reactflow_1.MarkerType.ArrowClosed,
+                color: "#38bdf8",
+            } : undefined,
+        };
+    });
     return { nodes: rfNodes, edges: rfEdges };
 }
 //# sourceMappingURL=backendGraphToReactFlow.js.map

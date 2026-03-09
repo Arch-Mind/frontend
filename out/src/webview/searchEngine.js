@@ -63,12 +63,11 @@ function findMatchIndices(query, text, caseSensitive) {
     const searchText = caseSensitive ? text : text.toLowerCase();
     const searchQuery = caseSensitive ? query : query.toLowerCase();
     let index = 0;
-    while (true) {
-        const pos = searchText.indexOf(searchQuery, index);
-        if (pos === -1)
-            break;
+    let pos = searchText.indexOf(searchQuery, index);
+    while (pos !== -1) {
         indices.push([pos, pos + searchQuery.length]);
         index = pos + 1;
+        pos = searchText.indexOf(searchQuery, index);
     }
     return indices;
 }

@@ -47,6 +47,7 @@ function Inner({ graph }) {
             return { nodes: [], edges: [] };
         return (0, backendGraphToReactFlow_1.toReactFlowWholeGraph)(graph, {
             edgeFilter: (e) => e.type === "contains", // boundary edges
+            filterOrphans: true,
             // edgeCap: 300000, // optional safety cap
         });
     }, [graph]);
@@ -76,7 +77,7 @@ function Inner({ graph }) {
             react_1.default.createElement("label", { style: { display: "flex", gap: 6, alignItems: "center", fontSize: 12 } },
                 react_1.default.createElement("input", { type: "checkbox", checked: showMinimap, onChange: (e) => setShowMinimap(e.target.checked) }),
                 "MiniMap")),
-        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, fitView: true, onlyRenderVisibleElements: true, nodesDraggable: false, nodesConnectable: false, panOnDrag: true, zoomOnScroll: true, zoomOnPinch: true, zoomOnDoubleClick: true, minZoom: 0.03, maxZoom: 3 },
+        react_1.default.createElement(reactflow_1.default, { nodes: nodes, edges: edges, nodeTypes: backendGraphToReactFlow_1.backendNodeTypes, fitView: true, onlyRenderVisibleElements: true, nodesDraggable: false, nodesConnectable: false, panOnDrag: true, zoomOnScroll: true, zoomOnPinch: true, zoomOnDoubleClick: true, minZoom: 0.03, maxZoom: 3 },
             showMinimap && react_1.default.createElement(reactflow_1.MiniMap, null),
             react_1.default.createElement(reactflow_1.Controls, null),
             react_1.default.createElement(reactflow_1.Background, { variant: reactflow_1.BackgroundVariant.Dots, gap: 18, size: 1 }))));

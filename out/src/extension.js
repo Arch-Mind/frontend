@@ -44,6 +44,8 @@ const analysisService_1 = require("./services/analysisService");
 const DependencyCodeLensProvider_1 = require("./providers/DependencyCodeLensProvider");
 const fingerprintService_1 = require("./services/fingerprintService");
 const gitAnalysisService_1 = require("./services/gitAnalysisService");
+const os = __importStar(require("os"));
+const fileSystem_1 = require("./analyzer/fileSystem");
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
     // Initialize LocalParser
@@ -69,7 +71,7 @@ function activate(context) {
         }
     });
     // Register main architecture view command
-    let showArchitectureCmd = vscode.commands.registerCommand('archmind.showArchitecture', async () => {
+    const showArchitectureCmd = vscode.commands.registerCommand('archmind.showArchitecture', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         // Trigger backend/full analysis via service if workspace is open
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
@@ -102,7 +104,7 @@ function activate(context) {
         }
     });
     // Register local analysis command
-    let showLocalAnalysisCmd = vscode.commands.registerCommand('archmind.showLocalAnalysis', async () => {
+    const showLocalAnalysisCmd = vscode.commands.registerCommand('archmind.showLocalAnalysis', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         // Force local analysis of the entire workspace
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
@@ -171,11 +173,11 @@ function activate(context) {
         });
     });
     // Register backend analysis command
-    let analyzeRepositoryCmd = vscode.commands.registerCommand('archmind.analyzeRepository', async () => {
+    const analyzeRepositoryCmd = vscode.commands.registerCommand('archmind.analyzeRepository', async () => {
         await ArchitecturePanel.analyzeWithBackend(context.extensionUri);
     });
     // Register refresh command
-    let refreshGraphCmd = vscode.commands.registerCommand('archmind.refreshGraph', async () => {
+    const refreshGraphCmd = vscode.commands.registerCommand('archmind.refreshGraph', async () => {
         // Trigger re-analysis via service
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
             const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -199,29 +201,29 @@ function activate(context) {
         }
     });
     // Register backend status check command
-    let checkBackendStatusCmd = vscode.commands.registerCommand('archmind.checkBackendStatus', async () => {
+    const checkBackendStatusCmd = vscode.commands.registerCommand('archmind.checkBackendStatus', async () => {
         await checkBackendHealth();
     });
     // Register diagram commands
-    let showBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showBoundaryDiagram', async () => {
+    const showBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showBoundaryDiagram', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         if (ArchitecturePanel.currentPanel) {
             ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'boundaries' });
         }
     });
-    let showDependencyDiagramCmd = vscode.commands.registerCommand('archmind.showDependencyDiagram', async () => {
+    const showDependencyDiagramCmd = vscode.commands.registerCommand('archmind.showDependencyDiagram', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         if (ArchitecturePanel.currentPanel) {
             ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'dependency-diagram' });
         }
     });
-    let showCommunicationDiagramCmd = vscode.commands.registerCommand('archmind.showCommunicationDiagram', async () => {
+    const showCommunicationDiagramCmd = vscode.commands.registerCommand('archmind.showCommunicationDiagram', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         if (ArchitecturePanel.currentPanel) {
             ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'communication' });
         }
     });
-    let toggleHeatmapCmd = vscode.commands.registerCommand('archmind.toggleHeatmap', async () => {
+    const toggleHeatmapCmd = vscode.commands.registerCommand('archmind.toggleHeatmap', async () => {
         if (ArchitecturePanel.currentPanel) {
             ArchitecturePanel.currentPanel.postMessage({ type: 'toggleHeatmap' });
             vscode.window.showInformationMessage('Heatmap overlay toggled');
@@ -230,7 +232,7 @@ function activate(context) {
             vscode.window.showInformationMessage('No architecture panel is open. Run "ArchMind: Show Architecture" first.');
         }
     });
-    let analyzeLiveArchitectureCmd = vscode.commands.registerCommand('archmind.analyzeLiveArchitecture', async () => {
+    const analyzeLiveArchitectureCmd = vscode.commands.registerCommand('archmind.analyzeLiveArchitecture', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
             const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -247,13 +249,13 @@ function activate(context) {
             vscode.window.showWarningMessage('No workspace folder open');
         }
     });
-    let configureWebhookCmd = vscode.commands.registerCommand('archmind.configureWebhook', async () => {
+    const configureWebhookCmd = vscode.commands.registerCommand('archmind.configureWebhook', async () => {
         ArchitecturePanel.createOrShow(context.extensionUri);
         if (ArchitecturePanel.currentPanel) {
             ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'commits' });
         }
     });
-    let showInBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showInBoundaryDiagram', async () => {
+    const showInBoundaryDiagramCmd = vscode.commands.registerCommand('archmind.showInBoundaryDiagram', async () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             ArchitecturePanel.createOrShow(context.extensionUri);
@@ -276,7 +278,7 @@ function activate(context) {
         }
     });
     // Listen for configuration changes
-    let configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
+    const configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('archmind')) {
             (0, api_1.getApiClient)().refreshConfig();
             vscode.window.showInformationMessage('ArchMind configuration updated.');
@@ -656,8 +658,7 @@ class ArchitecturePanel {
                 command: 'loading',
                 message: 'Analyzing workspace...'
             });
-            const { analyzeWorkspace } = require('./analyzer/fileSystem');
-            const data = await analyzeWorkspace(rootPath);
+            const data = await (0, fileSystem_1.analyzeWorkspace)(rootPath);
             // Add source indicator
             const enrichedData = { ...data, source: 'local' };
             this._panel.webview.postMessage({ command: 'architectureData', data: enrichedData });
@@ -843,11 +844,11 @@ class ArchitecturePanel {
     /**
      * Save file to disk from webview
      */
-    async _saveFile(data, filename, mimeType) {
+    async _saveFile(data, filename, _mimeType) {
         try {
             // Show save dialog
             const uri = await vscode.window.showSaveDialog({
-                defaultUri: vscode.Uri.file(path.join(require('os').homedir(), 'Downloads', filename)),
+                defaultUri: vscode.Uri.file(path.join(os.homedir(), 'Downloads', filename)),
                 filters: this._getFileFilters(filename)
             });
             if (!uri) {
