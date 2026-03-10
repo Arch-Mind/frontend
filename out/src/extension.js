@@ -277,6 +277,12 @@ function activate(context) {
             }
         }
     });
+    const getArchitectureInsightsCmd = vscode.commands.registerCommand('archmind.getArchitectureInsights', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'insights' });
+        }
+    });
     // Listen for configuration changes
     const configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('archmind')) {
@@ -284,7 +290,7 @@ function activate(context) {
             vscode.window.showInformationMessage('ArchMind configuration updated.');
         }
     });
-    context.subscriptions.push(showArchitectureCmd, showLocalAnalysisCmd, analyzeRepositoryCmd, refreshGraphCmd, checkBackendStatusCmd, showBoundaryDiagramCmd, showDependencyDiagramCmd, showCommunicationDiagramCmd, toggleHeatmapCmd, analyzeLiveArchitectureCmd, configureWebhookCmd, showInBoundaryDiagramCmd, configChangeListener, onActiveEditorChanged, onDocumentChanged);
+    context.subscriptions.push(showArchitectureCmd, showLocalAnalysisCmd, analyzeRepositoryCmd, refreshGraphCmd, checkBackendStatusCmd, showBoundaryDiagramCmd, showDependencyDiagramCmd, showCommunicationDiagramCmd, toggleHeatmapCmd, analyzeLiveArchitectureCmd, configureWebhookCmd, showInBoundaryDiagramCmd, getArchitectureInsightsCmd, configChangeListener, onActiveEditorChanged, onDocumentChanged);
 }
 async function parseAndSendLocalData(document, parser) {
     if (document.uri.scheme !== 'file')
@@ -481,6 +487,12 @@ class ArchitecturePanel {
                     return;
                 case 'saveFile':
                     await this._saveFile(message.data, message.filename, message.mimeType);
+                    return;
+                case 'requestArchitectureInsights':
+                    await this._getArchitectureInsights(false);
+                    return;
+                case 'refreshArchitectureInsights':
+                    await this._getArchitectureInsights(true);
                     return;
             }
         }, null, this._disposables);
@@ -796,6 +808,33 @@ class ArchitecturePanel {
             if (error instanceof api_1.ApiRequestError) {
                 vscode.window.showErrorMessage(`Impact analysis failed: ${error.getUserMessage()}`);
             }
+        }
+    }
+    async _getArchitectureInsights(refresh) {
+        const repoId = this._lastRepoId ?? null;
+        if (!repoId) {
+            this._panel.webview.postMessage({ command: 'architectureInsights', error: 'No repository loaded' });
+            return;
+        }
+        try {
+            const apiClient = (0, api_1.getApiClient)();
+            const data = refresh
+                ? await apiClient.triggerArchitectureAnalysis(repoId, true)
+                : await (async () => {
+                    try {
+                        return await apiClient.getArchitectureInsights(repoId);
+                    }
+                    catch {
+                        return await apiClient.triggerArchitectureAnalysis(repoId, false);
+                    }
+                })();
+            this._panel.webview.postMessage({ command: 'architectureInsights', data });
+        }
+        catch (error) {
+            console.error(error);
+            const msg = error instanceof api_1.ApiRequestError ? error.getUserMessage() : String(error);
+            this._panel.webview.postMessage({ command: 'architectureInsights', error: msg });
+            vscode.window.showErrorMessage(`AI Insights failed: ${msg}`);
         }
     }
     /**

@@ -575,11 +575,33 @@ function getVisibleNodesAndEdges(rawData, moduleGroups, expandedModules, expande
             });
         }
     });
-    // Only show non-CONTAINS edges where both endpoints are visible
+    // Only show non-CONTAINS edges where both endpoints are visible.
+    // Additionally, synthesize a visual "parent-link" edge from each expanded
+    // file to its symbol children – so functions appear connected to their file.
     const visibleEdges = rawData.edges.filter(e => {
         if (e.type === 'contains' || e.type === 'CONTAINS')
             return false;
         return visibleIds.has(e.source) && visibleIds.has(e.target);
+    });
+    // Synthetic file→symbol edges for expanded files
+    expandedFiles.forEach(fileId => {
+        if (!visibleIds.has(fileId))
+            return;
+        moduleGroups.forEach(group => {
+            const symbols = group.fileToChildren.get(fileId);
+            if (!symbols)
+                return;
+            symbols.forEach(sym => {
+                if (!visibleIds.has(sym.id))
+                    return;
+                visibleEdges.push({
+                    id: `__parent_link__${fileId}__${sym.id}`,
+                    source: fileId,
+                    target: sym.id,
+                    type: 'parent-link',
+                });
+            });
+        });
     });
     return { nodes: visibleNodes, edges: visibleEdges };
 }
@@ -843,18 +865,111 @@ async function calculateLayout(layoutType, nodes, edges, filters, selectedNodeId
     }
 }
 // Format edges with proper styling
-function formatEdges(rawEdges, selectedNodeId, matchingNodeIds) {
+/**
+ * Detect cycles in call/import edges using iterative DFS.
+ * Returns the set of edge IDs that form back-edges (closing a cycle).
+ */
+function detectCycles(rawEdges) {
+    // Build adjacency list keyed by source, only for 'calls' and 'imports' edges.
+    // Use .toLowerCase() defensively in case edge types weren't normalised.
+    const adj = new Map();
+    rawEdges.forEach(e => {
+        const t = (e.type || '').toLowerCase();
+        if (t !== 'calls' && t !== 'imports')
+            return;
+        const list = adj.get(e.source) || [];
+        list.push({ edgeId: e.id, target: e.target });
+        adj.set(e.source, list);
+    });
+    const visited = new Set();
+    const inStack = new Set();
+    const cyclicEdgeIds = new Set();
+    // Track which edge was used to reach each node in the current DFS path,
+    // so we can highlight ALL edges that form a cycle (not just the back-edge).
+    const pathEdge = new Map(); // node → edgeId used to enter it
+    const pathNodes = []; // ordered list of nodes on the current DFS stack
+    let cycleCount = 0;
+    const dfs = (node) => {
+        visited.add(node);
+        inStack.add(node);
+        pathNodes.push(node);
+        const neighbors = adj.get(node) || [];
+        for (const { edgeId, target } of neighbors) {
+            if (!visited.has(target)) {
+                pathEdge.set(target, edgeId);
+                dfs(target);
+            }
+            else if (inStack.has(target)) {
+                // Back-edge found: this edge closes a cycle.
+                cycleCount++;
+                cyclicEdgeIds.add(edgeId); // the back-edge itself
+                // Mark every forward edge along the cycle path as well, so the
+                // entire cycle lights up in red instead of just the back-edge.
+                const cycleStart = pathNodes.indexOf(target);
+                for (let i = cycleStart; i < pathNodes.length - 1; i++) {
+                    const fwdEdge = pathEdge.get(pathNodes[i + 1]);
+                    if (fwdEdge)
+                        cyclicEdgeIds.add(fwdEdge);
+                }
+            }
+        }
+        pathNodes.pop();
+        inStack.delete(node);
+    };
+    // Run DFS from every unvisited node
+    adj.forEach((_, node) => {
+        if (!visited.has(node))
+            dfs(node);
+    });
+    return { cyclicEdgeIds, cycleCount };
+}
+function formatEdges(rawEdges, selectedNodeId, matchingNodeIds, cyclicEdgeIds) {
     return rawEdges.map(edge => {
+        // Parent-link edges (file → symbol): thin dashed grey connector
+        if (edge.type === 'parent-link') {
+            return {
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                type: 'smoothstep',
+                animated: false,
+                style: {
+                    stroke: 'var(--am-fg)',
+                    strokeWidth: 1,
+                    strokeDasharray: '4 3',
+                    opacity: 0.35,
+                },
+            };
+        }
+        const isCyclic = cyclicEdgeIds?.has(edge.id) ?? false;
         const isConnectedToSelected = selectedNodeId !== null &&
             (edge.source === selectedNodeId || edge.target === selectedNodeId);
         const isMatching = matchingNodeIds.size === 0 ||
             (matchingNodeIds.has(edge.source) && matchingNodeIds.has(edge.target));
+        if (isCyclic) {
+            return {
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                type: 'smoothstep',
+                animated: true,
+                label: '⚠ cycle',
+                labelStyle: { fill: '#ef4444', fontWeight: 700, fontSize: 11 },
+                labelBgStyle: { fill: 'rgba(239,68,68,0.12)' },
+                style: {
+                    stroke: '#ef4444',
+                    strokeWidth: 2,
+                    opacity: isMatching ? 1 : 0.25,
+                },
+                markerEnd: { type: reactflow_1.MarkerType.ArrowClosed, color: '#ef4444' },
+            };
+        }
         return {
             id: edge.id,
             source: edge.source,
             target: edge.target,
             type: 'smoothstep',
-            animated: isConnectedToSelected ? true : false,
+            animated: isConnectedToSelected,
             style: {
                 stroke: isConnectedToSelected
                     ? 'var(--am-accent)'
@@ -1114,6 +1229,8 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
     // Module expand/collapse state for drill-down view
     const [expandedModules, setExpandedModules] = (0, react_1.useState)(new Set());
     const [expandedFiles, setExpandedFiles] = (0, react_1.useState)(new Set());
+    // Circular dependency count (updated after every layout run)
+    const [circularCount, setCircularCount] = (0, react_1.useState)(0);
     // Stable refs so node-box callbacks always see the latest expansion state
     // without causing the layout effect to re-run via dependency changes.
     const expandedModulesRef = (0, react_1.useRef)(new Set());
@@ -1443,10 +1560,12 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
                         });
                     }
                 });
-                const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds);
+                const { cyclicEdgeIds, cycleCount } = detectCycles(rawEdges);
+                const formattedEdges = formatEdges(rawEdges, selectedNode, newMatchingIds, cyclicEdgeIds);
                 setNodes(finalNodes);
                 setEdges(formattedEdges);
                 setMatchingNodeIds(newMatchingIds);
+                setCircularCount(cycleCount);
                 setIsLoading(false);
                 // Fit view only when fresh data loaded (not on every expand/collapse)
                 if (fitPendingRef.current) {
@@ -1827,6 +1946,29 @@ const ArchitectureGraphInner = ({ heatmapMode, highlightNodeIds = [], repoId: in
             }
         }, style: { width: '100%', height: '100%', position: 'relative' }, className: isFullscreen ? 'fullscreen-graph' : '' },
         react_1.default.createElement(StatsDisplay, { stats: stats, source: dataSource }),
+        circularCount > 0 && (react_1.default.createElement("div", { style: {
+                position: 'absolute',
+                top: 8,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 20,
+                background: 'rgba(239,68,68,0.15)',
+                border: '1px solid #ef4444',
+                borderRadius: 6,
+                padding: '4px 12px',
+                color: '#ef4444',
+                fontWeight: 600,
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                pointerEvents: 'none',
+            } },
+            "\u26A0 ",
+            circularCount,
+            " circular ",
+            circularCount === 1 ? 'dependency' : 'dependencies',
+            " detected")),
         heatmapMode !== 'off' && heatmapState.maxMetric > 0 && (react_1.default.createElement("div", { className: "heatmap-legend-floating" },
             react_1.default.createElement(HeatmapLegend_1.HeatmapLegend, { mode: heatmapMode, minMetric: heatmapState.minMetric, maxMetric: heatmapState.maxMetric }))),
         react_1.default.createElement(SearchPanel, { filters: filters, onFiltersChange: setFilters, matchCount: matchingNodeIds.size > 0 ? matchingNodeIds.size : (filters.searchTerm || filters.nodeTypes.length > 0 || filters.languages.length > 0 || filters.pathPattern ? 0 : rawData?.nodes.length || 0), totalCount: rawData?.nodes.length || 0, onFocusSelection: handleFocusSelection, isVisible: searchVisible, onClose: () => setSearchVisible(false), availableLanguages: availableLanguages }),

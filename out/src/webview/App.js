@@ -46,6 +46,7 @@ const ThemeToggle_1 = require("./ThemeToggle");
 const vscodeExportHelper_1 = require("../utils/exporters/vscodeExportHelper");
 const NotificationHistory_1 = require("./NotificationHistory");
 const vscodeApi_1 = require("../utils/vscodeApi");
+const ArchitectureInsightsPanel_1 = require("./ArchitectureInsightsPanel");
 // ✅ backend-driven diagrams
 const BackendDependencyDiagram_1 = require("./diagrams/BackendDependencyDiagram");
 const BackendCommunicationDiagram_1 = require("./diagrams/BackendCommunicationDiagram");
@@ -58,6 +59,7 @@ function normalizeView(view) {
         case 'communication':
         case 'webhooks':
         case 'commits':
+        case 'insights':
             return view;
         case 'dependencies':
             return 'dependency-diagram';
@@ -92,6 +94,8 @@ const App = () => {
     const [architectureData, setArchitectureData] = (0, react_1.useState)(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [localContributions, setLocalContributions] = (0, react_1.useState)(null);
+    const [insightsData, setInsightsData] = (0, react_1.useState)(null);
+    const [isLoadingInsights, setIsLoadingInsights] = (0, react_1.useState)(false);
     const heatmapOptions = [
         { value: 'off', label: 'Off' },
         { value: 'commit_count', label: 'Commit Count' },
@@ -143,6 +147,12 @@ const App = () => {
                 console.log('App.tsx: Received contributions', { count: message.data.contributions?.length });
                 setLocalContributions(message.data);
             }
+            if (message?.command === 'architectureInsights') {
+                setIsLoadingInsights(false);
+                if (message.data) {
+                    setInsightsData(message.data);
+                }
+            }
         };
         window.addEventListener('message', handler);
         // Request initial configuration
@@ -180,7 +190,16 @@ const App = () => {
                 react_1.default.createElement("button", { className: activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('dependency-diagram') }, "Dependency Diagram"),
                 react_1.default.createElement("button", { className: activeView === 'communication' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('communication') }, "Communication"),
                 react_1.default.createElement("button", { className: activeView === 'webhooks' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('webhooks') }, "Webhooks"),
-                react_1.default.createElement("button", { className: activeView === 'commits' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('commits') }, "Commits")),
+                react_1.default.createElement("button", { className: activeView === 'commits' ? 'view-tab active' : 'view-tab', onClick: () => setActiveView('commits') }, "Commits"),
+                react_1.default.createElement("button", { className: activeView === 'insights' ? 'view-tab active' : 'view-tab', onClick: () => {
+                        setActiveView('insights');
+                        if (!insightsData && !isLoadingInsights) {
+                            setIsLoadingInsights(true);
+                            const vscode = (0, vscodeApi_1.getVsCodeApi)();
+                            if (vscode)
+                                vscode.postMessage({ command: 'requestArchitectureInsights' });
+                        }
+                    } }, "\u2728 AI Insights")),
             react_1.default.createElement("div", { className: "heatmap-toolbar" },
                 react_1.default.createElement("span", { className: "heatmap-label" }, "Heatmap"),
                 react_1.default.createElement("div", { className: "heatmap-toggle" }, heatmapOptions.map((option) => (react_1.default.createElement("button", { key: option.value, className: heatmapMode === option.value ? 'heatmap-pill active' : 'heatmap-pill', onClick: () => setHeatmapMode(option.value) }, option.label))))),
@@ -191,7 +210,13 @@ const App = () => {
                 activeView === 'communication' &&
                     (backendGraph ? (react_1.default.createElement(BackendCommunicationDiagram_1.BackendCommunicationDiagram, { graph: backendGraph, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })) : (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData }))),
                 activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'http://localhost:8080' })),
-                activeView === 'commits' && (react_1.default.createElement(CommitDetails_1.CommitDetails, { backendUrl: config?.backendUrl || 'http://localhost:8080', repoId: repoId }))),
+                activeView === 'commits' && (react_1.default.createElement(CommitDetails_1.CommitDetails, { backendUrl: config?.backendUrl || 'http://localhost:8080', repoId: repoId })),
+                activeView === 'insights' && (react_1.default.createElement(ArchitectureInsightsPanel_1.ArchitectureInsightsPanel, { repoId: repoId, insights: insightsData, isLoading: isLoadingInsights, onRefresh: () => {
+                        setIsLoadingInsights(true);
+                        const vscode = (0, vscodeApi_1.getVsCodeApi)();
+                        if (vscode)
+                            vscode.postMessage({ command: 'refreshArchitectureInsights' });
+                    } }))),
             react_1.default.createElement(NotificationHistory_1.NotificationHistory, { entries: history, onClear: () => setHistory([]) }))));
 };
 exports.default = App;

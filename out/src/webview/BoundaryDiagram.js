@@ -227,13 +227,10 @@ const BoundaryDiagram = ({ heatmapMode, highlightNodeIds = [], repoId: initialRe
     }, [apiClient, repoId, heatmapMode, localContributions]);
     const summaryByBoundary = (0, react_1.useMemo)(() => {
         const map = new Map();
-        if (!insights?.insights)
+        if (!insights?.modules)
             return map;
-        insights.insights.forEach(item => {
-            if (item.pattern_type?.startsWith('module_summary:')) {
-                const name = item.pattern_type.replace('module_summary:', '').trim();
-                map.set(name, item.summary);
-            }
+        insights.modules.forEach(item => {
+            map.set(item.name, item.summary);
         });
         return map;
     }, [insights]);

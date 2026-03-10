@@ -271,6 +271,13 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    const getArchitectureInsightsCmd = vscode.commands.registerCommand('archmind.getArchitectureInsights', async () => {
+        ArchitecturePanel.createOrShow(context.extensionUri);
+        if (ArchitecturePanel.currentPanel) {
+            ArchitecturePanel.currentPanel.postMessage({ command: 'switchView', view: 'insights' });
+        }
+    });
+
     // Listen for configuration changes
     const configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('archmind')) {
@@ -292,6 +299,7 @@ export function activate(context: vscode.ExtensionContext) {
         analyzeLiveArchitectureCmd,
         configureWebhookCmd,
         showInBoundaryDiagramCmd,
+        getArchitectureInsightsCmd,
         configChangeListener,
         onActiveEditorChanged,
         onDocumentChanged
@@ -531,6 +539,12 @@ class ArchitecturePanel {
                         return;
                     case 'saveFile':
                         await this._saveFile(message.data, message.filename, message.mimeType);
+                        return;
+                    case 'requestArchitectureInsights':
+                        await this._getArchitectureInsights(false);
+                        return;
+                    case 'refreshArchitectureInsights':
+                        await this._getArchitectureInsights(true);
                         return;
                 }
             },
@@ -891,6 +905,32 @@ class ArchitecturePanel {
             if (error instanceof ApiRequestError) {
                 vscode.window.showErrorMessage(`Impact analysis failed: ${error.getUserMessage()}`);
             }
+        }
+    }
+
+    private async _getArchitectureInsights(refresh: boolean) {
+        const repoId: string | null = this._lastRepoId ?? null;
+        if (!repoId) {
+            this._panel.webview.postMessage({ command: 'architectureInsights', error: 'No repository loaded' });
+            return;
+        }
+        try {
+            const apiClient = getApiClient();
+            const data = refresh
+                ? await apiClient.triggerArchitectureAnalysis(repoId, true)
+                : await (async () => {
+                    try {
+                        return await apiClient.getArchitectureInsights(repoId);
+                    } catch {
+                        return await apiClient.triggerArchitectureAnalysis(repoId, false);
+                    }
+                })();
+            this._panel.webview.postMessage({ command: 'architectureInsights', data });
+        } catch (error) {
+            console.error(error);
+            const msg = error instanceof ApiRequestError ? error.getUserMessage() : String(error);
+            this._panel.webview.postMessage({ command: 'architectureInsights', error: msg });
+            vscode.window.showErrorMessage(`AI Insights failed: ${msg}`);
         }
     }
 

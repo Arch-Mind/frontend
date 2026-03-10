@@ -17,6 +17,7 @@ import {
     TransformedEdge,
     ModuleBoundariesResponse,
     ReverseImpactAnalysisResponse,
+    ArchitectureInsightsResponse,
 } from './types';
 
 /**
@@ -273,6 +274,32 @@ export class ArchMindApiClient {
         return this.request<ModuleBoundariesResponse>(
             this.config.graphEngineUrl,
             `/api/graph/${encodeURIComponent(repoId)}/boundaries`
+        );
+    }
+
+    /**
+     * Get cached architecture insights (Gemini-generated)
+     * GET /api/analyze/:repo_id/architecture
+     */
+    public async getArchitectureInsights(repoId: string): Promise<ArchitectureInsightsResponse> {
+        return this.request<ArchitectureInsightsResponse>(
+            this.config.graphEngineUrl,
+            `/api/analyze/${encodeURIComponent(repoId)}/architecture`
+        );
+    }
+
+    /**
+     * Trigger Gemini architecture analysis
+     * POST /api/analyze/:repo_id/architecture?refresh=true
+     */
+    public async triggerArchitectureAnalysis(
+        repoId: string,
+        refresh: boolean = false
+    ): Promise<ArchitectureInsightsResponse> {
+        return this.request<ArchitectureInsightsResponse>(
+            this.config.graphEngineUrl,
+            `/api/analyze/${encodeURIComponent(repoId)}/architecture?refresh=${refresh}`,
+            { method: 'POST' }
         );
     }
 

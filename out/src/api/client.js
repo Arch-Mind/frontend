@@ -220,6 +220,20 @@ class ArchMindApiClient {
     async getModuleBoundaries(repoId) {
         return this.request(this.config.graphEngineUrl, `/api/graph/${encodeURIComponent(repoId)}/boundaries`);
     }
+    /**
+     * Get cached architecture insights (Gemini-generated)
+     * GET /api/analyze/:repo_id/architecture
+     */
+    async getArchitectureInsights(repoId) {
+        return this.request(this.config.graphEngineUrl, `/api/analyze/${encodeURIComponent(repoId)}/architecture`);
+    }
+    /**
+     * Trigger Gemini architecture analysis
+     * POST /api/analyze/:repo_id/architecture?refresh=true
+     */
+    async triggerArchitectureAnalysis(repoId, refresh = false) {
+        return this.request(this.config.graphEngineUrl, `/api/analyze/${encodeURIComponent(repoId)}/architecture?refresh=${refresh}`, { method: 'POST' });
+    }
     // =========================================================================
     // High-level Operations
     // =========================================================================

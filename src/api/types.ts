@@ -273,17 +273,36 @@ export interface CommitHistoryResponse {
     commits: CommitHistoryItem[];
 }
 
-export interface ArchitectureInsight {
+export interface AntipatternItem {
+    name: string;
+    severity: 'critical' | 'high' | 'medium' | 'low';
+    description: string;
+}
+
+export interface PatternInsight {
     pattern_type: string;
     confidence: number | null;
     summary: string;
-    generated_at: string;
+    patterns_found: string[];
+    antipatterns: AntipatternItem[];
+    recommendations: string[];
+}
+
+export interface ModuleInsight {
+    name: string;
+    file_path?: string;
+    language?: string;
+    summary: string;
+    role: string;
+    coupling_concern: 'high' | 'medium' | 'low';
 }
 
 export interface ArchitectureInsightsResponse {
     repo_id: string;
-    generated_at?: string;
-    insights: ArchitectureInsight[];
+    cached: boolean;
+    generated_at: string;
+    pattern: PatternInsight;
+    modules: ModuleInsight[];
 }
 
 export interface WebhookConfig {

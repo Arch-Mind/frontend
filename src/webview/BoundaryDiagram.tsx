@@ -263,12 +263,9 @@ export const BoundaryDiagram: React.FC<BoundaryDiagramProps> = ({
 
     const summaryByBoundary = useMemo(() => {
         const map = new Map<string, string>();
-        if (!insights?.insights) return map;
-        insights.insights.forEach(item => {
-            if (item.pattern_type?.startsWith('module_summary:')) {
-                const name = item.pattern_type.replace('module_summary:', '').trim();
-                map.set(name, item.summary);
-            }
+        if (!insights?.modules) return map;
+        insights.modules.forEach(item => {
+            map.set(item.name, item.summary);
         });
         return map;
     }, [insights]);

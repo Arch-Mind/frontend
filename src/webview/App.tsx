@@ -9,6 +9,8 @@ import { initializeExportListener } from '../utils/exporters/vscodeExportHelper'
 import { HeatmapMode } from './heatmapUtils';
 import { NotificationHistory, NotificationEntry } from './NotificationHistory';
 import { getVsCodeApi } from '../utils/vscodeApi';
+import { ArchitectureInsightsPanel } from './ArchitectureInsightsPanel';
+import { ArchitectureInsightsResponse } from '../api/types';
 
 // ✅ backend-driven diagrams
 import { BackendDependencyDiagram } from './diagrams/BackendDependencyDiagram';
@@ -21,7 +23,8 @@ type AppView =
   | 'dependency-diagram'
   | 'communication'
   | 'webhooks'
-  | 'commits';
+  | 'commits'
+  | 'insights';
 
 function normalizeView(view: string): AppView | null {
   switch (view) {
@@ -30,6 +33,7 @@ function normalizeView(view: string): AppView | null {
     case 'communication':
     case 'webhooks':
     case 'commits':
+    case 'insights':
       return view;
     case 'dependencies':
       return 'dependency-diagram';
@@ -74,6 +78,8 @@ const App: React.FC = () => {
   const [architectureData, setArchitectureData] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [localContributions, setLocalContributions] = useState<any>(null);
+  const [insightsData, setInsightsData] = useState<ArchitectureInsightsResponse | null>(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
 
   const heatmapOptions: { value: HeatmapMode; label: string }[] = [
     { value: 'off', label: 'Off' },
@@ -132,6 +138,13 @@ const App: React.FC = () => {
         // eslint-disable-next-line no-console
         console.log('App.tsx: Received contributions', { count: message.data.contributions?.length });
         setLocalContributions(message.data);
+      }
+
+      if (message?.command === 'architectureInsights') {
+        setIsLoadingInsights(false);
+        if (message.data) {
+          setInsightsData(message.data);
+        }
       }
     };
 
@@ -210,6 +223,20 @@ const App: React.FC = () => {
           >
             Commits
           </button>
+
+          <button
+            className={activeView === 'insights' ? 'view-tab active' : 'view-tab'}
+            onClick={() => {
+              setActiveView('insights');
+              if (!insightsData && !isLoadingInsights) {
+                setIsLoadingInsights(true);
+                const vscode = getVsCodeApi();
+                if (vscode) vscode.postMessage({ command: 'requestArchitectureInsights' });
+              }
+            }}
+          >
+            ✨ AI Insights
+          </button>
         </div>
 
         <div className="heatmap-toolbar">
@@ -280,6 +307,19 @@ const App: React.FC = () => {
             <CommitDetails
               backendUrl={config?.backendUrl || 'http://localhost:8080'}
               repoId={repoId}
+            />
+          )}
+
+          {activeView === 'insights' && (
+            <ArchitectureInsightsPanel
+              repoId={repoId}
+              insights={insightsData}
+              isLoading={isLoadingInsights}
+              onRefresh={() => {
+                setIsLoadingInsights(true);
+                const vscode = getVsCodeApi();
+                if (vscode) vscode.postMessage({ command: 'refreshArchitectureInsights' });
+              }}
             />
           )}
         </main>
