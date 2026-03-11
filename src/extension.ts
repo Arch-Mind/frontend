@@ -14,6 +14,9 @@ import { GitAnalysisService } from './services/gitAnalysisService';
 export function activate(context: vscode.ExtensionContext) {
     console.log('ArchMind VS Code Extension is now active!');
 
+    // Make context available to ArchitecturePanel for workspaceState persistence
+    ArchitecturePanel.setContext(context);
+
     // Initialize LocalParser
     const localParser = LocalParser.getInstance(context.extensionUri);
     localParser.initialize();
@@ -442,6 +445,11 @@ async function getRepositoryUrl(): Promise<string | undefined> {
 class ArchitecturePanel {
     public static currentPanel: ArchitecturePanel | undefined;
     public static readonly viewType = 'archmindArchitecture';
+    private static _context: vscode.ExtensionContext | undefined;
+
+    public static setContext(ctx: vscode.ExtensionContext): void {
+        ArchitecturePanel._context = ctx;
+    }
 
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
@@ -493,8 +501,9 @@ class ArchitecturePanel {
         this._panel = panel;
         this._extensionUri = extensionUri;
 
+        // Restore last repo ID from workspace state so AI Insights works after VS Code reload
+        this._lastRepoId = ArchitecturePanel._context?.workspaceState.get<string>('archmind.lastRepoId');
 
-        // Set the webview's initial html content
         this._update();
 
         // Listen for when the panel is disposed
@@ -844,6 +853,9 @@ class ArchitecturePanel {
 
                 // Store repo ID for future refreshes
                 this._lastRepoId = data.repoId;
+
+                // Persist so AI Insights survives extension/VS Code reload
+                ArchitecturePanel._context?.workspaceState.update('archmind.lastRepoId', this._lastRepoId);
 
                 progress.report({ message: 'Rendering graph...', increment: 90 });
                 this._panel.webview.postMessage({ command: 'architectureData', data });

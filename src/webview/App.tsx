@@ -163,6 +163,18 @@ const App: React.FC = () => {
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  // Trigger insights fetch whenever the tab becomes active (handles both tab click
+  // and switchView message paths). Always re-requests if we have no data yet so
+  // a previously-stuck "Generating..." state is automatically retried.
+  useEffect(() => {
+    if (activeView !== 'insights') return;
+    if (insightsData) return; // already loaded, no need to refetch
+    setIsLoadingInsights(true);
+    setInsightsError(null);
+    const vscode = getVsCodeApi();
+    if (vscode) vscode.postMessage({ command: 'requestArchitectureInsights' });
+  }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent).detail as { message: string } | undefined;
@@ -230,14 +242,7 @@ const App: React.FC = () => {
 
           <button
             className={activeView === 'insights' ? 'view-tab active' : 'view-tab'}
-            onClick={() => {
-              setActiveView('insights');
-              if (!insightsData && !isLoadingInsights) {
-                setIsLoadingInsights(true);
-                const vscode = getVsCodeApi();
-                if (vscode) vscode.postMessage({ command: 'requestArchitectureInsights' });
-              }
-            }}
+            onClick={() => setActiveView('insights')}
           >
             ✨ AI Insights
           </button>
