@@ -923,20 +923,14 @@ class ArchitecturePanel {
     private async _getArchitectureInsights(refresh: boolean) {
         const repoId: string | null = this._lastRepoId ?? null;
         if (!repoId) {
-            this._panel.webview.postMessage({ command: 'architectureInsights', error: 'No repository loaded' });
+            this._panel.webview.postMessage({ command: 'architectureInsights', error: 'No repository loaded. Please run "ArchMind: Analyze Repository" first.' });
             return;
         }
         try {
             const apiClient = getApiClient();
-            const data = refresh
-                ? await apiClient.triggerArchitectureAnalysis(repoId, true)
-                : await (async () => {
-                    try {
-                        return await apiClient.getArchitectureInsights(repoId);
-                    } catch {
-                        return await apiClient.triggerArchitectureAnalysis(repoId, false);
-                    }
-                })();
+            // POST with refresh=false checks cache first, then triggers Gemini if no cache.
+            // POST with refresh=true always re-runs Gemini analysis.
+            const data = await apiClient.triggerArchitectureAnalysis(repoId, refresh);
             this._panel.webview.postMessage({ command: 'architectureInsights', data });
         } catch (error) {
             console.error(error);

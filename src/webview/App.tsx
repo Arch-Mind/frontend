@@ -1,7 +1,6 @@
 // src/webview/App.tsx
 import React, { useEffect, useState } from 'react';
 import ArchitectureGraph from './ArchitectureGraph';
-import { DependencyDiagram } from './DependencyDiagram';
 import { CommitDetails } from './CommitDetails';
 import { ThemeProvider, useThemeKeyboard } from './ThemeContext';
 import { CompactThemeToggle } from './ThemeToggle';
@@ -9,34 +8,15 @@ import { initializeExportListener } from '../utils/exporters/vscodeExportHelper'
 import { HeatmapMode } from './heatmapUtils';
 import { NotificationHistory, NotificationEntry } from './NotificationHistory';
 import { getVsCodeApi } from '../utils/vscodeApi';
-import { ArchitectureInsightsPanel } from './ArchitectureInsightsPanel';
-import { ArchitectureInsightsResponse } from '../api/types';
 
-// ✅ backend-driven diagrams
-import { BackendDependencyDiagram } from './diagrams/BackendDependencyDiagram';
-import { BackendCommunicationDiagram } from './diagrams/BackendCommunicationDiagram';
-import { CommunicationDiagram } from './CommunicationDiagram';
-import { WebhookSetup } from './WebhookSetup';
 
-type AppView =
-  | 'graph'
-  | 'dependency-diagram'
-  | 'communication'
-  | 'webhooks'
-  | 'commits'
-  | 'insights';
+type AppView = 'graph' | 'commits';
 
 function normalizeView(view: string): AppView | null {
   switch (view) {
     case 'graph':
-    case 'dependency-diagram':
-    case 'communication':
-    case 'webhooks':
     case 'commits':
-    case 'insights':
       return view;
-    case 'dependencies':
-      return 'dependency-diagram';
     default:
       return null;
   }
@@ -78,9 +58,6 @@ const App: React.FC = () => {
   const [architectureData, setArchitectureData] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [localContributions, setLocalContributions] = useState<any>(null);
-  const [insightsData, setInsightsData] = useState<ArchitectureInsightsResponse | null>(null);
-  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
-  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const heatmapOptions: { value: HeatmapMode; label: string }[] = [
     { value: 'off', label: 'Off' },
@@ -141,15 +118,6 @@ const App: React.FC = () => {
         setLocalContributions(message.data);
       }
 
-      if (message?.command === 'architectureInsights') {
-        setIsLoadingInsights(false);
-        if (message.data) {
-          setInsightsData(message.data);
-          setInsightsError(null);
-        } else if (message.error) {
-          setInsightsError(String(message.error));
-        }
-      }
     };
 
     window.addEventListener('message', handler);
@@ -162,18 +130,6 @@ const App: React.FC = () => {
 
     return () => window.removeEventListener('message', handler);
   }, []);
-
-  // Trigger insights fetch whenever the tab becomes active (handles both tab click
-  // and switchView message paths). Always re-requests if we have no data yet so
-  // a previously-stuck "Generating..." state is automatically retried.
-  useEffect(() => {
-    if (activeView !== 'insights') return;
-    if (insightsData) return; // already loaded, no need to refetch
-    setIsLoadingInsights(true);
-    setInsightsError(null);
-    const vscode = getVsCodeApi();
-    if (vscode) vscode.postMessage({ command: 'requestArchitectureInsights' });
-  }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -195,8 +151,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('archmind:graphUpdated', handler as EventListener);
   }, []);
 
-  // ✅ detect backend graph payload (from extension/backend)
-  const backendGraph = architectureData?.source === 'backend' ? architectureData : null;
 
   return (
     <ThemeProvider>
@@ -213,38 +167,10 @@ const App: React.FC = () => {
           </button>
 
           <button
-            className={activeView === 'dependency-diagram' ? 'view-tab active' : 'view-tab'}
-            onClick={() => setActiveView('dependency-diagram')}
-          >
-            Dependency Diagram
-          </button>
-
-          <button
-            className={activeView === 'communication' ? 'view-tab active' : 'view-tab'}
-            onClick={() => setActiveView('communication')}
-          >
-            Communication
-          </button>
-
-          <button
-            className={activeView === 'webhooks' ? 'view-tab active' : 'view-tab'}
-            onClick={() => setActiveView('webhooks')}
-          >
-            Webhooks
-          </button>
-
-          <button
             className={activeView === 'commits' ? 'view-tab active' : 'view-tab'}
             onClick={() => setActiveView('commits')}
           >
             Commits
-          </button>
-
-          <button
-            className={activeView === 'insights' ? 'view-tab active' : 'view-tab'}
-            onClick={() => setActiveView('insights')}
-          >
-            ✨ AI Insights
           </button>
         </div>
 
@@ -274,44 +200,6 @@ const App: React.FC = () => {
             />
           )}
 
-          {/* ✅ Dependency diagram: backend graph if present, else fallback */}
-          {activeView === 'dependency-diagram' &&
-            (backendGraph ? (
-              <BackendDependencyDiagram graph={backendGraph} />
-            ) : (
-              <DependencyDiagram
-                heatmapMode={heatmapMode}
-                highlightNodeIds={highlightNodes}
-                repoId={repoId}
-                graphEngineUrl={config?.graphEngineUrl}
-                architectureData={architectureData}
-                localContributions={localContributions}
-              />
-            ))}
-
-          {activeView === 'communication' &&
-            (backendGraph ? (
-              <BackendCommunicationDiagram
-                graph={backendGraph}
-                repoId={repoId}
-                graphEngineUrl={config?.graphEngineUrl}
-              />
-            ) : (
-              <CommunicationDiagram
-                heatmapMode={heatmapMode}
-                highlightNodeIds={highlightNodes}
-                repoId={repoId}
-                graphEngineUrl={config?.graphEngineUrl}
-                architectureData={architectureData}
-              />
-            ))}
-
-          {activeView === 'webhooks' && (
-            <WebhookSetup
-              backendUrl={config?.backendUrl || 'http://localhost:8080'}
-            />
-          )}
-
           {activeView === 'commits' && (
             <CommitDetails
               backendUrl={config?.backendUrl || 'http://localhost:8080'}
@@ -319,20 +207,6 @@ const App: React.FC = () => {
             />
           )}
 
-          {activeView === 'insights' && (
-            <ArchitectureInsightsPanel
-              repoId={repoId}
-              insights={insightsData}
-              isLoading={isLoadingInsights}
-              error={insightsError}
-              onRefresh={() => {
-                setIsLoadingInsights(true);
-                setInsightsError(null);
-                const vscode = getVsCodeApi();
-                if (vscode) vscode.postMessage({ command: 'refreshArchitectureInsights' });
-              }}
-            />
-          )}
         </main>
 
         <NotificationHistory entries={history} onClear={() => setHistory([])} />

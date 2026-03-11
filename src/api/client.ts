@@ -281,18 +281,18 @@ export class ArchMindApiClient {
 
     /**
      * Get cached architecture insights (Gemini-generated)
-     * GET /api/analyze/:repo_id/architecture
+     * GET /api/analyze/:repo_id/architecture  (proxied via gateway)
      */
     public async getArchitectureInsights(repoId: string): Promise<ArchitectureInsightsResponse> {
         return this.request<ArchitectureInsightsResponse>(
-            this.config.graphEngineUrl,
+            this.config.gatewayUrl,
             `/api/analyze/${encodeURIComponent(repoId)}/architecture`
         );
     }
 
     /**
      * Trigger Gemini architecture analysis
-     * POST /api/analyze/:repo_id/architecture?refresh=true
+     * POST /api/analyze/:repo_id/architecture  (proxied via gateway)
      */
     public async triggerArchitectureAnalysis(
         repoId: string,
@@ -300,8 +300,8 @@ export class ArchMindApiClient {
     ): Promise<ArchitectureInsightsResponse> {
         // Use 3-minute timeout — Gemini analyses multiple modules sequentially
         return this.request<ArchitectureInsightsResponse>(
-            this.config.graphEngineUrl,
-            `/api/analyze/${encodeURIComponent(repoId)}/architecture?refresh=${refresh}`,
+            this.config.gatewayUrl,
+            `/api/analyze/${encodeURIComponent(repoId)}/architecture${refresh ? '?refresh=true' : ''}`,
             { method: 'POST' },
             180_000
         );
@@ -733,7 +733,7 @@ export class ArchMindWebSocketClient {
 
         // Convert http(s) to ws(s)
         const wsProtocol = gatewayUrl.startsWith('https') ? 'wss' : 'ws';
-        const baseUrl = gatewayUrl.replace(/^https?:\/\//, '');
+        const baseUrl = gatewayUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
         this.url = `${wsProtocol}://${baseUrl}/ws/${type}/${id}`;
     }
 

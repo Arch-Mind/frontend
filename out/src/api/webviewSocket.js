@@ -14,7 +14,7 @@ class ArchMindWebSocketClient {
         this.type = type;
         this.id = id;
         const wsProtocol = gatewayUrl.startsWith('https') ? 'wss' : 'ws';
-        const baseUrl = gatewayUrl.replace(/^https?:\/\//, '');
+        const baseUrl = gatewayUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
         this.url = `${wsProtocol}://${baseUrl}/ws/${type}/${id}`;
     }
     connect() {

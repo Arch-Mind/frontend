@@ -48,6 +48,8 @@ const fingerprintService_1 = require("./services/fingerprintService");
 const gitAnalysisService_1 = require("./services/gitAnalysisService");
 function activate(context) {
     console.log('ArchMind VS Code Extension is now active!');
+    // Make context available to ArchitecturePanel for workspaceState persistence
+    ArchitecturePanel.setContext(context);
     // Initialize LocalParser
     const localParser = localParser_1.LocalParser.getInstance(context.extensionUri);
     localParser.initialize();
@@ -412,6 +414,9 @@ async function getRepositoryUrl() {
     return repoUrl || undefined;
 }
 class ArchitecturePanel {
+    static setContext(ctx) {
+        ArchitecturePanel._context = ctx;
+    }
     /**
      * Analyze repository using backend API
      */
@@ -445,7 +450,8 @@ class ArchitecturePanel {
         this._disposables = [];
         this._panel = panel;
         this._extensionUri = extensionUri;
-        // Set the webview's initial html content
+        // Restore last repo ID from workspace state so AI Insights works after VS Code reload
+        this._lastRepoId = ArchitecturePanel._context?.workspaceState.get('archmind.lastRepoId');
         this._update();
         // Listen for when the panel is disposed
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -752,6 +758,8 @@ class ArchitecturePanel {
                 });
                 // Store repo ID for future refreshes
                 this._lastRepoId = data.repoId;
+                // Persist so AI Insights survives extension/VS Code reload
+                ArchitecturePanel._context?.workspaceState.update('archmind.lastRepoId', this._lastRepoId);
                 progress.report({ message: 'Rendering graph...', increment: 90 });
                 this._panel.webview.postMessage({ command: 'architectureData', data });
                 vscode.window.showInformationMessage(`Analysis complete: ${data.stats.totalFiles} files, ${data.stats.totalFunctions} functions found`);
@@ -813,21 +821,14 @@ class ArchitecturePanel {
     async _getArchitectureInsights(refresh) {
         const repoId = this._lastRepoId ?? null;
         if (!repoId) {
-            this._panel.webview.postMessage({ command: 'architectureInsights', error: 'No repository loaded' });
+            this._panel.webview.postMessage({ command: 'architectureInsights', error: 'No repository loaded. Please run "ArchMind: Analyze Repository" first.' });
             return;
         }
         try {
             const apiClient = (0, api_1.getApiClient)();
-            const data = refresh
-                ? await apiClient.triggerArchitectureAnalysis(repoId, true)
-                : await (async () => {
-                    try {
-                        return await apiClient.getArchitectureInsights(repoId);
-                    }
-                    catch {
-                        return await apiClient.triggerArchitectureAnalysis(repoId, false);
-                    }
-                })();
+            // POST with refresh=false checks cache first, then triggers Gemini if no cache.
+            // POST with refresh=true always re-runs Gemini analysis.
+            const data = await apiClient.triggerArchitectureAnalysis(repoId, refresh);
             this._panel.webview.postMessage({ command: 'architectureInsights', data });
         }
         catch (error) {
