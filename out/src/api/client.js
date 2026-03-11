@@ -82,9 +82,10 @@ class ArchMindApiClient {
     /**
      * Generic HTTP request method
      */
-    async request(baseUrl, endpoint, options = {}) {
+    async request(baseUrl, endpoint, options = {}, timeoutMs) {
         this.abortController = new AbortController();
-        const timeoutId = setTimeout(() => this.abortController?.abort(), this.config.timeout);
+        const timeout = timeoutMs ?? this.config.timeout;
+        const timeoutId = setTimeout(() => this.abortController?.abort(), timeout);
         const url = `${baseUrl}${endpoint}`;
         const headers = {
             'Content-Type': 'application/json',
@@ -232,7 +233,8 @@ class ArchMindApiClient {
      * POST /api/analyze/:repo_id/architecture?refresh=true
      */
     async triggerArchitectureAnalysis(repoId, refresh = false) {
-        return this.request(this.config.graphEngineUrl, `/api/analyze/${encodeURIComponent(repoId)}/architecture?refresh=${refresh}`, { method: 'POST' });
+        // Use 3-minute timeout — Gemini analyses multiple modules sequentially
+        return this.request(this.config.graphEngineUrl, `/api/analyze/${encodeURIComponent(repoId)}/architecture?refresh=${refresh}`, { method: 'POST' }, 180_000);
     }
     // =========================================================================
     // High-level Operations

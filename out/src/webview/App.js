@@ -96,6 +96,7 @@ const App = () => {
     const [localContributions, setLocalContributions] = (0, react_1.useState)(null);
     const [insightsData, setInsightsData] = (0, react_1.useState)(null);
     const [isLoadingInsights, setIsLoadingInsights] = (0, react_1.useState)(false);
+    const [insightsError, setInsightsError] = (0, react_1.useState)(null);
     const heatmapOptions = [
         { value: 'off', label: 'Off' },
         { value: 'commit_count', label: 'Commit Count' },
@@ -151,6 +152,10 @@ const App = () => {
                 setIsLoadingInsights(false);
                 if (message.data) {
                     setInsightsData(message.data);
+                    setInsightsError(null);
+                }
+                else if (message.error) {
+                    setInsightsError(String(message.error));
                 }
             }
         };
@@ -211,8 +216,9 @@ const App = () => {
                     (backendGraph ? (react_1.default.createElement(BackendCommunicationDiagram_1.BackendCommunicationDiagram, { graph: backendGraph, repoId: repoId, graphEngineUrl: config?.graphEngineUrl })) : (react_1.default.createElement(CommunicationDiagram_1.CommunicationDiagram, { heatmapMode: heatmapMode, highlightNodeIds: highlightNodes, repoId: repoId, graphEngineUrl: config?.graphEngineUrl, architectureData: architectureData }))),
                 activeView === 'webhooks' && (react_1.default.createElement(WebhookSetup_1.WebhookSetup, { backendUrl: config?.backendUrl || 'http://localhost:8080' })),
                 activeView === 'commits' && (react_1.default.createElement(CommitDetails_1.CommitDetails, { backendUrl: config?.backendUrl || 'http://localhost:8080', repoId: repoId })),
-                activeView === 'insights' && (react_1.default.createElement(ArchitectureInsightsPanel_1.ArchitectureInsightsPanel, { repoId: repoId, insights: insightsData, isLoading: isLoadingInsights, onRefresh: () => {
+                activeView === 'insights' && (react_1.default.createElement(ArchitectureInsightsPanel_1.ArchitectureInsightsPanel, { repoId: repoId, insights: insightsData, isLoading: isLoadingInsights, error: insightsError, onRefresh: () => {
                         setIsLoadingInsights(true);
+                        setInsightsError(null);
                         const vscode = (0, vscodeApi_1.getVsCodeApi)();
                         if (vscode)
                             vscode.postMessage({ command: 'refreshArchitectureInsights' });

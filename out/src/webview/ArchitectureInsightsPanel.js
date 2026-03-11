@@ -56,7 +56,7 @@ const LoadingSkeleton = () => (react_1.default.createElement("div", { className:
     react_1.default.createElement("div", { className: "ai-skeleton ai-skeleton--row" }),
     react_1.default.createElement("div", { className: "ai-skeleton ai-skeleton--row ai-skeleton--short" })));
 // ── main component ────────────────────────────────────────────────────────────
-const ArchitectureInsightsPanel = ({ repoId, insights, isLoading, onRefresh, }) => {
+const ArchitectureInsightsPanel = ({ repoId, insights, isLoading, error, onRefresh, }) => {
     if (!repoId) {
         return (react_1.default.createElement("div", { className: "ai-empty-state" },
             react_1.default.createElement("span", { className: "ai-empty-icon" }, "\uD83C\uDFD7\uFE0F"),
@@ -68,6 +68,16 @@ const ArchitectureInsightsPanel = ({ repoId, insights, isLoading, onRefresh, }) 
                 react_1.default.createElement("span", { className: "ai-toolbar-title" }, "AI Insights"),
                 react_1.default.createElement("button", { className: "ai-refresh-btn", disabled: true }, "Generating\u2026")),
             react_1.default.createElement(LoadingSkeleton, null)));
+    }
+    if (error) {
+        return (react_1.default.createElement("div", { className: "ai-panel" },
+            react_1.default.createElement("div", { className: "ai-toolbar" },
+                react_1.default.createElement("span", { className: "ai-toolbar-title" }, "AI Insights"),
+                react_1.default.createElement("button", { className: "ai-refresh-btn", onClick: onRefresh }, "\u21BB Retry")),
+            react_1.default.createElement("div", { className: "ai-error-state" },
+                react_1.default.createElement("span", { className: "ai-empty-icon" }, "\u26A0\uFE0F"),
+                react_1.default.createElement("p", { className: "ai-error-message" }, error),
+                react_1.default.createElement("button", { className: "ai-refresh-btn", onClick: onRefresh }, "Try Again"))));
     }
     if (!insights) {
         return (react_1.default.createElement("div", { className: "ai-panel" },

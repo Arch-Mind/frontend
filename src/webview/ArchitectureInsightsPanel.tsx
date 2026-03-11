@@ -11,6 +11,7 @@ interface Props {
     repoId: string | null;
     insights: ArchitectureInsightsResponse | null;
     isLoading: boolean;
+    error: string | null;
     onRefresh: () => void;
 }
 
@@ -116,6 +117,7 @@ export const ArchitectureInsightsPanel: React.FC<Props> = ({
     repoId,
     insights,
     isLoading,
+    error,
     onRefresh,
 }) => {
     if (!repoId) {
@@ -135,6 +137,22 @@ export const ArchitectureInsightsPanel: React.FC<Props> = ({
                     <button className="ai-refresh-btn" disabled>Generating…</button>
                 </div>
                 <LoadingSkeleton />
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="ai-panel">
+                <div className="ai-toolbar">
+                    <span className="ai-toolbar-title">AI Insights</span>
+                    <button className="ai-refresh-btn" onClick={onRefresh}>↻ Retry</button>
+                </div>
+                <div className="ai-error-state">
+                    <span className="ai-empty-icon">⚠️</span>
+                    <p className="ai-error-message">{error}</p>
+                    <button className="ai-refresh-btn" onClick={onRefresh}>Try Again</button>
+                </div>
             </div>
         );
     }

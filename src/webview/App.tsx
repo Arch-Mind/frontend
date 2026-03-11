@@ -80,6 +80,7 @@ const App: React.FC = () => {
   const [localContributions, setLocalContributions] = useState<any>(null);
   const [insightsData, setInsightsData] = useState<ArchitectureInsightsResponse | null>(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const heatmapOptions: { value: HeatmapMode; label: string }[] = [
     { value: 'off', label: 'Off' },
@@ -144,6 +145,9 @@ const App: React.FC = () => {
         setIsLoadingInsights(false);
         if (message.data) {
           setInsightsData(message.data);
+          setInsightsError(null);
+        } else if (message.error) {
+          setInsightsError(String(message.error));
         }
       }
     };
@@ -315,8 +319,10 @@ const App: React.FC = () => {
               repoId={repoId}
               insights={insightsData}
               isLoading={isLoadingInsights}
+              error={insightsError}
               onRefresh={() => {
                 setIsLoadingInsights(true);
+                setInsightsError(null);
                 const vscode = getVsCodeApi();
                 if (vscode) vscode.postMessage({ command: 'refreshArchitectureInsights' });
               }}
